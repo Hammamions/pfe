@@ -1,4 +1,4 @@
-import { Link, Outlet, useLocation } from 'react-router-dom';
+import { Link, Outlet, useLocation, useNavigate } from 'react-router-dom';
 import {
     Users,
     Calendar,
@@ -13,6 +13,7 @@ import logo from '../../assets/logo sans bg.png';
 
 export default function DoctorLayout() {
     const location = useLocation();
+    const navigate = useNavigate();
 
     const isActive = (path) => {
         return location.pathname === path;
@@ -62,7 +63,7 @@ export default function DoctorLayout() {
                         </Link>
                     </nav>
 
-                    <Button variant="ghost" className="text-gray-500 hover:text-red-600 hover:bg-red-50 gap-2">
+                    <Button variant="ghost" className="text-gray-500 hover:text-red-600 hover:bg-red-50 gap-2" onClick={() => navigate('/login-pro')}>
                         <LogOut className="w-4 h-4" />
                         Déconnexion
                     </Button>

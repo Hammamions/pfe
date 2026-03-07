@@ -1,9 +1,10 @@
-import { Outlet, Link, useLocation } from 'react-router-dom';
+import { Outlet, Link, useLocation, useNavigate } from 'react-router-dom';
 import { Shield, LayoutDashboard, Users, LogOut } from 'lucide-react';
 import { Button } from '../ui/button';
 
 export default function AdminLayout() {
     const location = useLocation();
+    const navigate = useNavigate();
 
     const isActive = (path) => {
         return location.pathname.includes(path) ? "bg-purple-100 text-purple-700" : "text-gray-600 hover:text-purple-600 hover:bg-purple-50";
@@ -38,7 +39,7 @@ export default function AdminLayout() {
                     </Link>
                 </nav>
 
-                <Button variant="ghost" className="text-red-600 hover:bg-red-50 hover:text-red-700 gap-2">
+                <Button variant="ghost" className="text-red-600 hover:bg-red-50 hover:text-red-700 gap-2" onClick={() => navigate('/login-pro')}>
                     <LogOut className="w-4 h-4" />
                     Déconnexion
                 </Button>

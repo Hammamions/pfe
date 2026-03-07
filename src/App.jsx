@@ -1,4 +1,5 @@
 import { BrowserRouter, Navigate, Route, Routes } from "react-router-dom";
+import LoginPro from "./pages/LoginPro";
 import Appointments from "./pages/patient/Appointmentspatient";
 import Dashboard from "./pages/patient/Dashboardpatient";
 import Documents from "./pages/patient/Documentspatient";
@@ -19,6 +20,7 @@ function App() {
     <BrowserRouter>
       <Routes>
         <Route path="/" element={<Login />} />
+        <Route path="/login-pro" element={<LoginPro />} />
         <Route path="/dashboard" element={<Dashboard />} />
         <Route path="/profile" element={<Profile />} />
         <Route path="/appointments" element={<Appointments />} />

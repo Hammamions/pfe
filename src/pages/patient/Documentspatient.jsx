@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { Link } from "react-router-dom";
-import photo from "../assets/logo.png";
+import photo from "../../assets/logo.png";
 
 const Documents = () => {
     const [searchTerm, setSearchTerm] = useState("");

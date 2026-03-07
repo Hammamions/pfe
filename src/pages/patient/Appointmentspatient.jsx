@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { Link } from "react-router-dom";
-import photo from "../assets/logo.png";
-import { useAppointments } from "../context/AppointmentContext.jsx";
+import photo from "../../assets/logo.png";
+import { useAppointments } from "../../context/AppointmentContext.jsx";
 
 const Appointments = () => {
     const {

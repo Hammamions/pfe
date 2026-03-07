@@ -1,0 +1,11 @@
+{
+  "name": "pfe-hospital-system",
+  "private": true,
+  "version": "1.0.0",
+  "description": "Système hospitalier intelligent - Root project",
+  "workspaces": [
+    "hospital-web",
+    "hospital-mobile",
+    "hospital-backend"
+  ]
+}

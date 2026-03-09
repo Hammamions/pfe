@@ -915,47 +915,65 @@ export default function AdminDashboard() {
                                         {doctors.map((doc) => (
                                             <div
                                                 key={doc.id}
-                                                className="flex flex-col sm:flex-row justify-between items-start sm:items-center p-4 bg-gray-50 rounded-lg border border-gray-100 hover:bg-gray-100 transition-colors"
+                                                className="flex flex-col gap-3 p-4 bg-white border border-gray-200 rounded-lg shadow-sm hover:shadow-md transition-all"
                                             >
-                                                <div className="flex items-center gap-4">
-                                                    <div
-                                                        className={`w-10 h-10 rounded-full flex items-center justify-center font-bold text-sm ${doc.color}`}
-                                                    >
-                                                        {doc.initials}
+                                                <div className="flex items-start justify-between gap-2">
+                                                    <div className="flex items-center gap-3 min-w-0 flex-1">
+                                                        <div className={`w-10 h-10 rounded-full flex items-center justify-center font-bold text-sm shrink-0 ${doc.color}`}>
+                                                            {doc.initials}
+                                                        </div>
+                                                        <div className="min-w-0 flex-1">
+                                                            <h4 className="font-semibold text-gray-900 truncate" title={doc.name}>{doc.name}</h4>
+                                                            <p className="text-sm text-gray-500 truncate" title={doc.specialty}>{doc.specialty}</p>
+                                                        </div>
                                                     </div>
-                                                    <div>
-                                                        <h4 className="font-semibold text-gray-900">{doc.name}</h4>
-                                                        <p className="text-sm text-gray-500">{doc.specialty}</p>
-                                                    </div>
-                                                </div>
-                                                <div className="mt-2 sm:mt-0 text-sm text-gray-600 text-right">
-                                                    <p>Email: {doc.email}</p>
-                                                    <p>Téléphone: {doc.phone}</p>
-                                                    <p>Patients: {doc.patients}</p>
-                                                    <p>Consultations: {doc.consultations}</p>
-                                                </div>
-                                                <div className="flex items-center gap-2 mt-2 sm:mt-0">
-                                                    <span className={`px-2 py-1 text-xs font-medium rounded-full ${doc.status === 'actif' ? 'text-green-700 bg-green-100' :
-                                                        doc.status === 'inactif' ? 'text-red-700 bg-red-100' :
-                                                            'text-orange-700 bg-orange-100'
-                                                        }`}>
+                                                    <span className={`px-2.5 py-1 text-[11px] font-bold uppercase tracking-wider rounded-full shrink-0 ${doc.status === 'actif' ? 'text-green-700 bg-green-100' :
+                                                        doc.status === 'inactif' ? 'text-red-700 bg-red-100' : 'text-orange-700 bg-orange-100'}`}>
                                                         {doc.status}
                                                     </span>
+                                                </div>
+                                                
+                                                <div className="bg-gray-50 p-3 rounded-md text-sm text-gray-700 border border-gray-100">
+                                                    <div className="space-y-2">
+                                                        <div className="flex items-center gap-2.5 truncate" title={doc.email}>
+                                                            <span className="text-gray-400 text-xs">📧</span> 
+                                                            <span className="truncate">{doc.email}</span>
+                                                        </div>
+                                                        <div className="flex items-center gap-2.5 truncate">
+                                                            <span className="text-gray-400 text-xs">📞</span> 
+                                                            <span className="truncate">{doc.phone}</span>
+                                                        </div>
+                                                    </div>
+                                                    <div className="grid grid-cols-2 divide-x divide-gray-200 pt-3 mt-3 border-t border-gray-200">
+                                                        <div className="px-2 text-center">
+                                                            <span className="block text-lg font-bold text-blue-600">{doc.patients}</span>
+                                                            <span className="text-[11px] uppercase tracking-wider text-gray-500 font-semibold">Patients</span>
+                                                        </div>
+                                                        <div className="px-2 text-center">
+                                                            <span className="block text-lg font-bold text-purple-600">{doc.consultations}</span>
+                                                            <span className="text-[11px] uppercase tracking-wider text-gray-500 font-semibold">Actes</span>
+                                                        </div>
+                                                    </div>
+                                                </div>
+                                                
+                                                <div className="flex justify-end gap-2 pt-1 border-t border-gray-100 mt-2">
                                                     <Button
                                                         variant="ghost"
                                                         size="sm"
-                                                        className="text-blue-600 hover:text-blue-700 hover:bg-blue-50"
+                                                        className="text-blue-600 hover:text-blue-700 hover:bg-blue-50 h-8 px-3 rounded-md"
                                                         onClick={() => handleEditDoctor(doc)}
                                                     >
-                                                        <Edit className="w-4 h-4" />
+                                                        <Edit className="w-4 h-4 mr-2" /> 
+                                                        <span className="text-xs font-medium">Modifier</span>
                                                     </Button>
                                                     <Button
                                                         variant="ghost"
                                                         size="sm"
-                                                        className="text-red-600 hover:text-red-700 hover:bg-red-50"
+                                                        className="text-red-600 hover:text-red-700 hover:bg-red-50 h-8 px-3 rounded-md"
                                                         onClick={() => handleDeleteDoctor(doc.id)}
                                                     >
-                                                        <Trash2 className="w-4 h-4" />
+                                                        <Trash2 className="w-4 h-4 mr-2" /> 
+                                                        <span className="text-xs font-medium">Supprimer</span>
                                                     </Button>
                                                 </div>
                                             </div>

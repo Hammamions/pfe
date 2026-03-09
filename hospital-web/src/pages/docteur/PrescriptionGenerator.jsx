@@ -375,7 +375,7 @@ export default function PrescriptionGeneratorPage() {
 
                             <Button
                                 onClick={generatePDF}
-                                disabled={!selectedPatient || (medications.length === 0 && (!currentMed.nom || !currentMed.dosage))}
+                                disabled={!selectedPatient || (medications.length === 0 && (!currentMed.nom || !currentMed.dosage) && !notes)}
                                 className="w-full"
                             >
                                 <FileText className="w-4 h-4 mr-2" />

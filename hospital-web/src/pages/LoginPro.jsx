@@ -59,7 +59,7 @@ const LoginPro = () => {
         
         {/* Header Section */}
         <div className="flex flex-col items-center">
-          <div className="bg-[#2563EB] rounded-2xl p-2 mb-4 flex items-center justify-center w-16 h-16 shadow-sm overflow-hidden">
+          <div className="mb-4 flex items-center justify-center w-28 h-28">
             <img src={logo} alt="Logo" className="w-full h-full object-contain" />
           </div>
           <h1 className="text-3xl font-bold text-slate-900 tracking-tight">Hôpital Connect</h1>

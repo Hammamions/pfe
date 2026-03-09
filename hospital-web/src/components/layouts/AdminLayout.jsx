@@ -1,5 +1,5 @@
 import { Outlet, Link, useLocation, useNavigate } from 'react-router-dom';
-import { Shield, LayoutDashboard, Users, LogOut } from 'lucide-react';
+import { Shield, LayoutDashboard, LogOut } from 'lucide-react';
 import { Button } from '../ui/button';
 
 export default function AdminLayout() {
@@ -19,7 +19,7 @@ export default function AdminLayout() {
                         <Shield className="w-6 h-6 text-white" />
                     </div>
                     <div>
-                        <h1 className="text-xl font-bold text-gray-900 leading-none">Administration</h1>
+                        <h1 className="text-xl font-bold text-gray-900 leading-none">TuniSanté</h1>
                         <p className="text-xs text-gray-500 mt-1">Gestion de la plateforme</p>
                     </div>
                 </div>
@@ -29,12 +29,6 @@ export default function AdminLayout() {
                         <Button variant="ghost" className={`gap-2 ${isActive('dashboard')}`}>
                             <LayoutDashboard className="w-4 h-4" />
                             Tableau de bord
-                        </Button>
-                    </Link>
-                    <Link to="/admin/doctors">
-                        <Button variant="ghost" className={`gap-2 ${isActive('doctors')}`}>
-                            <Users className="w-4 h-4" />
-                            Gestion Médecins
                         </Button>
                     </Link>
                 </nav>

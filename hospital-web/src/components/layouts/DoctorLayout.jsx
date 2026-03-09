@@ -35,7 +35,7 @@ export default function DoctorLayout() {
                     <div className="flex items-center gap-4">
                         <img src={logo} alt="MediCare Logo" className="h-12 w-auto" />
                         <div>
-                            <h1 className="font-bold text-xl text-gray-900 leading-none">Espace Médecin</h1>
+                            <h1 className="font-bold text-xl text-gray-900 leading-none">TuniSanté</h1>
                             <p className="text-sm text-gray-500 mt-1">Dr. {mockDoctor.prenom} {mockDoctor.nom}</p>
                         </div>
                     </div>

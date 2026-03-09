@@ -1,5 +1,5 @@
-import { useState, useEffect } from 'react';
-import { useLocation } from 'react-router-dom';
+import { useState, useEffect, useRef } from 'react';
+import { useLocation, useNavigate } from 'react-router-dom';
 import {
     Search,
     User,
@@ -27,6 +27,8 @@ export default function PatientFilesPage() {
     const [searchQuery, setSearchQuery] = useState('');
     const [selectedPatient, setSelectedPatient] = useState(null);
     const location = useLocation();
+    const navigate = useNavigate();
+    const fileInputRef = useRef(null);
 
     useEffect(() => {
         if (location.state?.patientName && location.state?.patientPrenom) {
@@ -236,7 +238,18 @@ export default function PatientFilesPage() {
                                     <h3 className="font-semibold text-gray-900">
                                         Historique des consultations
                                     </h3>
-                                    <Button size="sm">
+                                    <Button 
+                                        size="sm"
+                                        onClick={() => {
+                                            setSelectedPatient(null);
+                                            navigate('/doctor/prescriptions', { 
+                                                state: { 
+                                                    patientName: selectedPatient.patient.nom, 
+                                                    patientPrenom: selectedPatient.patient.prenom 
+                                                } 
+                                            });
+                                        }}
+                                    >
                                         <Plus className="w-4 h-4 mr-2" />
                                         Nouvelle consultation
                                     </Button>
@@ -303,7 +316,18 @@ export default function PatientFilesPage() {
                                     <CardContent className="py-12 text-center">
                                         <FileText className="w-12 h-12 text-gray-400 mx-auto mb-2" />
                                         <p className="text-gray-600">Aucun document disponible</p>
-                                        <Button size="sm" className="mt-4">
+                                        <input 
+                                            type="file" 
+                                            ref={fileInputRef} 
+                                            className="hidden" 
+                                            accept=".pdf,.doc,.docx,.jpg,.png" 
+                                            onChange={(e) => {
+                                                if (e.target.files && e.target.files.length > 0) {
+                                                    alert("Fonctionnalité d'ajout de document en cours de développement");
+                                                }
+                                            }}
+                                        />
+                                        <Button size="sm" className="mt-4" onClick={() => fileInputRef.current?.click()}>
                                             <Plus className="w-4 h-4 mr-2" />
                                             Ajouter un document
                                         </Button>

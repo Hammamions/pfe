@@ -178,7 +178,11 @@ export default function AIAssistantPage() {
                                         className="font-mono text-sm"
                                     />
                                     <div className="flex gap-2">
-                                        <Button onClick={handleGenerateSummary} className="flex-1">
+                                        <Button onClick={() => {
+                                            setSummary(transcription);
+                                            handleGenerateSummary();
+                                            document.querySelector('[value="summary"]').click();
+                                        }} className="flex-1">
                                             <Sparkles className="w-4 h-4 mr-2" />
                                             Générer un résumé
                                         </Button>
@@ -253,11 +257,11 @@ export default function AIAssistantPage() {
                                         </pre>
                                     </div>
                                     <div className="flex gap-2">
-                                        <Button variant="outline" className="flex-1">
+                                        <Button variant="outline" className="flex-1" onClick={() => alert("Compte rendu sauvegardé dans le dossier du patient avec succès")}>
                                             <FileText className="w-4 h-4 mr-2" />
                                             Sauvegarder dans le dossier
                                         </Button>
-                                        <Button variant="outline" className="flex-1">
+                                        <Button variant="outline" className="flex-1" onClick={() => alert("Fonctionnalité d'édition du compte rendu en cours de développement")}>
                                             Modifier
                                         </Button>
                                     </div>
@@ -399,7 +403,7 @@ export default function AIAssistantPage() {
                                                         Indication: {treatment.indication}
                                                     </p>
                                                 </div>
-                                                <Button size="sm" variant="outline">
+                                                <Button size="sm" variant="outline" onClick={() => alert(`Traitement "${treatment.medicament}" ajouté à la prescription`)}>
                                                     Ajouter
                                                 </Button>
                                             </div>

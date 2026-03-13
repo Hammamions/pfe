@@ -1,31 +1,33 @@
-import { useState, useEffect, useRef } from 'react';
-import { useLocation, useNavigate } from 'react-router-dom';
 import {
-    Search,
-    User,
-    FileText,
-    Calendar,
-    Heart,
     AlertTriangle,
+    Calendar,
+    CheckCircle2,
     Eye,
+    FileText,
+    Heart,
     Plus,
+    Search,
+    User
 } from 'lucide-react';
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '../../components/ui/card';
-import { Button } from '../../components/ui/button';
-import { Input } from '../../components/ui/input';
+import { useEffect, useRef, useState } from 'react';
+import { useLocation, useNavigate } from 'react-router-dom';
 import { Badge } from '../../components/ui/badge';
-import { Tabs, TabsContent, TabsList, TabsTrigger } from '../../components/ui/tabs';
+import { Button } from '../../components/ui/button';
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '../../components/ui/card';
 import {
     Dialog,
     DialogContent,
     DialogHeader,
     DialogTitle,
 } from '../../components/ui/dialog';
+import { Input } from '../../components/ui/input';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '../../components/ui/tabs';
 import { mockPatientFiles } from '../../data/doctorMockData';
 
 export default function PatientFilesPage() {
     const [searchQuery, setSearchQuery] = useState('');
     const [selectedPatient, setSelectedPatient] = useState(null);
+    const [showConsultationSent, setShowConsultationSent] = useState(false);
     const location = useLocation();
     const navigate = useNavigate();
     const fileInputRef = useRef(null);
@@ -58,7 +60,6 @@ export default function PatientFilesPage() {
                 </p>
             </div>
 
-            {/* Search */}
             <Card>
                 <CardContent className="pt-6">
                     <div className="relative">
@@ -73,7 +74,6 @@ export default function PatientFilesPage() {
                 </CardContent>
             </Card>
 
-            {/* Patient List */}
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
                 {filteredPatients.map((patientFile) => (
                     <Card
@@ -134,7 +134,6 @@ export default function PatientFilesPage() {
                 ))}
             </div>
 
-            {/* Patient Details Dialog */}
             <Dialog open={!!selectedPatient} onOpenChange={() => setSelectedPatient(null)}>
                 <DialogContent className="max-w-4xl max-h-[90vh] overflow-y-auto">
                     <DialogHeader>
@@ -162,7 +161,6 @@ export default function PatientFilesPage() {
                                 <TabsTrigger value="analyses">Analyses</TabsTrigger>
                             </TabsList>
 
-                            {/* General Info */}
                             <TabsContent value="info" className="space-y-4 mt-4">
                                 <Card>
                                     <CardHeader>
@@ -232,25 +230,17 @@ export default function PatientFilesPage() {
                                 </Card>
                             </TabsContent>
 
-                            {/* Consultations */}
                             <TabsContent value="consultations" className="space-y-4 mt-4">
                                 <div className="flex justify-between items-center">
                                     <h3 className="font-semibold text-gray-900">
                                         Historique des consultations
                                     </h3>
-                                    <Button 
+                                    <Button
                                         size="sm"
-                                        onClick={() => {
-                                            setSelectedPatient(null);
-                                            navigate('/doctor/prescriptions', { 
-                                                state: { 
-                                                    patientName: selectedPatient.patient.nom, 
-                                                    patientPrenom: selectedPatient.patient.prenom 
-                                                } 
-                                            });
-                                        }}
+                                        className="gap-2 bg-blue-600 hover:bg-blue-700"
+                                        onClick={() => setShowConsultationSent(true)}
                                     >
-                                        <Plus className="w-4 h-4 mr-2" />
+                                        <Plus className="w-4 h-4" />
                                         Nouvelle consultation
                                     </Button>
                                 </div>
@@ -310,17 +300,16 @@ export default function PatientFilesPage() {
                                 )}
                             </TabsContent>
 
-                            {/* Documents */}
                             <TabsContent value="documents" className="mt-4">
                                 <Card>
                                     <CardContent className="py-12 text-center">
                                         <FileText className="w-12 h-12 text-gray-400 mx-auto mb-2" />
                                         <p className="text-gray-600">Aucun document disponible</p>
-                                        <input 
-                                            type="file" 
-                                            ref={fileInputRef} 
-                                            className="hidden" 
-                                            accept=".pdf,.doc,.docx,.jpg,.png" 
+                                        <input
+                                            type="file"
+                                            ref={fileInputRef}
+                                            className="hidden"
+                                            accept=".pdf,.doc,.docx,.jpg,.png"
                                             onChange={(e) => {
                                                 if (e.target.files && e.target.files.length > 0) {
                                                     alert("Fonctionnalité d'ajout de document en cours de développement");
@@ -335,7 +324,6 @@ export default function PatientFilesPage() {
                                 </Card>
                             </TabsContent>
 
-                            {/* Analyses */}
                             <TabsContent value="analyses" className="mt-4">
                                 <Card>
                                     <CardContent className="py-12 text-center">
@@ -348,6 +336,34 @@ export default function PatientFilesPage() {
                     )}
                 </DialogContent>
             </Dialog>
+
+            {showConsultationSent && (
+                <div className="fixed inset-0 bg-black/50 backdrop-blur-sm z-[200] flex items-center justify-center p-4 animate-in fade-in duration-200">
+                    <div className="bg-white rounded-2xl shadow-2xl w-full max-w-sm p-8 flex flex-col items-center text-center animate-in zoom-in-95 duration-200">
+                        <div className="w-20 h-20 rounded-full bg-green-50 ring-8 ring-green-100 flex items-center justify-center mb-6">
+                            <CheckCircle2 className="w-10 h-10 text-green-500" />
+                        </div>
+
+                        <h2 className="text-xl font-bold text-gray-900 mb-2">Demande envoyée !</h2>
+                        <p className="text-gray-500 text-sm leading-relaxed mb-1">
+                            La demande de nouvelle consultation pour
+                        </p>
+                        <p className="text-blue-600 font-semibold mb-1">
+                            {selectedPatient?.patient.prenom} {selectedPatient?.patient.nom}
+                        </p>
+                        <p className="text-gray-500 text-sm leading-relaxed mb-8">
+                            a été envoyée avec succès. Le patient sera notifié dès que possible.
+                        </p>
+
+                        <button
+                            onClick={() => setShowConsultationSent(false)}
+                            className="w-full bg-gray-900 hover:bg-gray-800 text-white font-semibold py-3 rounded-xl transition-colors text-sm"
+                        >
+                            Fermer
+                        </button>
+                    </div>
+                </div>
+            )}
         </div>
     );
 }

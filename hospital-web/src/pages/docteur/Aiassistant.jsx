@@ -1,20 +1,20 @@
-import { useState } from 'react';
 import {
+    AlertCircle,
+    Brain,
+    Check,
+    Copy,
+    FileText,
     Mic,
     MicOff,
-    FileText,
-    Brain,
     Sparkles,
-    Copy,
-    Check,
-    AlertCircle,
 } from 'lucide-react';
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '../../components/ui/card';
-import { Button } from '../../components/ui/button';
-import { Textarea } from '../../components/ui/textarea';
+import { useState } from 'react';
 import { Badge } from '../../components/ui/badge';
-import { Tabs, TabsContent, TabsList, TabsTrigger } from '../../components/ui/tabs';
+import { Button } from '../../components/ui/button';
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '../../components/ui/card';
 import { Progress } from '../../components/ui/progress';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '../../components/ui/tabs';
+import { Textarea } from '../../components/ui/textarea';
 import { aiSuggestions } from '../../data/doctorMockData';
 
 export default function AIAssistantPage() {
@@ -25,7 +25,6 @@ export default function AIAssistantPage() {
 
     const handleStartRecording = () => {
         setIsRecording(true);
-        // Simulate voice recording
         setTimeout(() => {
             setTranscription(
                 'Patient se plaint de douleurs thoraciques depuis 2 jours. Les douleurs sont localisées au niveau du sternum et irradient vers le bras gauche. Intensité 6/10. Aggravation à l\'effort. Patient fumeur, 20 cigarettes par jour depuis 15 ans. Antécédents familiaux de maladies cardiovasculaires. Tension artérielle mesurée à 145/90. Fréquence cardiaque 88 bpm. Patient présente également une dyspnée à l\'effort modéré.'
@@ -104,7 +103,6 @@ export default function AIAssistantPage() {
                     </TabsTrigger>
                 </TabsList>
 
-                {/* Voice Recognition */}
                 <TabsContent value="voice" className="space-y-4 mt-6">
                     <Card>
                         <CardHeader>
@@ -122,8 +120,8 @@ export default function AIAssistantPage() {
                                             : handleStartRecording
                                     }
                                     className={`w-24 h-24 rounded-full flex items-center justify-center transition-all ${isRecording
-                                            ? 'bg-red-600 hover:bg-red-700 animate-pulse'
-                                            : 'bg-blue-600 hover:bg-blue-700'
+                                        ? 'bg-red-600 hover:bg-red-700 animate-pulse'
+                                        : 'bg-blue-600 hover:bg-blue-700'
                                         }`}
                                 >
                                     {isRecording ? (
@@ -196,7 +194,6 @@ export default function AIAssistantPage() {
                     </Card>
                 </TabsContent>
 
-                {/* Automatic Summary */}
                 <TabsContent value="summary" className="space-y-4 mt-6">
                     <Card>
                         <CardHeader>
@@ -271,7 +268,6 @@ export default function AIAssistantPage() {
                     </Card>
                 </TabsContent>
 
-                {/* Diagnosis Suggestions */}
                 <TabsContent value="diagnosis" className="space-y-4 mt-6">
                     <Card>
                         <CardHeader>
@@ -281,7 +277,6 @@ export default function AIAssistantPage() {
                             </CardDescription>
                         </CardHeader>
                         <CardContent className="space-y-6">
-                            {/* Symptom Input */}
                             <div>
                                 <label className="text-sm font-medium text-gray-900 mb-2 block">
                                     Symptômes observés
@@ -299,7 +294,6 @@ export default function AIAssistantPage() {
                                 </div>
                             </div>
 
-                            {/* AI Diagnosis Suggestions */}
                             <div>
                                 <h3 className="text-sm font-medium text-gray-900 mb-3">
                                     Diagnostics suggérés par l'IA
@@ -363,7 +357,6 @@ export default function AIAssistantPage() {
                                 </div>
                             </div>
 
-                            {/* Treatment Suggestions */}
                             <div>
                                 <h3 className="text-sm font-medium text-gray-900 mb-3">
                                     Traitements suggérés

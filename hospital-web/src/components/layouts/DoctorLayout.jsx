@@ -1,15 +1,15 @@
-import { Link, Outlet, useLocation, useNavigate } from 'react-router-dom';
 import {
-    Users,
-    Calendar,
     Activity,
     Brain,
-    Pill,
+    Calendar,
     LogOut,
+    Pill,
+    Users,
 } from 'lucide-react';
-import { Button } from '../ui/button';
-import { mockDoctor } from '../../data/doctorMockData';
+import { Link, Outlet, useLocation, useNavigate } from 'react-router-dom';
 import logo from '../../assets/logo sans bg.png';
+import { mockDoctor } from '../../data/doctorMockData';
+import { Button } from '../ui/button';
 
 export default function DoctorLayout() {
     const location = useLocation();
@@ -29,7 +29,7 @@ export default function DoctorLayout() {
 
     return (
         <div className="min-h-screen bg-gray-50/50">
-            {/* Header */}
+
             <header className="bg-white border-b border-gray-100 sticky top-0 z-50">
                 <div className="max-w-[1600px] mx-auto px-6 h-20 flex items-center justify-between">
                     <div className="flex items-center gap-4">

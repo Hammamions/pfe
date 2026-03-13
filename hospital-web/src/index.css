@@ -1,7 +1,7 @@
 @import "tailwindcss";
-/*---break---*/
+
 @plugin "tailwindcss-animate";
-/*---break---*/
+
 @custom-variant dark (&:is(.dark *));
 
 :root {
@@ -251,7 +251,7 @@ body {
   margin-top: 1.5rem;
 }
 
-/*page dashboardd haniiiiiiiii lenaaaaa*/
+
 .dashboard-wrapper {
   min-height: 100vh;
   background: #f8fafc;
@@ -593,7 +593,7 @@ body {
   color: var(--text-muted);
 }
 
-/* elll profilleeeeee */
+
 .profile-container {
   max-width: 1200px;
   margin: 0 auto;
@@ -1340,7 +1340,7 @@ body {
   cursor: pointer;
 }
 
-/* ===== MODERN APPOINTMENTS MODULE ===== */
+
 .appointments-container {
   max-width: 1000px;
   margin: 0 auto;
@@ -1546,7 +1546,7 @@ body {
   color: #475569;
 }
 
-/* ===== PREMIUM MODAL SYSTEM (Screenshot 1 & 4) ===== */
+
 .detail-modal-premium,
 .cancel-confirm-modal {
   padding: 0 !important;
@@ -1700,7 +1700,7 @@ body {
   color: #ef4444;
 }
 
-/* ===== CANCEL CONFIRM MODAL (Screenshot 4) ===== */
+
 .cancel-confirm-modal {
   padding: 2.5rem !important;
 }
@@ -1743,7 +1743,7 @@ body {
   cursor: pointer;
 }
 
-/* ===== NEW BOOKING UI (Screenshot 3 Style) ===== */
+
 .new-booking-card-premium {
   background: white;
   border: 1px solid #f1f5f9;
@@ -1855,7 +1855,6 @@ body {
 .btn-pfe-submit {
   padding: 1rem 4rem;
   background: #64748b;
-  /* Gray by default like screenshot */
   color: white;
   border: none;
   border-radius: 12px;
@@ -1881,7 +1880,7 @@ body {
   animation: fadeIn 0.4s ease-out;
 }
 
-/* ===== NEW APPOINTMENT GRID ===== */
+
 .new-appointment-wrapper {
   max-width: 900px;
   margin: 0 auto;
@@ -2098,7 +2097,7 @@ body {
   border: 1px solid #e2e8f0;
 }
 
-/* ===== ADVANCED BOOKING FIELDS ===== */
+
 .extra-booking-fields {
   background: white;
   border: 1px solid #f1f5f9;
@@ -2217,7 +2216,7 @@ body {
   }
 }
 
-/* Appointments Redesign Styles (PFE) */
+
 .dashboard-content-pfe {
   padding: 2rem;
   max-width: 1200px;
@@ -2409,7 +2408,7 @@ body {
   z-index: 9999;
 }
 
-/* Detailed Appointment Modal Styles */
+
 .modal-content-pfe {
   background: white;
   border-radius: 24px;
@@ -2592,7 +2591,7 @@ body {
   font-size: 1.125rem;
 }
 
-/* Success Notification Styles */
+
 .success-notification-pfe {
   display: flex;
   flex-direction: column;
@@ -2654,7 +2653,7 @@ body {
   padding: 0;
 }
 
-/* Stepper and Booking Styles */
+
 .new-apt-container {
   max-width: 800px;
   margin: 0 auto;
@@ -2790,7 +2789,7 @@ body {
   cursor: not-allowed;
 }
 
-/* Modal Styles */
+
 .modal-content-small {
   background: white;
   border-radius: 20px;
@@ -2839,7 +2838,7 @@ body {
   gap: 0.5rem;
 }
 
-/*---break---*/
+
 
 @theme inline {
   --radius-sm: calc(var(--radius) - 4px);
@@ -2882,7 +2881,6 @@ body {
   --color-sidebar-ring: var(--sidebar-ring);
 }
 
-/*---break---*/
 
 .dark {
   --background: oklch(0.145 0 0);

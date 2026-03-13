@@ -1,7 +1,46 @@
+import { Lock, Mail, ShieldCheck, Stethoscope } from "lucide-react";
 import { useState } from "react";
-import { Link, useNavigate } from "react-router-dom";
-import { Mail, Lock, ChevronDown } from "lucide-react";
+import { useNavigate } from "react-router-dom";
 import logo from "../assets/logo sans bg.png";
+
+const roles = [
+  {
+    value: "Médecin",
+    label: "Médecin",
+    icon: Stethoscope,
+    activeColor: "border-blue-600 bg-blue-50 text-blue-700",
+    inactiveColor: "border-slate-200 bg-[#F1F5F9] text-slate-500 hover:border-slate-300 hover:text-slate-700",
+  },
+  {
+    value: "Administrateur",
+    label: "Administrateur",
+    icon: ShieldCheck,
+    activeColor: "border-purple-600 bg-purple-50 text-purple-700",
+    inactiveColor: "border-slate-200 bg-[#F1F5F9] text-slate-500 hover:border-slate-300 hover:text-slate-700",
+  },
+];
+
+const RoleSelector = ({ role, setRole }) => (
+  <div>
+    <label className="block text-[14px] font-semibold text-slate-900 mb-2">
+      Je suis
+    </label>
+    <div className="grid grid-cols-2 gap-3">
+      {roles.map(({ value, label, icon: Icon, activeColor, inactiveColor }) => (
+        <button
+          key={value}
+          type="button"
+          onClick={() => setRole(value)}
+          className={`flex flex-col items-center gap-2 py-4 rounded-xl border-2 transition-all duration-200 font-semibold text-[13px] ${role === value ? activeColor : inactiveColor
+            }`}
+        >
+          <Icon className="h-5 w-5" />
+          {label}
+        </button>
+      ))}
+    </div>
+  </div>
+);
 
 const LoginPro = () => {
   const navigate = useNavigate();
@@ -36,7 +75,6 @@ const LoginPro = () => {
       alert("Les mots de passe ne correspondent pas.");
       return;
     }
-    // Automatically redirect newly registered pros based on their role
     if (role === "Médecin") {
       navigate("/doctor/dashboard");
     } else if (role === "Administrateur") {
@@ -56,8 +94,7 @@ const LoginPro = () => {
   return (
     <div className="min-h-screen flex flex-col items-center py-12 px-4 sm:px-6 lg:px-8 font-sans text-slate-800" style={{ backgroundColor: '#F8FAFC' }}>
       <div className="w-full max-w-md space-y-8">
-        
-        {/* Header Section */}
+
         <div className="flex flex-col items-center">
           <div className="mb-4 flex items-center justify-center w-28 h-28">
             <img src={logo} alt="Logo" className="w-full h-full object-contain" />
@@ -66,31 +103,27 @@ const LoginPro = () => {
           <p className="mt-2 text-[15px] text-slate-500">Accès Professionnel de Santé</p>
         </div>
 
-        {/* Tabs */}
         <div className="bg-[#E2E8F0]/60 p-1 rounded-full flex mx-auto max-w-[340px]">
           <button
             onClick={() => setActiveTab("connexion")}
-            className={`flex-1 py-2 text-[15px] font-medium rounded-full transition-all duration-200 ${
-              activeTab === "connexion"
-                ? "bg-white text-slate-900 shadow-sm"
-                : "text-slate-500 hover:text-slate-800"
-            }`}
+            className={`flex-1 py-2 text-[15px] font-medium rounded-full transition-all duration-200 ${activeTab === "connexion"
+              ? "bg-white text-slate-900 shadow-sm"
+              : "text-slate-500 hover:text-slate-800"
+              }`}
           >
             Connexion
           </button>
           <button
             onClick={() => setActiveTab("inscription")}
-            className={`flex-1 py-2 text-[15px] font-medium rounded-full transition-all duration-200 ${
-              activeTab === "inscription"
-                ? "bg-white text-slate-900 shadow-sm"
-                : "text-slate-500 hover:text-slate-800"
-            }`}
+            className={`flex-1 py-2 text-[15px] font-medium rounded-full transition-all duration-200 ${activeTab === "inscription"
+              ? "bg-white text-slate-900 shadow-sm"
+              : "text-slate-500 hover:text-slate-800"
+              }`}
           >
             Inscription
           </button>
         </div>
 
-        {/* Main Card */}
         <div className="bg-white px-8 py-8 rounded-2xl border border-slate-100/60" style={{ boxShadow: '0 4px 20px -2px rgba(0, 0, 0, 0.05)' }}>
           {isForgotPassword ? (
             <>
@@ -147,27 +180,8 @@ const LoginPro = () => {
               </div>
 
               <form onSubmit={handleLogin} className="space-y-5">
-                {/* Role Selector */}
-                <div>
-                  <label className="block text-[14px] font-semibold text-slate-900 mb-2">
-                    Je suis
-                  </label>
-                  <div className="relative">
-                    <select
-                      value={role}
-                      onChange={(e) => setRole(e.target.value)}
-                      className="block w-full appearance-none rounded-xl border-0 py-3 pl-4 pr-10 text-slate-900 bg-[#F1F5F9] focus:ring-2 focus:ring-inset focus:ring-blue-600 sm:text-[15px] transition-all outline-none"
-                    >
-                      <option value="Médecin">Médecin</option>
-                      <option value="Administrateur">Administrateur</option>
-                    </select>
-                    <div className="pointer-events-none absolute inset-y-0 right-0 flex items-center pr-4">
-                      <ChevronDown className="h-4 w-4 text-slate-400" strokeWidth={3} />
-                    </div>
-                  </div>
-                </div>
+                <RoleSelector role={role} setRole={setRole} />
 
-                {/* Email */}
                 <div>
                   <label className="block text-[14px] font-semibold text-slate-900 mb-2">
                     Email
@@ -188,7 +202,6 @@ const LoginPro = () => {
                   </div>
                 </div>
 
-                {/* Password */}
                 <div>
                   <label className="block text-[14px] font-semibold text-slate-900 mb-2">
                     Mot de passe
@@ -209,7 +222,6 @@ const LoginPro = () => {
                   </div>
                 </div>
 
-                {/* Remember & Forgot */}
                 <div className="flex items-center justify-between pt-2 pb-2">
                   <div className="flex items-center">
                     <input
@@ -250,27 +262,8 @@ const LoginPro = () => {
               </div>
 
               <form onSubmit={handleRegister} className="space-y-4">
-                {/* Role Selector */}
-                <div>
-                  <label className="block text-[14px] font-semibold text-slate-900 mb-2">
-                    Je suis
-                  </label>
-                  <div className="relative">
-                    <select
-                      value={role}
-                      onChange={(e) => setRole(e.target.value)}
-                      className="block w-full appearance-none rounded-xl border-0 py-3 pl-4 pr-10 text-slate-900 bg-[#F1F5F9] focus:ring-2 focus:ring-inset focus:ring-blue-600 sm:text-[15px] transition-all outline-none"
-                    >
-                      <option value="Médecin">Médecin</option>
-                      <option value="Administrateur">Administrateur</option>
-                    </select>
-                    <div className="pointer-events-none absolute inset-y-0 right-0 flex items-center pr-4">
-                      <ChevronDown className="h-4 w-4 text-slate-400" strokeWidth={3} />
-                    </div>
-                  </div>
-                </div>
+                <RoleSelector role={role} setRole={setRole} />
 
-                {/* Name */}
                 <div>
                   <label className="block text-[14px] font-semibold text-slate-900 mb-2">
                     Nom complet (Dr. ...)
@@ -286,7 +279,6 @@ const LoginPro = () => {
                   />
                 </div>
 
-                {/* Email */}
                 <div>
                   <label className="block text-[14px] font-semibold text-slate-900 mb-2">
                     Email Professionnel
@@ -307,7 +299,6 @@ const LoginPro = () => {
                   </div>
                 </div>
 
-                {/* Password */}
                 <div>
                   <label className="block text-[14px] font-semibold text-slate-900 mb-2">
                     Mot de passe
@@ -328,7 +319,6 @@ const LoginPro = () => {
                   </div>
                 </div>
 
-                {/* Confirm Password */}
                 <div>
                   <label className="block text-[14px] font-semibold text-slate-900 mb-2">
                     Confirmer le mot de passe

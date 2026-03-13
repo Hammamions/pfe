@@ -65,7 +65,7 @@ export const mockDoctorAppointments = [
         motif: "Bilan complet",
         statut: "prévu",
         salle: "A101",
-        rescheduleStatus: null, // 'pending', 'accepted', 'rejected'
+        rescheduleStatus: null,
         requestedTime: null
     },
     {

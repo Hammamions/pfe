@@ -1,29 +1,28 @@
-import { useState } from 'react';
 import {
-    Users,
-    Calendar,
     Activity,
-    UserPlus,
-    ArrowUp,
-    Shield,
-    FileText,
-    Server,
-    Database,
-    HardDrive,
-    Clock,
     AlertCircle,
-    CheckCircle2,
-    RefreshCw,
-    FileText as FileTextIcon,
+    ArrowUp,
     Bell,
-    Trash2,
+    Calendar,
+    CheckCircle2,
+    Clock,
+    Database,
     Edit,
+    FileText,
+    FileText as FileTextIcon,
+    HardDrive,
     Plus,
-    X,
-    Save
+    RefreshCw,
+    Save,
+    Server,
+    Trash2,
+    UserPlus,
+    Users,
+    X
 } from 'lucide-react';
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '../../components/ui/card';
+import { useState } from 'react';
 import { Button } from '../../components/ui/button';
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '../../components/ui/card';
 
 const mockStats = [
     {
@@ -144,7 +143,6 @@ export default function AdminDashboard() {
     const [doctors, setDoctors] = useState(mockDoctors);
     const [showSystemSurveillance, setShowSystemSurveillance] = useState(false);
 
-    // State for doctor management
     const [showAddDoctorForm, setShowAddDoctorForm] = useState(false);
     const [showEditDoctorForm, setShowEditDoctorForm] = useState(false);
     const [doctorToEdit, setDoctorToEdit] = useState(null);
@@ -159,14 +157,23 @@ export default function AdminDashboard() {
     });
     const [deleteConfirmation, setDeleteConfirmation] = useState(null);
     const [successMessage, setSuccessMessage] = useState("");
+    const [isDeleting, setIsDeleting] = useState(false);
 
-    // States for surveillance section
     const [showLogs, setShowLogs] = useState(false);
     const [showAlerts, setShowAlerts] = useState(false);
     const [isRefreshing, setIsRefreshing] = useState(false);
     const [lastRefreshTime, setLastRefreshTime] = useState(new Date());
+    const [alerts, setAlerts] = useState(mockAlerts);
+    const [activities, setActivities] = useState(mockActivity);
 
-    // Surveillance data state
+    const addActivity = (text, type) => {
+        const newActivity = {
+            text,
+            time: "À l'instant",
+            type
+        };
+        setActivities(prev => [newActivity, ...prev]);
+    };
     const [surveillanceData, setSurveillanceData] = useState({
         cpu: 45,
         memory: { used: 6.2, total: 16 },
@@ -219,7 +226,9 @@ export default function AdminDashboard() {
     };
 
     const acknowledgeAlert = (alertId) => {
-        console.log(`Alert ${alertId} acknowledged`);
+        setAlerts(prev => prev.map(alert =>
+            alert.id === alertId ? { ...alert, acknowledged: true } : alert
+        ));
     };
 
     const getServiceStatusColor = (status) => {
@@ -285,17 +294,12 @@ export default function AdminDashboard() {
         setSuccessMessage(`${newDoctor.name} a été ajouté avec succès`);
         setTimeout(() => setSuccessMessage(""), 3000);
 
-        mockActivity.unshift({
-            text: `${newDoctor.name} a été ajouté`,
-            time: "À l'instant",
-            type: "add"
-        });
+        addActivity(`${newDoctor.name} a été ajouté`, "add");
     };
 
     const handleEditDoctor = (doctor) => {
         setDoctorToEdit({ ...doctor });
         setShowEditDoctorForm(true);
-        setActiveSection("mockdoctors");
     };
 
     const handleUpdateDoctor = () => {
@@ -324,11 +328,7 @@ export default function AdminDashboard() {
         setSuccessMessage(`${doctorToEdit.name} a été modifié avec succès`);
         setTimeout(() => setSuccessMessage(""), 3000);
 
-        mockActivity.unshift({
-            text: `${doctorToEdit.name} a été modifié`,
-            time: "À l'instant",
-            type: "edit"
-        });
+        addActivity(`${doctorToEdit.name} a été modifié`, "edit");
     };
 
     const handleDeleteDoctor = (doctorId) => {
@@ -338,19 +338,20 @@ export default function AdminDashboard() {
 
     const confirmDelete = () => {
         if (deleteConfirmation) {
-            const updatedDoctors = doctors.filter(d => d.id !== deleteConfirmation.id);
-            setDoctors(updatedDoctors);
+            setIsDeleting(true);
 
-            setSuccessMessage(`${deleteConfirmation.name} a été supprimé avec succès`);
-            setTimeout(() => setSuccessMessage(""), 3000);
+            setTimeout(() => {
+                const updatedDoctors = doctors.filter(d => d.id !== deleteConfirmation.id);
+                setDoctors(updatedDoctors);
 
-            mockActivity.unshift({
-                text: `${deleteConfirmation.name} a été supprimé`,
-                time: "À l'instant",
-                type: "delete"
-            });
+                setSuccessMessage(`${deleteConfirmation.name} a été supprimé avec succès`);
+                setTimeout(() => setSuccessMessage(""), 3000);
 
-            setDeleteConfirmation(null);
+                addActivity(`${deleteConfirmation.name} a été supprimé`, "delete");
+
+                setDeleteConfirmation(null);
+                setIsDeleting(false);
+            }, 1000);
         }
     };
 
@@ -365,7 +366,6 @@ export default function AdminDashboard() {
 
     return (
         <div className="space-y-8">
-            {/* Success Message */}
             {successMessage && (
                 <div className="fixed top-4 right-4 bg-green-100 border border-green-400 text-green-700 px-4 py-3 rounded-lg shadow-lg z-50 animate-slide-in">
                     <div className="flex items-center gap-2">
@@ -380,7 +380,6 @@ export default function AdminDashboard() {
                 <p className="text-gray-500 mt-2">Vue d'ensemble de la plateforme hospitalière</p>
             </div>
 
-            {/* Stats Grid */}
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
                 {mockStats.map((stat) => (
                     <Card key={stat.id}
@@ -425,235 +424,6 @@ export default function AdminDashboard() {
                         </Button>
                     </CardHeader>
                     <CardContent className="space-y-4">
-                        {/* Add Doctor Form */}
-                        {showAddDoctorForm && (
-                            <Card className="bg-gray-50 border-2 border-dashed border-gray-300">
-                                <CardHeader>
-                                    <CardTitle className="text-lg">Nouveau médecin</CardTitle>
-                                    <CardDescription>Remplissez les informations du médecin</CardDescription>
-                                </CardHeader>
-                                <CardContent className="space-y-4">
-                                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                                        <div className="space-y-2">
-                                            <label className="text-sm font-medium text-gray-700">Nom complet *</label>
-                                            <input
-                                                type="text"
-                                                value={newDoctor.name}
-                                                onChange={(e) => setNewDoctor({ ...newDoctor, name: e.target.value })}
-                                                className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-                                                placeholder="Dr. Jean Dupont"
-                                            />
-                                        </div>
-                                        <div className="space-y-2">
-                                            <label className="text-sm font-medium text-gray-700">Spécialité *</label>
-                                            <select
-                                                value={newDoctor.specialty}
-                                                onChange={(e) => setNewDoctor({ ...newDoctor, specialty: e.target.value })}
-                                                className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-                                            >
-                                                {specialties.map(specialty => (
-                                                    <option key={specialty} value={specialty}>{specialty}</option>
-                                                ))}
-                                            </select>
-                                        </div>
-                                        <div className="space-y-2">
-                                            <label className="text-sm font-medium text-gray-700">Email *</label>
-                                            <input
-                                                type="email"
-                                                value={newDoctor.email}
-                                                onChange={(e) => setNewDoctor({ ...newDoctor, email: e.target.value })}
-                                                className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-                                                placeholder="jean.dupont@hopital.com"
-                                            />
-                                        </div>
-                                        <div className="space-y-2">
-                                            <label className="text-sm font-medium text-gray-700">Téléphone *</label>
-                                            <input
-                                                type="tel"
-                                                value={newDoctor.phone}
-                                                onChange={(e) => setNewDoctor({ ...newDoctor, phone: e.target.value })}
-                                                className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-                                                placeholder="+216 91 234 567"
-                                            />
-                                        </div>
-                                        <div className="space-y-2">
-                                            <label className="text-sm font-medium text-gray-700">Adresse</label>
-                                            <input
-                                                type="text"
-                                                value={newDoctor.address}
-                                                onChange={(e) => setNewDoctor({ ...newDoctor, address: e.target.value })}
-                                                className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-                                                placeholder="15 Rue de la Paix, Tunis"
-                                            />
-                                        </div>
-                                        <div className="space-y-2">
-                                            <label className="text-sm font-medium text-gray-700">Numéro de licence</label>
-                                            <input
-                                                type="text"
-                                                value={newDoctor.licenseNumber}
-                                                onChange={(e) => setNewDoctor({ ...newDoctor, licenseNumber: e.target.value })}
-                                                className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-                                                placeholder="CN-12345"
-                                            />
-                                        </div>
-                                        <div className="space-y-2">
-                                            <label className="text-sm font-medium text-gray-700">Statut</label>
-                                            <select
-                                                value={newDoctor.status}
-                                                onChange={(e) => setNewDoctor({ ...newDoctor, status: e.target.value })}
-                                                className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-                                            >
-                                                <option value="actif">Actif</option>
-                                                <option value="inactif">Inactif</option>
-                                                <option value="congé">En congé</option>
-                                            </select>
-                                        </div>
-                                    </div>
-                                    <div className="flex gap-2 pt-4">
-                                        <Button onClick={handleAddDoctor} className="gap-2">
-                                            <Save className="w-4 h-4" />
-                                            Enregistrer
-                                        </Button>
-                                        <Button variant="outline" onClick={() => setShowAddDoctorForm(false)}>
-                                            Annuler
-                                        </Button>
-                                    </div>
-                                </CardContent>
-                            </Card>
-                        )}
-
-                        {/* Edit Doctor Form */}
-                        {showEditDoctorForm && doctorToEdit && (
-                            <Card className="bg-blue-50 border-2 border-blue-300">
-                                <CardHeader className="flex flex-row items-center justify-between">
-                                    <div>
-                                        <CardTitle className="text-lg">Modifier le médecin</CardTitle>
-                                        <CardDescription>Modifiez les informations de {doctorToEdit.name}</CardDescription>
-                                    </div>
-                                    <Button variant="ghost" size="sm" onClick={cancelEdit}>
-                                        <X className="w-4 h-4" />
-                                    </Button>
-                                </CardHeader>
-                                <CardContent className="space-y-4">
-                                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                                        <div className="space-y-2">
-                                            <label className="text-sm font-medium text-gray-700">Nom complet *</label>
-                                            <input
-                                                type="text"
-                                                value={doctorToEdit.name}
-                                                onChange={(e) => setDoctorToEdit({ ...doctorToEdit, name: e.target.value })}
-                                                className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-                                            />
-                                        </div>
-                                        <div className="space-y-2">
-                                            <label className="text-sm font-medium text-gray-700">Spécialité *</label>
-                                            <select
-                                                value={doctorToEdit.specialty}
-                                                onChange={(e) => setDoctorToEdit({ ...doctorToEdit, specialty: e.target.value })}
-                                                className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-                                            >
-                                                {specialties.map(specialty => (
-                                                    <option key={specialty} value={specialty}>{specialty}</option>
-                                                ))}
-                                            </select>
-                                        </div>
-                                        <div className="space-y-2">
-                                            <label className="text-sm font-medium text-gray-700">Email *</label>
-                                            <input
-                                                type="email"
-                                                value={doctorToEdit.email}
-                                                onChange={(e) => setDoctorToEdit({ ...doctorToEdit, email: e.target.value })}
-                                                className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-                                            />
-                                        </div>
-                                        <div className="space-y-2">
-                                            <label className="text-sm font-medium text-gray-700">Téléphone *</label>
-                                            <input
-                                                type="tel"
-                                                value={doctorToEdit.phone}
-                                                onChange={(e) => setDoctorToEdit({ ...doctorToEdit, phone: e.target.value })}
-                                                className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-                                            />
-                                        </div>
-                                        <div className="space-y-2">
-                                            <label className="text-sm font-medium text-gray-700">Adresse</label>
-                                            <input
-                                                type="text"
-                                                value={doctorToEdit.address}
-                                                onChange={(e) => setDoctorToEdit({ ...doctorToEdit, address: e.target.value })}
-                                                className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-                                            />
-                                        </div>
-                                        <div className="space-y-2">
-                                            <label className="text-sm font-medium text-gray-700">Numéro de licence</label>
-                                            <input
-                                                type="text"
-                                                value={doctorToEdit.licenseNumber}
-                                                onChange={(e) => setDoctorToEdit({ ...doctorToEdit, licenseNumber: e.target.value })}
-                                                className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-                                            />
-                                        </div>
-                                        <div className="space-y-2">
-                                            <label className="text-sm font-medium text-gray-700">Statut</label>
-                                            <select
-                                                value={doctorToEdit.status}
-                                                onChange={(e) => setDoctorToEdit({ ...doctorToEdit, status: e.target.value })}
-                                                className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-                                            >
-                                                <option value="actif">Actif</option>
-                                                <option value="inactif">Inactif</option>
-                                                <option value="congé">En congé</option>
-                                            </select>
-                                        </div>
-                                    </div>
-                                    <div className="flex gap-2 pt-4">
-                                        <Button onClick={handleUpdateDoctor} className="gap-2 bg-green-600 hover:bg-green-700">
-                                            <Save className="w-4 h-4" />
-                                            Mettre à jour
-                                        </Button>
-                                        <Button variant="outline" onClick={cancelEdit}>
-                                            Annuler
-                                        </Button>
-                                    </div>
-                                </CardContent>
-                            </Card>
-                        )}
-
-                        {/* Delete Confirmation Modal */}
-                        {deleteConfirmation && (
-                            <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
-                                <Card className="w-full max-w-md">
-                                    <CardHeader>
-                                        <CardTitle className="text-red-600 flex items-center gap-2">
-                                            <AlertCircle className="w-5 h-5" />
-                                            Confirmer la suppression
-                                        </CardTitle>
-                                        <CardDescription>
-                                            Êtes-vous sûr de vouloir supprimer {deleteConfirmation.name} ?
-                                            Cette action est irréversible.
-                                        </CardDescription>
-                                    </CardHeader>
-                                    <CardContent className="space-y-4">
-                                        <div className="bg-gray-50 p-4 rounded-lg">
-                                            <p><strong>Nom:</strong> {deleteConfirmation.name}</p>
-                                            <p><strong>Spécialité:</strong> {deleteConfirmation.specialty}</p>
-                                            <p><strong>Email:</strong> {deleteConfirmation.email}</p>
-                                        </div>
-                                        <div className="flex gap-2 justify-end">
-                                            <Button variant="outline" onClick={cancelDelete}>
-                                                Annuler
-                                            </Button>
-                                            <Button variant="destructive" onClick={confirmDelete} className="gap-2">
-                                                <Trash2 className="w-4 h-4" />
-                                                Supprimer
-                                            </Button>
-                                        </div>
-                                    </CardContent>
-                                </Card>
-                            </div>
-                        )}
-
-                        {/* Doctors List */}
                         <div className="space-y-3">
                             {doctors.map((doc) => (
                                 <div
@@ -778,9 +548,7 @@ export default function AdminDashboard() {
             )}
 
             <div className="grid grid-cols-1 xl:grid-cols-3 gap-8">
-                {/* Left Column */}
                 <div className="xl:col-span-2 space-y-8">
-                    {/* Active Doctors */}
                     <Card>
                         <CardHeader className="flex flex-row items-center justify-between">
                             <div>
@@ -798,10 +566,7 @@ export default function AdminDashboard() {
                                 <Button
                                     variant="outline"
                                     size="sm"
-                                    onClick={() => {
-                                        setActiveSection("mockdoctors");
-                                        setShowAddDoctorForm(true);
-                                    }}
+                                    onClick={() => setShowAddDoctorForm(true)}
                                     className="gap-1"
                                 >
                                     <Plus className="w-4 h-4" />
@@ -850,7 +615,6 @@ export default function AdminDashboard() {
                         </CardContent>
                     </Card>
 
-                    {/* Recent Activity */}
                     <Card>
                         <CardHeader>
                             <CardTitle>Activités récentes</CardTitle>
@@ -858,7 +622,7 @@ export default function AdminDashboard() {
                         </CardHeader>
                         <CardContent>
                             <div className="space-y-6">
-                                {mockActivity.map((activity, index) => (
+                                {activities.map((activity, index) => (
                                     <div key={index} className="flex gap-4">
                                         <div className="mt-1">
                                             <div className={`w-2 h-2 rounded-full ring-4 ${activity.type === 'add' ? 'bg-green-500 ring-green-100' :
@@ -878,9 +642,7 @@ export default function AdminDashboard() {
                     </Card>
                 </div>
 
-                {/* Right Column */}
                 <div className="space-y-8">
-                    {/* Quick Actions */}
                     <Card>
                         <CardHeader>
                             <CardTitle>Actions rapides</CardTitle>
@@ -889,10 +651,7 @@ export default function AdminDashboard() {
                             <Button
                                 variant="outline"
                                 className="w-full justify-start gap-3 h-auto py-3"
-                                onClick={() => {
-                                    setActiveSection("mockdoctors");
-                                    setShowAddDoctorForm(true);
-                                }}
+                                onClick={() => setShowAddDoctorForm(true)}
                             >
                                 <UserPlus className="w-4 h-4" />
                                 Ajouter un médecin
@@ -932,15 +691,15 @@ export default function AdminDashboard() {
                                                         {doc.status}
                                                     </span>
                                                 </div>
-                                                
+
                                                 <div className="bg-gray-50 p-3 rounded-md text-sm text-gray-700 border border-gray-100">
                                                     <div className="space-y-2">
                                                         <div className="flex items-center gap-2.5 truncate" title={doc.email}>
-                                                            <span className="text-gray-400 text-xs">📧</span> 
+                                                            <span className="text-gray-400 text-xs">📧</span>
                                                             <span className="truncate">{doc.email}</span>
                                                         </div>
                                                         <div className="flex items-center gap-2.5 truncate">
-                                                            <span className="text-gray-400 text-xs">📞</span> 
+                                                            <span className="text-gray-400 text-xs">📞</span>
                                                             <span className="truncate">{doc.phone}</span>
                                                         </div>
                                                     </div>
@@ -955,7 +714,7 @@ export default function AdminDashboard() {
                                                         </div>
                                                     </div>
                                                 </div>
-                                                
+
                                                 <div className="flex justify-end gap-2 pt-1 border-t border-gray-100 mt-2">
                                                     <Button
                                                         variant="ghost"
@@ -963,7 +722,7 @@ export default function AdminDashboard() {
                                                         className="text-blue-600 hover:text-blue-700 hover:bg-blue-50 h-8 px-3 rounded-md"
                                                         onClick={() => handleEditDoctor(doc)}
                                                     >
-                                                        <Edit className="w-4 h-4 mr-2" /> 
+                                                        <Edit className="w-4 h-4 mr-2" />
                                                         <span className="text-xs font-medium">Modifier</span>
                                                     </Button>
                                                     <Button
@@ -972,7 +731,7 @@ export default function AdminDashboard() {
                                                         className="text-red-600 hover:text-red-700 hover:bg-red-50 h-8 px-3 rounded-md"
                                                         onClick={() => handleDeleteDoctor(doc.id)}
                                                     >
-                                                        <Trash2 className="w-4 h-4 mr-2" /> 
+                                                        <Trash2 className="w-4 h-4 mr-2" />
                                                         <span className="text-xs font-medium">Supprimer</span>
                                                     </Button>
                                                 </div>
@@ -1045,7 +804,6 @@ export default function AdminDashboard() {
                                         </Button>
                                     </CardHeader>
                                     <CardContent className="space-y-4">
-                                        {/* CPU Usage */}
                                         <div className="space-y-2">
                                             <div className="flex justify-between text-sm">
                                                 <span className="text-gray-600">Utilisation CPU</span>
@@ -1061,7 +819,6 @@ export default function AdminDashboard() {
                                             </div>
                                         </div>
 
-                                        {/* Memory Usage */}
                                         <div className="space-y-2">
                                             <div className="flex justify-between text-sm">
                                                 <span className="text-gray-600">Utilisation Mémoire</span>
@@ -1079,7 +836,6 @@ export default function AdminDashboard() {
                                             </div>
                                         </div>
 
-                                        {/* Disk Usage */}
                                         <div className="space-y-2">
                                             <div className="flex justify-between text-sm">
                                                 <span className="text-gray-600">Espace Disque</span>
@@ -1097,7 +853,6 @@ export default function AdminDashboard() {
                                             </div>
                                         </div>
 
-                                        {/* Service Status */}
                                         <div className="pt-4 border-t">
                                             <h4 className="font-medium text-gray-900 mb-3">État des services</h4>
                                             <div className="space-y-2">
@@ -1132,7 +887,6 @@ export default function AdminDashboard() {
                                             </div>
                                         </div>
 
-                                        {/* Performance Metrics */}
                                         <div className="pt-4 border-t">
                                             <h4 className="font-medium text-gray-900 mb-3">Métriques de performance</h4>
                                             <div className="grid grid-cols-2 gap-4">
@@ -1157,7 +911,6 @@ export default function AdminDashboard() {
                                             </div>
                                         </div>
 
-                                        {/* Action Buttons */}
                                         <div className="flex gap-2 pt-2">
                                             <Button
                                                 variant="outline"
@@ -1179,7 +932,6 @@ export default function AdminDashboard() {
                                             </Button>
                                         </div>
 
-                                        {/* Logs Section */}
                                         {showLogs && (
                                             <div className="mt-4 pt-4 border-t">
                                                 <h4 className="font-medium text-gray-900 mb-3">Logs système</h4>
@@ -1210,12 +962,11 @@ export default function AdminDashboard() {
                                             </div>
                                         )}
 
-                                        {/* Alerts Section */}
                                         {showAlerts && (
                                             <div className="mt-4 pt-4 border-t">
                                                 <h4 className="font-medium text-gray-900 mb-3">Alertes actives</h4>
                                                 <div className="space-y-2">
-                                                    {mockAlerts.filter(a => !a.acknowledged).map((alert) => (
+                                                    {alerts.filter(a => !a.acknowledged).map((alert) => (
                                                         <div key={alert.id} className="p-3 bg-orange-50 rounded-lg border border-orange-100">
                                                             <div className="flex items-start justify-between">
                                                                 <div className="flex items-start gap-2">
@@ -1239,7 +990,7 @@ export default function AdminDashboard() {
                                                             </div>
                                                         </div>
                                                     ))}
-                                                    {mockAlerts.filter(a => !a.acknowledged).length === 0 && (
+                                                    {alerts.filter(a => !a.acknowledged).length === 0 && (
                                                         <p className="text-sm text-gray-500 text-center py-4">
                                                             Aucune alerte active
                                                         </p>
@@ -1251,7 +1002,6 @@ export default function AdminDashboard() {
                                 </Card>
                             )}
 
-                            {/* System Status */}
                             <Card>
                                 <CardHeader>
                                     <CardTitle>État du système</CardTitle>
@@ -1288,7 +1038,6 @@ export default function AdminDashboard() {
                                 </CardContent>
                             </Card>
 
-                            {/* Alerts */}
                             <Card className="bg-orange-50 border-orange-100">
                                 <CardHeader>
                                     <CardTitle className="text-orange-800 flex items-center gap-2">
@@ -1297,16 +1046,25 @@ export default function AdminDashboard() {
                                     </CardTitle>
                                 </CardHeader>
                                 <CardContent className="space-y-3">
-                                    <div className="bg-white p-3 rounded-md border border-orange-100 shadow-sm">
-                                        <p className="text-sm font-medium text-orange-800">2 comptes médecins en attente de validation</p>
-                                    </div>
-                                    <div className="bg-white p-3 rounded-md border border-orange-100 shadow-sm">
-                                        <p className="text-sm font-medium text-orange-800">Maintenance programmée dans 3 jours</p>
-                                    </div>
+                                    {alerts.filter(a => !a.acknowledged).length > 0 ? (
+                                        alerts.filter(a => !a.acknowledged).map(alert => (
+                                            <div key={alert.id} className="bg-white p-3 rounded-md border border-orange-100 shadow-sm flex items-start gap-3">
+                                                <AlertCircle className={`w-4 h-4 mt-0.5 flex-shrink-0 ${alert.severity === 'high' ? 'text-red-600' : 'text-orange-600'}`} />
+                                                <div>
+                                                    <p className="text-sm font-medium text-orange-900 leading-tight">{alert.message}</p>
+                                                    <p className="text-[10px] text-orange-400 mt-1 uppercase tracking-wider font-bold">{alert.time}</p>
+                                                </div>
+                                            </div>
+                                        ))
+                                    ) : (
+                                        <div className="flex flex-col items-center py-2 text-center">
+                                            <CheckCircle2 className="w-8 h-8 text-green-500 mb-2 opacity-50" />
+                                            <p className="text-xs font-medium text-green-700">Aucune alerte active</p>
+                                        </div>
+                                    )}
                                 </CardContent>
                             </Card>
 
-                            {/* Monthly Stats */}
                             <Card>
                                 <CardHeader>
                                     <CardTitle>Statistiques du mois</CardTitle>
@@ -1334,6 +1092,200 @@ export default function AdminDashboard() {
                     </Card>
                 </div>
             </div>
+
+            {showEditDoctorForm && doctorToEdit && (
+                <div className="fixed inset-0 bg-black/40 backdrop-blur-md flex items-center justify-center z-[9999] p-4 animate-in fade-in duration-300">
+                    <Card className="w-full max-w-2xl shadow-2xl border-none animate-in zoom-in-95 duration-200 overflow-hidden">
+                        <CardHeader className="bg-blue-600 text-white relative">
+                            <div className="flex items-center gap-3">
+                                <div className={`w-12 h-12 rounded-full border-2 border-white/20 flex items-center justify-center font-bold text-lg ${doctorToEdit.color}`}>
+                                    {doctorToEdit.initials}
+                                </div>
+                                <div>
+                                    <CardTitle className="text-xl">Modifier le médecin</CardTitle>
+                                    <CardDescription className="text-blue-100">Modifiez les informations de {doctorToEdit.name}</CardDescription>
+                                </div>
+                            </div>
+                            <Button variant="ghost" size="sm" onClick={cancelEdit} className="absolute top-4 right-4 text-white hover:bg-white/10">
+                                <X className="w-5 h-5" />
+                            </Button>
+                        </CardHeader>
+                        <CardContent className="p-6 max-h-[75vh] overflow-y-auto">
+                            <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
+                                <div className="space-y-2">
+                                    <label className="text-sm font-semibold text-gray-700">Nom complet *</label>
+                                    <input type="text" value={doctorToEdit.name} onChange={(e) => setDoctorToEdit({ ...doctorToEdit, name: e.target.value })} className="w-full px-4 py-2 bg-gray-50 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:bg-white transition-all font-medium" />
+                                </div>
+                                <div className="space-y-2 md:col-span-2">
+                                    <label className="text-sm font-semibold text-gray-700">Spécialité *</label>
+                                    <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-5 gap-2 pt-1">
+                                        {specialties.map(specialty => (
+                                            <button key={specialty} type="button" onClick={() => setDoctorToEdit({ ...doctorToEdit, specialty })}
+                                                className={`h-11 px-3 rounded-lg text-xs font-semibold border-2 transition-all flex items-center justify-center text-center leading-tight ${doctorToEdit.specialty === specialty ? 'bg-blue-600 text-white border-blue-600 shadow-md scale-105' : 'bg-gray-50 text-gray-600 border-gray-100 hover:border-blue-200 hover:bg-blue-50/50'}`}>
+                                                {specialty}
+                                            </button>
+                                        ))}
+                                    </div>
+                                </div>
+                                <div className="space-y-2">
+                                    <label className="text-sm font-semibold text-gray-700">Email professionnel *</label>
+                                    <input type="email" value={doctorToEdit.email} onChange={(e) => setDoctorToEdit({ ...doctorToEdit, email: e.target.value })} className="w-full px-4 py-2 bg-gray-50 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:bg-white transition-all" />
+                                </div>
+                                <div className="space-y-2">
+                                    <label className="text-sm font-semibold text-gray-700">Téléphone *</label>
+                                    <input type="tel" value={doctorToEdit.phone} onChange={(e) => setDoctorToEdit({ ...doctorToEdit, phone: e.target.value })} className="w-full px-4 py-2 bg-gray-50 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:bg-white transition-all" />
+                                </div>
+                                <div className="space-y-2 md:col-span-2">
+                                    <label className="text-sm font-semibold text-gray-700">Adresse du cabinet</label>
+                                    <input type="text" value={doctorToEdit.address} onChange={(e) => setDoctorToEdit({ ...doctorToEdit, address: e.target.value })} className="w-full px-4 py-2 bg-gray-50 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:bg-white transition-all" />
+                                </div>
+                                <div className="space-y-2">
+                                    <label className="text-sm font-semibold text-gray-700">Numéro de licence</label>
+                                    <input type="text" value={doctorToEdit.licenseNumber} onChange={(e) => setDoctorToEdit({ ...doctorToEdit, licenseNumber: e.target.value })} className="w-full px-4 py-2 bg-gray-50 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:bg-white transition-all" />
+                                </div>
+                                <div className="space-y-2 md:col-span-2">
+                                    <label className="text-sm font-semibold text-gray-700">Statut du compte</label>
+                                    <div className="flex flex-wrap gap-2 pt-1">
+                                        {[
+                                            { id: 'actif', label: 'Actif', activeClass: 'bg-green-600 text-white border-green-600 shadow-md' },
+                                            { id: 'inactif', label: 'Inactif', activeClass: 'bg-red-600 text-white border-red-600 shadow-md' },
+                                            { id: 'congé', label: 'En congé', activeClass: 'bg-orange-500 text-white border-orange-500 shadow-md' }
+                                        ].map((status) => (
+                                            <button key={status.id} type="button" onClick={() => setDoctorToEdit({ ...doctorToEdit, status: status.id })}
+                                                className={`flex-1 min-w-[100px] h-11 px-4 rounded-xl border-2 transition-all font-semibold text-sm flex items-center justify-center ${doctorToEdit.status === status.id ? status.activeClass : 'bg-white text-gray-400 border-gray-100 hover:border-gray-200 hover:text-gray-600'}`}>
+                                                {status.label}
+                                            </button>
+                                        ))}
+                                    </div>
+                                </div>
+                            </div>
+                            <div className="flex gap-3 pt-8 justify-end">
+                                <Button variant="outline" onClick={cancelEdit} className="px-6 h-11 rounded-xl">Annuler</Button>
+                                <Button onClick={handleUpdateDoctor} className="px-8 h-11 rounded-xl bg-blue-600 hover:bg-blue-700 shadow-lg shadow-blue-100 gap-2">
+                                    <Save className="w-4 h-4" />
+                                    Enregistrer les modifications
+                                </Button>
+                            </div>
+                        </CardContent>
+                    </Card>
+                </div>
+            )}
+
+            {deleteConfirmation && (
+                <div className="fixed inset-0 bg-black/40 backdrop-blur-md flex items-center justify-center z-[9999] p-4 animate-in fade-in duration-300">
+                    <Card className="w-full max-w-md shadow-2xl border-none animate-in zoom-in-95 duration-200 overflow-hidden">
+                        <CardHeader className="text-center pb-2">
+                            <div className="mx-auto w-14 h-14 bg-red-100 rounded-full flex items-center justify-center mb-4 ring-8 ring-red-50">
+                                <Trash2 className="w-7 h-7 text-red-600" />
+                            </div>
+                            <CardTitle className="text-2xl font-bold text-gray-900">Confirmer la suppression</CardTitle>
+                            <CardDescription className="text-gray-500 mt-2">
+                                Êtes-vous sûr de vouloir supprimer <span className="font-semibold text-gray-900">{deleteConfirmation.name}</span> ? Cette action est irréversible.
+                            </CardDescription>
+                        </CardHeader>
+                        <CardContent className="space-y-6 pt-4">
+                            <div className="bg-gray-50 border border-gray-100 p-4 rounded-xl">
+                                <div className="flex items-center gap-3">
+                                    <div className={`w-10 h-10 rounded-full flex items-center justify-center font-bold text-sm ${deleteConfirmation.color}`}>
+                                        {deleteConfirmation.initials}
+                                    </div>
+                                    <div className="text-left">
+                                        <p className="text-sm font-semibold text-gray-900">{deleteConfirmation.name}</p>
+                                        <p className="text-xs text-gray-500">{deleteConfirmation.specialty}</p>
+                                    </div>
+                                </div>
+                            </div>
+                            <div className="flex flex-col sm:flex-row gap-3 justify-center pt-2">
+                                <Button variant="outline" onClick={cancelDelete} disabled={isDeleting} className="sm:flex-1 h-11 rounded-xl border-gray-200 text-gray-700 hover:bg-gray-50 font-medium">Annuler</Button>
+                                <Button variant="destructive" onClick={confirmDelete} disabled={isDeleting} className="sm:flex-1 h-11 rounded-xl bg-red-600 hover:bg-red-700 shadow-lg shadow-red-200 font-medium flex items-center justify-center gap-2">
+                                    {isDeleting ? <RefreshCw className="w-4 h-4 animate-spin" /> : <Trash2 className="w-4 h-4" />}
+                                    {isDeleting ? "Suppression..." : "Supprimer"}
+                                </Button>
+                            </div>
+                        </CardContent>
+                    </Card>
+                </div>
+            )}
+
+            {showAddDoctorForm && (
+                <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-[9999] flex items-center justify-center p-4 animate-in fade-in duration-300">
+                    <Card className="w-full max-w-2xl bg-white shadow-2xl rounded-2xl border-0 overflow-hidden animate-in zoom-in-95 duration-300">
+                        <CardHeader className="bg-gradient-to-r from-blue-600 to-indigo-600 text-white p-6">
+                            <div className="flex justify-between items-center">
+                                <div>
+                                    <CardTitle className="text-2xl font-bold flex items-center gap-2">
+                                        <Plus className="w-6 h-6" />
+                                        Nouveau médecin
+                                    </CardTitle>
+                                    <CardDescription className="text-blue-100 mt-1">Remplissez les informations pour ajouter un nouveau praticien</CardDescription>
+                                </div>
+                                <Button variant="ghost" size="sm" onClick={() => setShowAddDoctorForm(false)} className="text-white hover:bg-white/20 rounded-full w-10 h-10 p-0">
+                                    <X className="w-6 h-6" />
+                                </Button>
+                            </div>
+                        </CardHeader>
+                        <CardContent className="p-8 max-h-[75vh] overflow-y-auto">
+                            <form onSubmit={(e) => { e.preventDefault(); handleAddDoctor(); }} className="space-y-6">
+                                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                                    <div className="space-y-2">
+                                        <label className="text-sm font-semibold text-gray-700">Nom complet *</label>
+                                        <input type="text" value={newDoctor.name} onChange={(e) => setNewDoctor({ ...newDoctor, name: e.target.value })} className="w-full px-4 py-2 bg-gray-50 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:bg-white transition-all" placeholder="Dr. Jean Dupont" required />
+                                    </div>
+                                    <div className="space-y-2 md:col-span-2">
+                                        <label className="text-sm font-semibold text-gray-700">Spécialité *</label>
+                                        <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-5 gap-2 pt-1">
+                                            {specialties.map(specialty => (
+                                                <button key={specialty} type="button" onClick={() => setNewDoctor({ ...newDoctor, specialty })}
+                                                    className={`h-11 px-3 rounded-lg text-xs font-semibold border-2 transition-all flex items-center justify-center text-center leading-tight ${newDoctor.specialty === specialty ? 'bg-blue-600 text-white border-blue-600 shadow-md scale-105' : 'bg-gray-50 text-gray-600 border-gray-100 hover:border-blue-200 hover:bg-blue-50/50'}`}>
+                                                    {specialty}
+                                                </button>
+                                            ))}
+                                        </div>
+                                    </div>
+                                    <div className="space-y-2">
+                                        <label className="text-sm font-semibold text-gray-700">Email *</label>
+                                        <input type="email" value={newDoctor.email} onChange={(e) => setNewDoctor({ ...newDoctor, email: e.target.value })} className="w-full px-4 py-2 bg-gray-50 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:bg-white transition-all" placeholder="jean.dupont@hopital.com" required />
+                                    </div>
+                                    <div className="space-y-2">
+                                        <label className="text-sm font-semibold text-gray-700">Téléphone *</label>
+                                        <input type="tel" value={newDoctor.phone} onChange={(e) => setNewDoctor({ ...newDoctor, phone: e.target.value })} className="w-full px-4 py-2 bg-gray-50 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:bg-white transition-all" placeholder="+216 91 234 567" required />
+                                    </div>
+                                    <div className="space-y-2 md:col-span-2">
+                                        <label className="text-sm font-semibold text-gray-700">Adresse du cabinet</label>
+                                        <input type="text" value={newDoctor.address} onChange={(e) => setNewDoctor({ ...newDoctor, address: e.target.value })} className="w-full px-4 py-2 bg-gray-50 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:bg-white transition-all" placeholder="15 Rue de la Paix, Tunis" />
+                                    </div>
+                                    <div className="space-y-2">
+                                        <label className="text-sm font-semibold text-gray-700">Numéro de licence</label>
+                                        <input type="text" value={newDoctor.licenseNumber} onChange={(e) => setNewDoctor({ ...newDoctor, licenseNumber: e.target.value })} className="w-full px-4 py-2 bg-gray-50 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:bg-white transition-all" placeholder="CN-12345" />
+                                    </div>
+                                    <div className="space-y-2 md:col-span-2">
+                                        <label className="text-sm font-semibold text-gray-700">Statut du compte</label>
+                                        <div className="flex flex-wrap gap-2 pt-1">
+                                            {[
+                                                { id: 'actif', label: 'Actif', activeClass: 'bg-green-600 text-white border-green-600 shadow-md' },
+                                                { id: 'inactif', label: 'Inactif', activeClass: 'bg-red-600 text-white border-red-600 shadow-md' },
+                                                { id: 'congé', label: 'En congé', activeClass: 'bg-orange-500 text-white border-orange-500 shadow-md' }
+                                            ].map((status) => (
+                                                <button key={status.id} type="button" onClick={() => setNewDoctor({ ...newDoctor, status: status.id })}
+                                                    className={`flex-1 min-w-[100px] h-11 px-4 rounded-xl border-2 transition-all font-semibold text-sm flex items-center justify-center ${newDoctor.status === status.id ? status.activeClass : 'bg-white text-gray-400 border-gray-100 hover:border-gray-200 hover:text-gray-600'}`}>
+                                                    {status.label}
+                                                </button>
+                                            ))}
+                                        </div>
+                                    </div>
+                                </div>
+                                <div className="flex gap-3 pt-8 justify-end">
+                                    <Button type="button" variant="outline" onClick={() => setShowAddDoctorForm(false)} className="px-6 h-11 rounded-xl">Annuler</Button>
+                                    <Button type="submit" className="px-8 h-11 rounded-xl bg-blue-600 hover:bg-blue-700 shadow-lg shadow-blue-200 font-semibold flex items-center gap-2">
+                                        <Save className="w-4 h-4" />
+                                        Enregistrer le médecin
+                                    </Button>
+                                </div>
+                            </form>
+                        </CardContent>
+                    </Card>
+                </div>
+            )}
         </div>
     );
 }

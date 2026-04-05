@@ -1,5 +1,6 @@
-import * as React from "react"
+
 import { clsx } from "clsx"
+import * as React from "react"
 import { twMerge } from "tailwind-merge"
 
 export function cn(...inputs) {
@@ -78,4 +79,5 @@ const TabsContent = React.forwardRef(({ className, value, activeTab, ...props },
 })
 TabsContent.displayName = "TabsContent"
 
-export { Tabs, TabsList, TabsTrigger, TabsContent }
+export { Tabs, TabsContent, TabsList, TabsTrigger }
+

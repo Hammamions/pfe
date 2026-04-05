@@ -1,13 +1,12 @@
+import { Clock, Users } from 'lucide-react';
 import { useState } from 'react';
-import { Calendar, Clock, Plus, Settings, Users } from 'lucide-react';
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '../../components/ui/card';
-import { Button } from '../../components/ui/button';
 import { Badge } from '../../components/ui/badge';
-import { Tabs, TabsContent, TabsList, TabsTrigger } from '../../components/ui/tabs';
-import { Switch } from '../../components/ui/switch';
-import { Label } from '../../components/ui/label';
+import { Button } from '../../components/ui/button';
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '../../components/ui/card';
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '../../components/ui/dialog';
 import { Input } from '../../components/ui/input';
+import { Label } from '../../components/ui/label';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '../../components/ui/tabs';
 import { mockDoctorAppointments, mockWaitingRoom } from '../../data/doctorMockData';
 
 export default function DoctorAgendaPage() {
@@ -68,7 +67,6 @@ export default function DoctorAgendaPage() {
                     <TabsTrigger value="waiting">Salle d'attente</TabsTrigger>
                 </TabsList>
 
-                {/* Daily View */}
                 <TabsContent value="daily" className="space-y-4 mt-6">
                     <Card>
                         <CardHeader>
@@ -149,7 +147,6 @@ export default function DoctorAgendaPage() {
                     </Card>
                 </TabsContent>
 
-                {/* Weekly View */}
                 <TabsContent value="weekly" className="mt-6">
                     <Card>
                         <CardHeader>
@@ -159,7 +156,6 @@ export default function DoctorAgendaPage() {
                         <CardContent>
                             <div className="overflow-x-auto">
                                 <div className="min-w-[800px]">
-                                    {/* Header */}
                                     <div className="grid grid-cols-8 gap-2 mb-2">
                                         <div className="font-semibold text-sm text-gray-600">Horaire</div>
                                         {daysOfWeek.map((day) => (
@@ -171,7 +167,6 @@ export default function DoctorAgendaPage() {
                                             </div>
                                         ))}
                                     </div>
-                                    {/* Time slots */}
                                     {timeSlots.slice(0, 10).map((time) => (
                                         <div key={time} className="grid grid-cols-8 gap-2 mb-1">
                                             <div className="text-sm text-gray-600 py-2">{time}</div>
@@ -205,7 +200,6 @@ export default function DoctorAgendaPage() {
 
 
 
-                {/* Waiting Room */}
                 <TabsContent value="waiting" className="mt-6">
                     <Card>
                         <CardHeader>

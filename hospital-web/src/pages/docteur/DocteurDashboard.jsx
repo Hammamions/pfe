@@ -1,25 +1,21 @@
-import { Link, useNavigate } from 'react-router-dom';
 import {
-    Users,
-    Calendar,
-    Clock,
     Activity,
-    TrendingUp,
     AlertCircle,
-    CheckCircle,
-    LogOut,
     Brain,
-    Pill,
+    Calendar,
+    CheckCircle,
+    Clock,
+    TrendingUp,
+    Users
 } from 'lucide-react';
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '../../components/ui/card';
-import { Button } from '../../components/ui/button';
+import { Link, useNavigate } from 'react-router-dom';
 import { Badge } from '../../components/ui/badge';
+import { Button } from '../../components/ui/button';
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '../../components/ui/card';
 import {
-    mockDoctor,
     mockDoctorAppointments,
-    mockWaitingRoom,
+    mockWaitingRoom
 } from '../../data/doctorMockData';
-import logo from '../../assets/logo sans bg.png';
 
 export default function DoctorDashboardPage() {
     const today = new Date().toLocaleDateString('fr-FR', {
@@ -48,7 +44,6 @@ export default function DoctorDashboardPage() {
                 <p className="text-gray-600 mt-2">Aperçu de votre activité du <span className="font-medium text-gray-700">{today}</span></p>
             </div>
 
-            {/* Stats Cards */}
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
                 <Card className="border-none shadow-sm hover:shadow-md transition-all duration-200">
                     <CardContent className="p-6">
@@ -108,9 +103,7 @@ export default function DoctorDashboardPage() {
             </div>
 
             <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
-                {/* Main Content Column */}
                 <div className="lg:col-span-2 space-y-8">
-                    {/* Waiting Room */}
                     <Card className="border-none shadow-sm">
                         <CardHeader className="flex flex-row items-center justify-between px-6 py-5 border-b border-gray-50">
                             <div>
@@ -163,7 +156,6 @@ export default function DoctorDashboardPage() {
                         </CardContent>
                     </Card>
 
-                    {/* Daily Schedule */}
                     <Card className="border-none shadow-sm">
                         <CardHeader className="px-6 py-5 border-b border-gray-50">
                             <CardTitle className="text-lg font-bold">Planning du jour</CardTitle>
@@ -202,9 +194,7 @@ export default function DoctorDashboardPage() {
                     </Card>
                 </div>
 
-                {/* Right Sidebar */}
                 <div className="space-y-8">
-                    {/* Quick Actions */}
                     <div className="space-y-5">
                         <h3 className="text-lg font-bold text-gray-900">Actions rapides</h3>
                         <div className="space-y-3">
@@ -243,11 +233,9 @@ export default function DoctorDashboardPage() {
                         </div>
                     </div>
 
-                    {/* Stats Overview */}
                     <Card className="border-none shadow-sm overflow-hidden">
                         <CardHeader className="border-b border-gray-50 px-6 py-4 bg-white">
                             <CardTitle className="text-base font-bold">Statistiques</CardTitle>
-                            {/* <CardDescription>Cette semaine</CardDescription> */}
                         </CardHeader>
                         <CardContent className="p-0">
                             <div className="divide-y divide-gray-50">
@@ -274,8 +262,6 @@ export default function DoctorDashboardPage() {
                         </CardContent>
                     </Card>
 
-                    {/* Alerts */}
-                    {/* The user screenshot shows this as a card with an light orange background and specific spacing */}
                     <Card className="border-orange-100 bg-orange-50/50 shadow-none">
                         <CardHeader className="pb-2">
                             <CardTitle className="flex items-center gap-2 text-orange-900 text-lg font-bold">
@@ -284,18 +270,23 @@ export default function DoctorDashboardPage() {
                             </CardTitle>
                         </CardHeader>
                         <CardContent className="space-y-3">
-                            <div className="p-4 bg-white rounded-xl shadow-sm border border-orange-100">
-                                <p className="font-bold text-orange-900 mb-1">
-                                    2 résultats d'analyses disponibles
-                                </p>
-                                <p className="text-orange-700 text-xs font-semibold">À vérifier</p>
-                            </div>
-                            <div className="p-4 bg-white rounded-xl shadow-sm border border-orange-100">
-                                <p className="font-bold text-orange-900 mb-1">
-                                    1 rendez-vous à confirmer
-                                </p>
-                                <p className="text-orange-700 text-xs font-semibold">Pour demain</p>
-                            </div>
+                            <Link to="/doctor/patients" className="block">
+                                <div className="p-4 bg-white rounded-xl shadow-sm border border-orange-100 hover:border-orange-300 hover:shadow-md hover:-translate-y-0.5 transition-all cursor-pointer group">
+                                    <p className="font-bold text-orange-900 mb-1 group-hover:text-orange-700 transition-colors">
+                                        2 résultats d'analyses disponibles
+                                    </p>
+                                    <p className="text-orange-700 text-xs font-semibold">À vérifier</p>
+                                </div>
+                            </Link>
+
+                            <Link to="/doctor/agenda" className="block">
+                                <div className="p-4 bg-white rounded-xl shadow-sm border border-orange-100 hover:border-orange-300 hover:shadow-md hover:-translate-y-0.5 transition-all cursor-pointer group">
+                                    <p className="font-bold text-orange-900 mb-1 group-hover:text-orange-700 transition-colors">
+                                        1 rendez-vous à confirmer
+                                    </p>
+                                    <p className="text-orange-700 text-xs font-semibold">Pour demain</p>
+                                </div>
+                            </Link>
                         </CardContent>
                     </Card>
                 </div>

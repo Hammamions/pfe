@@ -1,5 +1,5 @@
-import * as React from "react"
 import { clsx } from "clsx"
+import * as React from "react"
 import { twMerge } from "tailwind-merge"
 
 export function cn(...inputs) {
@@ -88,7 +88,6 @@ const SelectItem = React.forwardRef(({ className, children, value, ...props }, r
             {...props}
         >
             <span className="absolute left-2 flex h-3.5 w-3.5 items-center justify-center">
-                {/* Check icon placeholder */}
             </span>
             <span className="truncate">{children}</span>
         </div>
@@ -96,4 +95,5 @@ const SelectItem = React.forwardRef(({ className, children, value, ...props }, r
 })
 SelectItem.displayName = "SelectItem"
 
-export { Select, SelectTrigger, SelectValue, SelectContent, SelectItem }
+export { Select, SelectContent, SelectItem, SelectTrigger, SelectValue }
+

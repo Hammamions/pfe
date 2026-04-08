@@ -19,3 +19,7 @@ yarn-error.log*
 # IDE
 .vscode
 .idea
+
+
+android/.gradle/
+.gradle/

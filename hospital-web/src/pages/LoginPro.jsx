@@ -1,4 +1,4 @@
-import { Lock, Mail, ShieldCheck, Stethoscope } from "lucide-react";
+import { Lock, Mail, ShieldCheck, Stethoscope, Users } from "lucide-react";
 import { useState } from "react";
 import { useNavigate } from "react-router-dom";
 import logo from "../assets/logo sans bg.png";
@@ -18,14 +18,23 @@ const roles = [
     activeColor: "border-purple-600 bg-purple-50 text-purple-700",
     inactiveColor: "border-slate-200 bg-[#F1F5F9] text-slate-500 hover:border-slate-300 hover:text-slate-700",
   },
+  {
+    value: "Sous-Administrateur",
+    label: "Sous-Admin",
+    icon: Users,
+    activeColor: "border-emerald-600 bg-emerald-50 text-emerald-700",
+    inactiveColor: "border-slate-200 bg-[#F1F5F9] text-slate-500 hover:border-slate-300 hover:text-slate-700",
+  },
 ];
+
+import api from "../lib/api";
 
 const RoleSelector = ({ role, setRole }) => (
   <div>
     <label className="block text-[14px] font-semibold text-slate-900 mb-2">
       Je suis
     </label>
-    <div className="grid grid-cols-2 gap-3">
+    <div className="grid grid-cols-3 gap-2">
       {roles.map(({ value, label, icon: Icon, activeColor, inactiveColor }) => (
         <button
           key={value}
@@ -49,6 +58,9 @@ const LoginPro = () => {
   const [resetEmail, setResetEmail] = useState("");
   const [rememberMe, setRememberMe] = useState(false);
   const [role, setRole] = useState("Médecin");
+  const [error, setError] = useState("");
+  const [loading, setLoading] = useState(false);
+
   const [formData, setFormData] = useState({
     email: "",
     password: "",
@@ -58,27 +70,68 @@ const LoginPro = () => {
 
   const handleChange = (e) => {
     setFormData({ ...formData, [e.target.name]: e.target.value });
+    if (error) setError("");
   };
 
-  const handleLogin = (e) => {
+  const handleLogin = async (e) => {
     e.preventDefault();
-    if (role === "Médecin") {
-      navigate("/doctor/dashboard");
-    } else if (role === "Administrateur") {
-      navigate("/admin/dashboard");
+    setLoading(true);
+    setError("");
+
+    try {
+      const response = await api.post('/auth/login', {
+        email: formData.email,
+        password: formData.password
+      });
+
+      const { token, user } = response.data;
+
+
+      const mappedRole = user.role === 'DOCTOR' ? 'Médecin' :
+        user.role === 'ADMIN' ? 'Administrateur' :
+          user.role === 'SOUS_ADMIN' ? 'Sous-Administrateur' : '';
+
+      if (mappedRole !== role) {
+        setError(`Ce compte n'est pas associé au rôle ${role}.`);
+        setLoading(false);
+        return;
+      }
+
+      localStorage.setItem('proToken', token);
+      localStorage.setItem('proUser', JSON.stringify(user));
+
+      if (user.role === "DOCTOR") {
+        navigate("/doctor/dashboard");
+      } else if (user.role === "ADMIN") {
+        navigate("/admin/dashboard");
+      } else if (user.role === "SOUS_ADMIN") {
+        navigate("/sous-admin/dashboard");
+      }
+    } catch (err) {
+      console.error('Login error:', err);
+      setError(err.response?.data?.error || "Erreur de connexion au serveur.");
+    } finally {
+      setLoading(false);
     }
   };
 
-  const handleRegister = (e) => {
+  const handleRegister = async (e) => {
     e.preventDefault();
     if (formData.password !== formData.confirmPassword) {
-      alert("Les mots de passe ne correspondent pas.");
+      setError("Les mots de passe ne correspondent pas.");
       return;
     }
-    if (role === "Médecin") {
-      navigate("/doctor/dashboard");
-    } else if (role === "Administrateur") {
-      navigate("/admin/dashboard");
+
+    setLoading(true);
+    setError("");
+
+    try {
+
+      alert("L'inscription doit être validée par un administrateur.");
+    } catch (err) {
+      setError("Erreur lors de la création du compte.");
+    } finally {
+      setLoading(false);
     }
   };
 
@@ -244,12 +297,19 @@ const LoginPro = () => {
                   </div>
                 </div>
 
+                {error && (
+                  <div className="bg-rose-50 border border-rose-100 text-rose-700 px-4 py-3 rounded-xl text-sm font-bold animate-shake">
+                    {error}
+                  </div>
+                )}
+
                 <div>
                   <button
                     type="submit"
-                    className="flex w-full justify-center rounded-xl bg-[#030712] px-3 py-3.5 text-[15px] font-semibold text-white shadow-sm hover:bg-slate-800 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-slate-900 transition-colors"
+                    disabled={loading}
+                    className={`flex w-full justify-center rounded-xl bg-[#030712] px-3 py-3.5 text-[15px] font-semibold text-white shadow-sm hover:bg-slate-800 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-slate-900 transition-colors ${loading ? 'opacity-50 cursor-not-allowed' : ''}`}
                   >
-                    Se connecter
+                    {loading ? 'Connexion en cours...' : 'Se connecter'}
                   </button>
                 </div>
               </form>

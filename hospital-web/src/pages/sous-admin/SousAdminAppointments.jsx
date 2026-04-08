@@ -1,0 +1,536 @@
+import {
+    Activity,
+    Calendar,
+    CheckCircle2,
+    ChevronDown,
+    Inbox,
+    Plus,
+    Search,
+    Send,
+    User,
+    Users,
+    X
+} from 'lucide-react';
+import { useEffect, useMemo, useState } from 'react';
+import { Button } from '../../components/ui/button';
+import { Card } from '../../components/ui/card';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '../../components/ui/tabs';
+import api from '../../lib/api';
+
+const HOURS = Array.from({ length: 11 }, (_, i) => (i + 8).toString().padStart(2, '0'));
+const MINUTES = ["00", "05", "10", "15", "20", "25", "30", "35", "40", "45", "50", "55"];
+
+const generateNextDates = () => {
+    const dates = [];
+    const today = new Date();
+    for (let i = 0; i < 90; i++) {
+        const d = new Date();
+        d.setDate(today.getDate() + i);
+        dates.push({
+            fullDate: d.toISOString().split('T')[0],
+            dayName: d.toLocaleDateString('fr-FR', { weekday: 'short' }),
+            dayNum: d.getDate(),
+            month: d.toLocaleDateString('fr-FR', { month: 'short' })
+        });
+    }
+    return dates;
+};
+
+export default function SousAdminAppointments() {
+    const [activeTab, setActiveTab] = useState('requests');
+    const [planningRequestId, setPlanningRequestId] = useState(null);
+    const [appointments, setAppointments] = useState([]);
+    const [doctors, setDoctors] = useState([]);
+    const [loading, setLoading] = useState(true);
+
+    const [selectedDate, setSelectedDate] = useState(generateNextDates()[0].fullDate);
+    const [selectedHour, setSelectedHour] = useState(null);
+    const [selectedMinute, setSelectedMinute] = useState(null);
+    const [selectedDoctorId, setSelectedDoctorId] = useState(null);
+    const [doctorSearch, setDoctorSearch] = useState('');
+    const [isDoctorDropdownOpen, setIsDoctorDropdownOpen] = useState(false);
+
+    const availableDates = useMemo(() => generateNextDates(), []);
+    const selectedTime = selectedHour && selectedMinute ? `${selectedHour}:${selectedMinute}` : null;
+
+    useEffect(() => {
+        const fetchData = async () => {
+            try {
+                setLoading(true);
+                const [aptsRes, docsRes] = await Promise.all([
+                    api.get('/professionals/all-appointments'),
+                    api.get('/professionals/doctors')
+                ]);
+                setAppointments(aptsRes.data);
+                setDoctors(docsRes.data);
+            } catch (err) {
+                console.error("Fetch data error:", err);
+            } finally {
+                setLoading(false);
+            }
+        };
+        fetchData();
+    }, []);
+
+    const sortedRequests = useMemo(() => {
+        return appointments.filter(a => a.status === 'EN_ATTENTE');
+    }, [appointments]);
+
+    const todayWaiting = useMemo(() => {
+        const todayStr = new Date().toISOString().split('T')[0];
+        return appointments.filter(a => a.status !== 'EN_ATTENTE' && a.date === todayStr);
+    }, [appointments]);
+
+    const handleTacticalUpdate = async (id, data) => {
+        try {
+            if (data.presenceStatus) {
+                await api.patch(`/sous-admin/appointments/${id}/presence`, { status: data.presenceStatus });
+            } else if (data.isUrgent !== undefined) {
+
+            }
+
+            const res = await api.get('/professionals/all-appointments');
+            setAppointments(res.data);
+        } catch (err) {
+            console.error("Tactical update error:", err);
+        }
+    };
+
+    const handlePlanify = async (requestId) => {
+        if (!selectedTime || !selectedDoctorId) return;
+
+        try {
+            const finalDate = new Date(`${selectedDate}T${selectedHour}:${selectedMinute}:00`);
+            await api.patch(`/sous-admin/appointments/${requestId}/assign`, {
+                date: finalDate,
+                medecinId: parseInt(selectedDoctorId),
+                lieu: 'Hôpital Sahloul Sousse',
+                salle: 'Salle A-102'
+            });
+
+            const res = await api.get('/professionals/all-appointments');
+            setAppointments(res.data);
+            setPlanningRequestId(null);
+        } catch (err) {
+            console.error("Planify error:", err);
+        }
+    };
+
+    const getAbsenceStatus = (appointmentTime, currentStatus) => {
+        if (currentStatus === 'PRESENT') return { text: 'Arrivé', type: 'success' };
+        if (currentStatus === 'ABSENT') return { text: 'Absent', type: 'danger' };
+
+
+        const [h, m] = appointmentTime.split(':').map(Number);
+        const now = new Date();
+        const currentTotalMin = now.getHours() * 60 + now.getMinutes();
+        const apptMin = h * 60 + m;
+        const diff = currentTotalMin - apptMin;
+
+        if (diff > 30) return { text: 'Annulé (30m+)', type: 'danger' };
+        if (diff > 10) return { text: 'En Retard (10m+)', type: 'warning' };
+        return { text: 'Attendu', type: 'neutral' };
+    };
+
+    const filteredDoctors = useMemo(() => {
+        return doctors
+            .filter(d =>
+                d.nom.toLowerCase().includes(doctorSearch.toLowerCase()) &&
+                d.statut !== 'En congé'
+            );
+    }, [doctorSearch, doctors]);
+
+    const selectedDoctor = doctors.find(d => d.id === selectedDoctorId);
+
+    if (loading && appointments.length === 0) {
+        return (
+            <div className="flex items-center justify-center min-h-[60vh]">
+                <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-indigo-600"></div>
+            </div>
+        );
+    }
+
+    return (
+        <div className="space-y-10 pb-20 text-left">
+            <div className="mb-10">
+                <div className="flex items-center gap-2 mb-2">
+                    <span className="px-2 py-0.5 bg-indigo-100 text-indigo-700 text-[10px] font-bold rounded-full uppercase tracking-tight">Coordinateur Flux</span>
+                    <div className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
+                </div>
+                <h1 className="text-3xl font-bold text-gray-900 tracking-tight">Gestion des Rendez-vous</h1>
+                <p className="text-gray-500 text-sm font-medium">Pilotage du cycle de vie des consultations et coordination patient-médecin.</p>
+            </div>
+
+            <Card className="border-none shadow-2xl bg-white rounded-[2.5rem] overflow-hidden">
+                <Tabs defaultValue="requests" className="w-full" onValueChange={setActiveTab}>
+                    <TabsList className="w-full h-auto p-4 bg-gray-50/50 flex justify-start items-center gap-2 border-b border-gray-100">
+                        <TabsTrigger
+                            value="requests"
+                            className="h-14 px-8 rounded-2xl flex items-center gap-4 text-xs font-bold uppercase tracking-wider transition-all duration-300
+                                     data-[state=active]:bg-white data-[state=active]:text-indigo-600 data-[state=active]:shadow-xl data-[state=active]:shadow-indigo-50/50 
+                                     text-gray-400 hover:text-gray-600"
+                        >
+                            <Inbox className="w-4 h-4" />
+                            Demandes d'Accord
+                            <div className="flex items-center justify-center min-w-[24px] h-6 px-1.5 rounded-lg bg-indigo-50 text-indigo-600 border border-indigo-100/50 ml-1">
+                                {sortedRequests.length}
+                            </div>
+                        </TabsTrigger>
+                        <TabsTrigger
+                            value="waiting"
+                            className="h-14 px-8 rounded-2xl flex items-center gap-4 text-xs font-bold uppercase tracking-wider transition-all duration-300
+                                     data-[state=active]:bg-white data-[state=active]:text-indigo-600 data-[state=active]:shadow-xl data-[state=active]:shadow-indigo-50/50 
+                                     text-gray-400 hover:text-gray-600"
+                        >
+                            <Users className="w-4 h-4" />
+                            Salle d'attente
+                            <div className="flex items-center justify-center min-w-[24px] h-6 px-1.5 rounded-lg bg-gray-100 text-gray-500 border border-gray-200 ml-1">
+                                {todayWaiting.length}
+                            </div>
+                        </TabsTrigger>
+                    </TabsList>
+
+                    <TabsContent value="requests" className="m-0 focus-visible:outline-none focus-visible:ring-0">
+                        <div className="p-10 border-b border-gray-50 bg-gray-50/20 flex justify-between items-center">
+                            <div>
+                                <h3 className="font-bold text-gray-900 text-xl uppercase tracking-tighter">File d'Intervention</h3>
+                                <p className="text-xs text-gray-400 font-bold mt-1">Tri chronologique strict. Choisissez un créneau pour valider la prise en charge.</p>
+                            </div>
+                        </div>
+                        <div className="divide-y divide-gray-50">
+                            {sortedRequests.length > 0 ? sortedRequests.map((req) => (
+                                <div key={req.id} className="p-10 hover:bg-indigo-50/5 transition-all duration-500">
+                                    <div className="flex items-center justify-between">
+                                        <div className="flex items-center gap-8">
+                                            <div className="w-14 h-14 rounded-2xl bg-indigo-50 border border-indigo-100 flex items-center justify-center text-indigo-600 font-bold text-xl group-hover:bg-indigo-600 group-hover:text-white transition-all duration-500 group-hover:rotate-6">
+                                                {req.patientName[0]}
+                                            </div>
+                                            <div>
+                                                <div className="flex items-center gap-4">
+                                                    <span className="font-bold text-gray-900 text-xl tracking-tight">{req.patientName}</span>
+                                                    <span className="px-3 py-1 bg-gray-100 text-gray-500 rounded-full text-[10px] font-bold uppercase tracking-widest">{req.time}</span>
+                                                </div>
+                                                <div className="flex items-center gap-3 mt-2">
+                                                    <div className="p-1 rounded bg-blue-50">
+                                                        <Activity className="w-3.5 h-3.5 text-blue-600" />
+                                                    </div>
+                                                    <span className="text-sm text-blue-700 font-extrabold tracking-tight italic opacity-80">{req.motif}</span>
+                                                </div>
+                                            </div>
+                                        </div>
+                                        <Button
+                                            variant={planningRequestId === req.id ? "secondary" : "default"}
+                                            size="xl"
+                                            className={`h-14 font-bold uppercase text-xs tracking-[0.2em] px-8 rounded-2xl transition-all duration-500 ${planningRequestId === req.id ? 'bg-rose-50 text-rose-600 hover:bg-rose-100 shadow-none' : 'bg-gray-900 text-white hover:bg-black hover:scale-105 shadow-xl shadow-gray-200'}`}
+                                            onClick={() => {
+                                                setPlanningRequestId(planningRequestId === req.id ? null : req.id);
+                                                setSelectedHour(null);
+                                                setSelectedMinute(null);
+                                                setIsDoctorDropdownOpen(false);
+                                            }}
+                                        >
+                                            {planningRequestId === req.id ? "Fermer" : "Planifier"}
+                                            <Calendar className="w-4 h-4 ml-3" />
+                                        </Button>
+                                    </div>
+
+                                    {planningRequestId === req.id && (
+                                        <div className="mt-10 overflow-hidden animate-in fade-in zoom-in-95 duration-700 text-left">
+                                            <div className="bg-white rounded-[2.5rem] p-1 shadow-2xl border border-gray-50">
+                                                <div className="bg-gray-900 rounded-[2.2rem] p-10 text-white space-y-10">
+                                                    <div className="flex flex-row items-center justify-between">
+                                                        <div className="flex items-center gap-4">
+                                                            <div className="w-12 h-12 rounded-2xl bg-indigo-600 flex items-center justify-center text-white">
+                                                                <Calendar className="w-6 h-6" />
+                                                            </div>
+                                                            <div>
+                                                                <h3 className="text-xl font-bold text-white uppercase tracking-tight">Planifier pour {req.patientName}</h3>
+                                                                <p className="text-xs text-gray-400 font-bold mt-1">Coordination de l'agenda médical</p>
+                                                            </div>
+                                                        </div>
+                                                        <Button
+                                                            variant="ghost"
+                                                            onClick={() => setPlanningRequestId(null)}
+                                                            className="h-12 w-12 p-0 rounded-2xl hover:bg-white/10"
+                                                        >
+                                                            <X className="w-5 h-5 text-gray-400" />
+                                                        </Button>
+                                                    </div>
+
+                                                    <div className="space-y-4">
+                                                        <h4 className="text-[11px] font-bold uppercase tracking-[0.2em] text-gray-500">1. Sélectionner la Date</h4>
+                                                        <div className="flex gap-4 overflow-x-auto pb-4 scrollbar-hide">
+                                                            {availableDates.map((d) => (
+                                                                <button
+                                                                    key={d.fullDate}
+                                                                    onClick={() => setSelectedDate(d.fullDate)}
+                                                                    className={`flex-shrink-0 w-24 h-28 rounded-3xl flex flex-col items-center justify-center gap-1 transition-all duration-300 border-2 ${selectedDate === d.fullDate ? 'bg-indigo-600 border-indigo-500 shadow-xl shadow-indigo-500/30 scale-110 translate-y-[-4px]' : 'bg-white/5 border-white/5 hover:bg-white/10 text-gray-400'}`}
+                                                                >
+                                                                    <span className="text-[9px] font-bold uppercase tracking-widest mb-1 opacity-60">{d.dayName}</span>
+                                                                    <span className={`text-2xl font-bold ${selectedDate === d.fullDate ? 'text-white' : 'text-gray-300'}`}>{d.dayNum}</span>
+                                                                    <span className="text-[10px] font-bold opacity-60">{d.month}</span>
+                                                                </button>
+                                                            ))}
+                                                        </div>
+                                                    </div>
+
+                                                    <div className="grid grid-cols-1 lg:grid-cols-2 gap-12 text-left">
+                                                        <div className="space-y-4">
+                                                            <h4 className="text-[11px] font-bold uppercase tracking-[0.2em] text-gray-500">2. Créneau Horaire</h4>
+                                                            <div className="space-y-6">
+                                                                <div className="bg-white/5 p-6 rounded-[2rem] border border-white/5 space-y-4 shadow-inner">
+                                                                    <div className="flex items-center justify-between mb-2">
+                                                                        <p className="text-[10px] font-bold text-gray-400 uppercase tracking-widest">Heure Sélectionnée</p>
+                                                                        <span className="text-xl font-bold text-indigo-400">{selectedHour ? `${selectedHour}h` : "--"}</span>
+                                                                    </div>
+                                                                    <div className="grid grid-cols-4 sm:grid-cols-6 gap-2">
+                                                                        {HOURS.map((h) => (
+                                                                            <button
+                                                                                key={h}
+                                                                                onClick={() => setSelectedHour(h)}
+                                                                                className={`py-2 rounded-xl text-xs font-bold transition-all duration-300 border-2 ${selectedHour === h ? 'bg-white text-gray-900 border-white shadow-lg' : 'bg-white/5 text-gray-400 border-transparent hover:bg-white/10'}`}
+                                                                            >
+                                                                                {h}h
+                                                                            </button>
+                                                                        ))}
+                                                                    </div>
+                                                                </div>
+
+                                                                <div className="bg-white/5 p-6 rounded-[2rem] border border-white/5 space-y-4 shadow-inner">
+                                                                    <div className="flex items-center justify-between mb-2">
+                                                                        <p className="text-[10px] font-bold text-gray-400 uppercase tracking-widest">Précision Minute</p>
+                                                                        <span className="text-xl font-bold text-emerald-400">{selectedMinute ? `:${selectedMinute}` : ":--"}</span>
+                                                                    </div>
+                                                                    <div className="grid grid-cols-4 sm:grid-cols-6 gap-2">
+                                                                        {MINUTES.map((m) => (
+                                                                            <button
+                                                                                key={m}
+                                                                                onClick={() => setSelectedMinute(m)}
+                                                                                className={`py-2 rounded-xl text-xs font-bold transition-all duration-300 border-2 ${selectedMinute === m ? 'bg-white text-gray-900 border-white shadow-lg' : 'bg-white/5 text-gray-400 border-transparent hover:bg-white/10'}`}
+                                                                            >
+                                                                                {m}
+                                                                            </button>
+                                                                        ))}
+                                                                    </div>
+                                                                </div>
+                                                            </div>
+                                                        </div>
+
+                                                        <div className="space-y-4">
+                                                            <h4 className="text-[11px] font-bold uppercase tracking-[0.2em] text-gray-500">3. Praticien Assigné</h4>
+                                                            <div className="relative">
+                                                                <button
+                                                                    onClick={() => setIsDoctorDropdownOpen(!isDoctorDropdownOpen)}
+                                                                    className="w-full h-16 bg-white/5 border-2 border-white/5 rounded-2xl px-6 flex items-center justify-between transition-all hover:bg-white/10 group active:scale-95"
+                                                                >
+                                                                    <div className="flex items-center gap-4">
+                                                                        <div className="w-9 h-9 rounded-xl bg-white/10 flex items-center justify-center text-indigo-400">
+                                                                            <User className="w-5 h-5" />
+                                                                        </div>
+                                                                        <span className={`text-sm font-bold tracking-tight ${selectedDoctor ? 'text-white' : 'text-gray-500'}`}>
+                                                                            {selectedDoctor ? `Dr. ${selectedDoctor.nom}` : "Rechercher un médecin..."}
+                                                                        </span>
+                                                                    </div>
+                                                                    <ChevronDown className={`w-5 h-5 text-gray-500 transition-transform duration-300 ${isDoctorDropdownOpen ? 'rotate-180' : ''}`} />
+                                                                </button>
+
+                                                                {isDoctorDropdownOpen && (
+                                                                    <div className="absolute top-full left-0 right-0 mt-3 bg-[#1a1a1a] border border-white/10 rounded-3xl shadow-2xl z-50 overflow-hidden animate-in slide-in-from-top-2 duration-300">
+                                                                        <div className="p-4 border-b border-white/5">
+                                                                            <div className="relative">
+                                                                                <Search className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-500" />
+                                                                                <input
+                                                                                    autoFocus
+                                                                                    placeholder="Trouver un docteur..."
+                                                                                    className="w-full h-12 bg-white/5 rounded-xl pl-12 pr-4 text-sm font-bold text-white outline-none focus:bg-white/10 transition-all border-none"
+                                                                                    value={doctorSearch}
+                                                                                    onChange={(e) => setDoctorSearch(e.target.value)}
+                                                                                />
+                                                                            </div>
+                                                                        </div>
+                                                                        <div className="max-h-64 overflow-y-auto p-2 scrollbar-hide text-left">
+                                                                            {filteredDoctors.map((doc) => (
+                                                                                <button
+                                                                                    key={doc.id}
+                                                                                    onClick={() => {
+                                                                                        setSelectedDoctorId(doc.id);
+                                                                                        setIsDoctorDropdownOpen(false);
+                                                                                    }}
+                                                                                    className="w-full p-4 rounded-2xl flex items-center justify-between hover:bg-white/5 transition-all text-left group"
+                                                                                >
+                                                                                    <div className="flex items-center gap-4">
+                                                                                        <div className="w-10 h-10 rounded-xl bg-indigo-600 flex items-center justify-center text-white font-bold text-xs">
+                                                                                            {doc.nom[0]}
+                                                                                        </div>
+                                                                                        <div>
+                                                                                            <div className="text-sm font-bold text-white group-hover:text-indigo-400 transition-colors">Dr. {doc.nom} {doc.prenom}</div>
+                                                                                            <div className={`text-[10px] font-bold uppercase mt-0.5 ${doc.statut === 'En congé' ? 'text-rose-500' : 'text-emerald-500'}`}>{doc.statut}</div>
+                                                                                        </div>
+                                                                                    </div>
+                                                                                </button>
+                                                                            ))}
+                                                                        </div>
+                                                                    </div>
+                                                                )}
+                                                            </div>
+                                                        </div>
+                                                    </div>
+
+                                                    <div className="pt-10 border-t border-white/5 flex flex-col sm:flex-row justify-between items-center gap-8">
+                                                        <div className="flex items-center gap-4">
+                                                            <div className="p-3 rounded-2xl bg-indigo-600/20 text-indigo-400">
+                                                                <Send className="w-5 h-5" />
+                                                            </div>
+                                                            <p className="text-xs text-gray-400 font-bold uppercase tracking-widest leading-relaxed text-center sm:text-left">
+                                                                Confirmation sécurisée <br />et notification patient immédiate.
+                                                            </p>
+                                                        </div>
+                                                        <Button
+                                                            disabled={!selectedTime || !selectedDoctorId}
+                                                            size="xl"
+                                                            className={`h-16 w-full sm:w-auto px-12 rounded-[1.5rem] font-bold uppercase text-[13px] tracking-[0.3em] transition-all duration-500 shadow-2xl ${(!selectedTime || !selectedDoctorId) ? 'bg-white/5 text-gray-600 cursor-not-allowed' : 'bg-white text-gray-900 hover:scale-105 hover:bg-gray-100 shadow-white/10'}`}
+                                                            onClick={() => handlePlanify(req.id)}
+                                                        >
+                                                            Lancer l'Intervention
+                                                            <CheckCircle2 className="w-5 h-5 ml-4" />
+                                                        </Button>
+                                                    </div>
+
+                                                </div>
+                                            </div>
+                                        </div>
+                                    )}
+                                </div>
+                            )) : (
+                                <div className="p-20 text-center text-gray-400 font-bold italic">
+                                    Aucune demande en attente pour le moment.
+                                </div>
+                            )}
+                        </div>
+                    </TabsContent>
+
+                    <TabsContent value="waiting" className="m-0 focus-visible:outline-none focus-visible:ring-0">
+                        <div className="p-10 border-b border-gray-50 bg-gray-50/20 text-left">
+                            <h3 className="font-bold text-gray-900 text-xl uppercase tracking-tighter">Flux Tactique</h3>
+                            <p className="text-xs text-gray-400 font-bold mt-1">Marquez les arrivées pour synchroniser les salles de consultation.</p>
+                        </div>
+                        <div className="overflow-x-auto">
+                            <table className="w-full text-left border-collapse">
+                                <thead className="bg-gray-50/30">
+                                    <tr>
+                                        <th className="px-10 py-6 text-[11px] font-bold text-gray-400 uppercase tracking-widest">Patient</th>
+                                        <th className="px-10 py-6 text-[11px] font-bold text-gray-400 uppercase tracking-widest">Plan</th>
+                                        <th className="px-10 py-6 text-[11px] font-bold text-gray-400 uppercase tracking-widest">Zone État</th>
+                                        <th className="px-10 py-6 text-center text-[11px] font-bold text-gray-400 uppercase tracking-widest">Tactique</th>
+                                    </tr>
+                                </thead>
+                                <tbody className="divide-y divide-gray-50">
+                                    {todayWaiting.length > 0 ? todayWaiting.map((p) => (
+                                        <tr key={p.id} className={`group hover:bg-indigo-50/5 transition-all duration-500 ${p.presenceStatus === 'PRESENT' ? 'bg-indigo-50/10' : ''}`}>
+                                            <td className="px-10 py-8">
+                                                <div className="flex items-center gap-5">
+                                                    <div className="w-14 h-14 rounded-2xl bg-gray-50 flex items-center justify-center text-indigo-600 font-bold text-xl group-hover:bg-indigo-600 group-hover:text-white transition-all duration-500">
+                                                        {p.patientName[0]}
+                                                    </div>
+                                                    <div>
+                                                        <div className="font-bold text-gray-900 text-lg tracking-tight mb-1">{p.patientName}</div>
+                                                        <div
+                                                            className={`text-[10px] font-bold uppercase tracking-widest flex items-center gap-2 cursor-pointer hover:opacity-80 transition-all ${p.isUrgent ? 'text-rose-500' : 'text-gray-400'}`}
+                                                            onClick={() => handleTacticalUpdate(p.id, { isUrgent: !p.isUrgent })}
+                                                        >
+                                                            <div className={`w-1.5 h-1.5 rounded-full ${p.isUrgent ? 'bg-rose-500 animate-ping' : 'bg-gray-300'}`} />
+                                                            {p.isUrgent ? 'Urgent' : 'Normal'}
+                                                        </div>
+                                                    </div>
+                                                </div>
+                                            </td>
+                                            <td className="px-10 py-8">
+                                                <div className="space-y-1.5">
+                                                    <div className="flex items-center gap-2">
+                                                        <div className="w-1.5 h-1.5 rounded-full bg-indigo-600" />
+                                                        <span className="text-base font-bold text-gray-900">{p.time}</span>
+                                                    </div>
+                                                    <div className="text-[10px] text-gray-400 font-bold uppercase tracking-widest pl-3">{p.doctor}</div>
+                                                </div>
+                                            </td>
+                                            <td className="px-10 py-8">
+                                                <div className="inline-flex items-center gap-3 px-4 py-2 bg-white rounded-2xl shadow-sm border border-gray-100">
+                                                    {(() => {
+                                                        const stat = getAbsenceStatus(p.time, p.presenceStatus);
+                                                        const dotColor = stat.type === 'success' ? 'bg-emerald-500' : stat.type === 'warning' ? 'bg-amber-500' : stat.type === 'danger' ? 'bg-rose-500' : 'bg-gray-200';
+                                                        const textColor = stat.type === 'success' ? 'text-emerald-700' : stat.type === 'warning' ? 'text-amber-700' : stat.type === 'danger' ? 'text-rose-700' : 'text-gray-400';
+                                                        return (
+                                                            <>
+                                                                <div className={`w-2.5 h-2.5 rounded-full ${dotColor} ${stat.type === 'warning' ? 'animate-pulse' : ''}`} />
+                                                                <span className={`text-[11px] font-bold uppercase tracking-widest ${textColor}`}>
+                                                                    {stat.text}
+                                                                </span>
+                                                            </>
+                                                        );
+                                                    })()}
+                                                </div>
+                                            </td>
+                                            <td className="px-10 py-8 text-center">
+                                                {(() => {
+                                                    const stat = getAbsenceStatus(p.time, p.presenceStatus);
+                                                    if (p.presenceStatus === 'ABSENT' || !p.presenceStatus || p.presenceStatus === 'EN_ATTENTE') {
+                                                        if (stat.type === 'danger') {
+                                                            return (
+                                                                <div className="flex flex-col items-center">
+                                                                    <span className="text-[10px] font-bold text-rose-600 uppercase tracking-widest leading-none">Rdv Annulé</span>
+                                                                    <span className="text-[9px] font-bold text-gray-400 mt-1 uppercase tracking-tighter opacity-70">Patient Absent (30m+)</span>
+                                                                </div>
+                                                            );
+                                                        }
+                                                        return (
+                                                            <div className="flex flex-col items-center gap-4">
+                                                                <div className="flex items-center justify-center gap-3">
+                                                                    <Button
+                                                                        size="sm"
+                                                                        className="h-14 bg-emerald-600 text-white hover:bg-emerald-700 font-bold uppercase text-[11px] tracking-widest px-8 rounded-2xl shadow-xl shadow-emerald-100 hover:scale-105 transition-all gap-3"
+                                                                        onClick={() => handleTacticalUpdate(p.id, { presenceStatus: 'PRESENT' })}
+                                                                    >
+                                                                        <Plus className="w-5 h-5" />
+                                                                        Valider Présence
+                                                                    </Button>
+                                                                    {stat.type === 'warning' && (
+                                                                        <Button
+                                                                            size="sm"
+                                                                            className="h-14 bg-gray-900 text-white hover:bg-black font-bold uppercase text-[11px] tracking-widest px-8 rounded-2xl shadow-xl shadow-gray-200 hover:scale-105 transition-all"
+                                                                        >
+                                                                            Appeler
+                                                                        </Button>
+                                                                    )}
+                                                                </div>
+                                                            </div>
+                                                        );
+                                                    }
+                                                    if (p.presenceStatus === 'PRESENT') {
+                                                        return (
+                                                            <div className="flex flex-col items-center">
+                                                                <div className="w-8 h-8 rounded-full bg-emerald-100 flex items-center justify-center mb-1">
+                                                                    <div className="w-1.5 h-1.5 rounded-full bg-emerald-500 shadow-[0_0_10px_rgba(16,185,129,0.5)]" />
+                                                                </div>
+                                                                <span className="text-[10px] font-bold text-emerald-600 uppercase tracking-widest leading-none">Pris en Charge</span>
+                                                            </div>
+                                                        );
+                                                    }
+                                                })()}
+                                            </td>
+                                        </tr>
+                                    )) : (
+                                        <tr>
+                                            <td colSpan="4" className="p-20 text-center text-gray-400 font-bold italic">
+                                                Aucun patient attendu pour aujourd'hui.
+                                            </td>
+                                        </tr>
+                                    )}
+                                </tbody>
+                            </table>
+                        </div>
+                    </TabsContent>
+                </Tabs>
+            </Card>
+        </div>
+    );
+}

@@ -1,6 +1,7 @@
 import { BrowserRouter, Navigate, Route, Routes } from "react-router-dom";
 import AdminLayout from "./components/layouts/AdminLayout";
 import DoctorLayout from "./components/layouts/DoctorLayout";
+import SousAdminLayout from "./components/layouts/SousAdminLayout";
 import LoginPro from "./pages/LoginPro";
 import AdminDashboard from "./pages/admin/AdminDashboard";
 import Aiassistant from "./pages/docteur/Aiassistant";
@@ -8,6 +9,9 @@ import DocteurDashboard from "./pages/docteur/DocteurDashboard";
 import Docteuragenda from "./pages/docteur/Docteuragenda";
 import PatientFiles from "./pages/docteur/PatientFiles";
 import PrescriptionGenerator from "./pages/docteur/PrescriptionGenerator";
+import SousAdminAppointments from "./pages/sous-admin/SousAdminAppointments";
+import SousAdminDashboard from "./pages/sous-admin/SousAdminDashboard";
+import SousAdminDoctors from "./pages/sous-admin/SousAdminDoctors";
 
 function App() {
     return (
@@ -23,6 +27,13 @@ function App() {
                     <Route path="patients" element={<PatientFiles />} />
                     <Route path="prescriptions" element={<PrescriptionGenerator />} />
                     <Route path="ai-assistant" element={<Aiassistant />} />
+                </Route>
+
+                <Route path="/sous-admin" element={<SousAdminLayout />}>
+                    <Route index element={<Navigate to="dashboard" replace />} />
+                    <Route path="dashboard" element={<SousAdminDashboard />} />
+                    <Route path="appointments" element={<SousAdminAppointments />} />
+                    <Route path="doctors" element={<SousAdminDoctors />} />
                 </Route>
 
                 <Route path="/admin" element={<AdminLayout />}>

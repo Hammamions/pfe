@@ -11,6 +11,8 @@ export const normalizeSpecialty = (value: string | null | undefined) => {
     const aliases: Record<string, string> = {
         cardiologie: 'cardiology',
         dermatologie: 'dermatology',
+        dermetology: 'dermatology',
+        dermetologie: 'dermatology',
         generaliste: 'generalpractitioner',
         medecinegenerale: 'generalpractitioner',
         gynecologie: 'gynecology',

@@ -2,6 +2,7 @@ import {
     Activity,
     Calendar as CalendarIcon,
     ChevronRight,
+    FileText,
     Inbox,
     Users
 } from 'lucide-react';
@@ -13,10 +14,13 @@ import api from '../../lib/api';
 
 export default function SousAdminDashboard() {
     const REFRESH_INTERVAL_MS = 3000;
+    const SLOTS_PER_DOCTOR = 20; 
     const [stats, setStats] = useState({
         pendingCount: 0,
-        todayCount: 0,
-        presentCount: 0
+        documentsToSendCount: 0,
+        availableSlotsCount: 0,
+        occupiedCount: 0,
+        totalTodayCount: 0
     });
     const [recentRequests, setRecentRequests] = useState([]);
     const [activities, setActivities] = useState([]);
@@ -29,10 +33,12 @@ export default function SousAdminDashboard() {
         const fetchDashboardData = async () => {
             try {
                 const ts = Date.now();
-                const [statsRes, activitiesRes, aptsRes] = await Promise.all([
+                const todayIso = new Date().toISOString().split('T')[0];
+                const [statsRes, activitiesRes, aptsRes, doctorsRes] = await Promise.all([
                     api.get('/sous-admin/stats', { params: { _t: ts } }),
                     api.get('/sous-admin/activities', { params: { _t: ts } }),
-                    api.get('/professionals/all-appointments', { params: { _t: ts } })
+                    api.get('/professionals/all-appointments', { params: { _t: ts } }),
+                    api.get('/sous-admin/doctors', { params: { _t: ts, date: todayIso } })
                 ]);
 
                 if (!isMounted) return;
@@ -40,11 +46,23 @@ export default function SousAdminDashboard() {
                 const pendingAll = aptsRes.data.filter(
                     a => a.status === 'EN_ATTENTE' || a.requestType === 'ANNULATION' || a.requestType === 'REPORT'
                 );
+                const docsToSend = aptsRes.data.filter(
+                    (a) => a.hasDocuments && !a.documentsProcessed
+                );
+                const todayStr = new Date().toISOString().split('T')[0];
+                const confirmedTodayAppointments = aptsRes.data.filter(
+                    (a) => a.date === todayStr && a.status === 'CONFIRME'
+                );
+                const doctors = Array.isArray(doctorsRes.data) ? doctorsRes.data : [];
+                const totalTodaySlots = doctors.length * SLOTS_PER_DOCTOR;
+                const availableSlotsCount = Math.max(0, totalTodaySlots - confirmedTodayAppointments.length);
                 setStats({
-                    // Keep the counter consistent with the "Dernières demandes" list.
+                    
                     pendingCount: pendingAll.length,
-                    todayCount: statsRes.data.total,
-                    presentCount: statsRes.data.present
+                    documentsToSendCount: docsToSend.length,
+                    availableSlotsCount,
+                    occupiedCount: confirmedTodayAppointments.length,
+                    totalTodayCount: totalTodaySlots
                 });
 
                 setActivities(activitiesRes.data);
@@ -81,7 +99,7 @@ export default function SousAdminDashboard() {
 
     return (
         <div className="space-y-10 pb-20">
-            {/* Premium Header */}
+           
             <div className="flex flex-col md:flex-row md:items-center justify-between gap-6">
                 <div className="space-y-1">
                     <h1 className="text-3xl font-bold text-gray-900 tracking-tight">Pilotage Cardiologie</h1>
@@ -89,45 +107,59 @@ export default function SousAdminDashboard() {
                 </div>
             </div>
 
-            {/* Compact Premium Stats Grid */}
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-                <Card className="border-none shadow-lg bg-gradient-to-br from-indigo-600 to-blue-700 text-white rounded-[1.5rem] relative group overflow-hidden">
+                <Card className="border-none shadow-lg bg-gradient-to-br from-indigo-600 to-blue-700 text-white rounded-[1.5rem] relative group overflow-hidden min-h-[150px]">
                     <div className="absolute top-0 right-0 w-24 h-24 bg-white/10 rounded-full -mr-12 -mt-12 blur-xl group-hover:scale-150 transition-transform duration-700" />
-                    <CardContent className="p-6">
-                        <Inbox className="w-8 h-8 text-indigo-200/40 mb-3" />
-                        <p className="text-[10px] font-bold text-white/60 uppercase tracking-widest whitespace-nowrap">Demandes à Traiter</p>
-                        <h3 className="text-2xl font-black mt-1 tracking-tight">{stats.pendingCount}</h3>
-                    </CardContent>
-                </Card>
-
-                <Card className="border-none shadow-lg bg-gray-900 text-white rounded-[1.5rem] relative overflow-hidden group">
-                    <CardContent className="p-6">
-                        <CalendarIcon className="w-8 h-8 text-indigo-400/40 mb-3" />
-                        <p className="text-[10px] font-bold text-gray-500 uppercase tracking-widest whitespace-nowrap">Prévus Ce Jour</p>
-                        <h3 className="text-2xl font-black mt-1 tracking-tight">{stats.todayCount}</h3>
-                    </CardContent>
-                </Card>
-
-                <Card className="border-none shadow-lg bg-white rounded-[1.5rem] relative overflow-hidden group">
-                    <CardContent className="p-6">
-                        <div className="flex items-start justify-between">
-                            <div className="p-3 bg-emerald-50 text-emerald-600 rounded-xl group-hover:scale-110 transition-all">
-                                <Users className="w-6 h-6" />
+                    <CardContent className="p-6 h-full flex flex-col justify-between">
+                        <div className="flex items-center justify-between">
+                            <div className="p-2.5 rounded-xl bg-white/10">
+                                <Inbox className="w-5 h-5 text-white" />
                             </div>
-                            <div className="px-2 py-0.5 bg-emerald-50 text-emerald-700 rounded-md font-bold text-[9px] uppercase tracking-wider animate-pulse">Live</div>
+                            <span className="text-[10px] font-extrabold uppercase tracking-widest text-indigo-100">Action</span>
                         </div>
                         <div className="mt-4">
-                            <h3 className="text-2xl font-black text-gray-900 tracking-tight">{stats.presentCount}</h3>
-                            <p className="text-[9px] text-gray-400 font-bold uppercase tracking-widest mt-1">Patients Présents</p>
+                            <p className="text-[11px] font-extrabold text-white/70 uppercase tracking-widest whitespace-nowrap">Demandes à traiter</p>
+                            <h3 className="text-4xl leading-none font-black mt-2 tracking-tight">{stats.pendingCount}</h3>
+                        </div>
+                    </CardContent>
+                </Card>
+
+                <Card className="border-none shadow-lg bg-gray-950 text-white rounded-[1.5rem] relative overflow-hidden group min-h-[150px]">
+                    <CardContent className="p-6 h-full flex flex-col justify-between">
+                        <div className="flex items-center justify-between">
+                            <div className="p-2.5 rounded-xl bg-white/5">
+                                <FileText className="w-5 h-5 text-blue-300" />
+                            </div>
+                            <span className="text-[10px] font-extrabold uppercase tracking-widest text-blue-200/70">Docs</span>
+                        </div>
+                        <div className="mt-4">
+                            <p className="text-[11px] font-extrabold text-gray-400 uppercase tracking-widest whitespace-nowrap">Documents envoyés par jour</p>
+                            <h3 className="text-4xl leading-none font-black mt-2 tracking-tight">{stats.documentsToSendCount}</h3>
+                        </div>
+                    </CardContent>
+                </Card>
+
+                <Card className="border border-emerald-100 shadow-lg bg-white rounded-[1.5rem] relative overflow-hidden group min-h-[150px]">
+                    <CardContent className="p-6 h-full flex flex-col justify-between">
+                        <div className="flex items-center justify-between">
+                            <div className="p-2.5 bg-emerald-50 text-emerald-600 rounded-xl group-hover:scale-110 transition-all">
+                                <Users className="w-5 h-5" />
+                            </div>
+                            <div className="px-2 py-0.5 bg-emerald-50 text-emerald-700 rounded-md font-bold text-[10px] uppercase tracking-wider">Dispo</div>
+                        </div>
+                        <div className="mt-4">
+                            <p className="text-[11px] text-gray-500 font-extrabold uppercase tracking-widest">Slots disponibles</p>
+                            <h3 className="text-4xl leading-none font-black text-gray-900 mt-2 tracking-tight">{stats.availableSlotsCount}</h3>
+                            <p className="text-[11px] text-gray-500 font-bold mt-2">
+                                Confirmés: {stats.occupiedCount} / {stats.totalTodayCount}
+                            </p>
                         </div>
                     </CardContent>
                 </Card>
             </div>
 
             <div className="grid grid-cols-1 lg:grid-cols-3 gap-10">
-                {/* Main Dashboard Summary Area */}
                 <div className="lg:col-span-2 space-y-10">
-                    {/* Recent Pending Requests Summary */}
                     <Card className="border-none shadow-2xl bg-white rounded-[2.5rem] overflow-hidden">
                         <CardHeader className="p-10 pb-0 flex flex-row items-center justify-between">
                             <div>
@@ -175,7 +207,6 @@ export default function SousAdminDashboard() {
 
                 </div>
 
-                {/* Tactical Sidebar */}
                 <div className="space-y-10 text-left">
                     <Card className="border-none shadow-2xl bg-white rounded-[2.5rem] overflow-hidden">
                         <CardHeader className="p-10 pb-4">

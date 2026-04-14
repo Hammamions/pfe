@@ -336,6 +336,11 @@ export default function SousAdminAppointments() {
                                                         <Activity className="w-3.5 h-3.5 text-blue-600" />
                                                     </div>
                                                     <span className="text-sm text-blue-700 font-extrabold tracking-tight italic opacity-80">{req.motif}</span>
+                                                    {req.hasDocuments && (
+                                                        <span className={`px-2 py-0.5 rounded-full text-[9px] font-bold uppercase tracking-wider ${req.documentsProcessed ? 'bg-emerald-100 text-emerald-700' : 'bg-amber-100 text-amber-700'}`}>
+                                                            {req.documentsProcessed ? 'Pièces traitées' : 'Pièces jointes'}
+                                                        </span>
+                                                    )}
                                                 </div>
                                             </div>
                                         </div>
@@ -655,6 +660,11 @@ export default function SousAdminAppointments() {
                                                         <span className="text-base font-bold text-gray-900">{p.time}</span>
                                                     </div>
                                                     <div className="text-[10px] text-gray-400 font-bold uppercase tracking-widest pl-3">{p.doctor}</div>
+                                                    {p.hasDocuments && (
+                                                        <div className={`text-[9px] font-bold uppercase tracking-wider pl-3 ${p.documentsProcessed ? 'text-emerald-600' : 'text-amber-600'}`}>
+                                                            {p.documentsProcessed ? 'Documents traités' : 'Documents en attente'}
+                                                        </div>
+                                                    )}
                                                 </div>
                                             </td>
                                             <td className="px-10 py-8">
@@ -710,15 +720,22 @@ export default function SousAdminAppointments() {
                                                         );
                                                     }
                                                     if (p.presenceStatus === 'PRESENT') {
+                                                        const canCheckout = p.status === 'EN_COURS';
                                                         return (
                                                             <div className="flex flex-col items-center">
                                                                 <div className="w-8 h-8 rounded-full bg-emerald-100 flex items-center justify-center mb-1">
                                                                     <div className="w-1.5 h-1.5 rounded-full bg-emerald-500 shadow-[0_0_10px_rgba(16,185,129,0.5)]" />
                                                                 </div>
-                                                                <span className="text-[10px] font-bold text-emerald-600 uppercase tracking-widest leading-none">En cours</span>
+                                                                <span className="text-[10px] font-bold text-emerald-600 uppercase tracking-widest leading-none">
+                                                                    {canCheckout ? 'En cours' : 'En attente de son tour'}
+                                                                </span>
                                                                 <Button
                                                                     size="sm"
-                                                                    className="mt-3 h-12 bg-gray-900 text-white hover:bg-black font-bold uppercase text-[10px] tracking-widest px-6 rounded-2xl shadow-xl shadow-gray-200 hover:scale-105 transition-all"
+                                                                    disabled={!canCheckout}
+                                                                    className={`mt-3 h-12 font-bold uppercase text-[10px] tracking-widest px-6 rounded-2xl shadow-xl transition-all ${canCheckout
+                                                                        ? 'bg-gray-900 text-white hover:bg-black shadow-gray-200 hover:scale-105'
+                                                                        : 'bg-gray-200 text-gray-500 cursor-not-allowed shadow-gray-100'
+                                                                        }`}
                                                                     onClick={() => handleCheckout(p.id)}
                                                                 >
                                                                     Marquer sortie
@@ -726,7 +743,6 @@ export default function SousAdminAppointments() {
                                                             </div>
                                                         );
                                                     }
-                                                    // Default: allow validation when scheduled/expected (PREVU/EN_RETARD/etc.)
                                                     if (stat.type !== 'danger') {
                                                         return (
                                                             <div className="flex flex-col items-center gap-4">

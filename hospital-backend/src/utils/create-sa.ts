@@ -20,7 +20,6 @@ async function main() {
             data: { role: 'SOUS_ADMIN' }
         });
 
-        // Ensure SousAdmin record exists
         const exSA = await prisma.sousAdmin.findUnique({ where: { utilisateurId: existingUser.id } });
         if (!exSA) {
             await prisma.sousAdmin.create({

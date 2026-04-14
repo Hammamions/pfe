@@ -22,9 +22,11 @@ import {
 } from '../../components/ui/dialog';
 import { Input } from '../../components/ui/input';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '../../components/ui/tabs';
-import { mockPatientFiles } from '../../data/doctorMockData';
+import api from '../../lib/api';
 
 export default function PatientFilesPage() {
+    const [patientFiles, setPatientFiles] = useState([]);
+    const [loading, setLoading] = useState(true);
     const [searchQuery, setSearchQuery] = useState('');
     const [selectedPatient, setSelectedPatient] = useState(null);
     const [showConsultationSent, setShowConsultationSent] = useState(false);
@@ -33,22 +35,37 @@ export default function PatientFilesPage() {
     const fileInputRef = useRef(null);
 
     useEffect(() => {
-        if (location.state?.patientName && location.state?.patientPrenom) {
-            const foundPatient = mockPatientFiles.find(
-                p => p.patient.nom === location.state.patientName &&
-                    p.patient.prenom === location.state.patientPrenom
-            );
-            if (foundPatient) {
-                setSelectedPatient(foundPatient);
+        const fetchWaitingPatients = async () => {
+            try {
+                const res = await api.get('/professionals/doctor-waiting-room', {
+                    params: { _t: Date.now() }
+                });
+                const files = Array.isArray(res.data) ? res.data : [];
+                setPatientFiles(files);
+
+                if (location.state?.patientName && location.state?.patientPrenom) {
+                    const foundPatient = files.find(
+                        (p) =>
+                            p?.patient?.nom === location.state.patientName &&
+                            p?.patient?.prenom === location.state.patientPrenom
+                    );
+                    if (foundPatient) setSelectedPatient(foundPatient);
+                }
+            } catch (err) {
+                console.error('Patient files fetch error:', err);
+                setPatientFiles([]);
+            } finally {
+                setLoading(false);
             }
-        }
+        };
+        fetchWaitingPatients();
     }, [location.state]);
 
-    const filteredPatients = mockPatientFiles.filter(
+    const filteredPatients = patientFiles.filter(
         (patient) =>
             patient.patient.nom.toLowerCase().includes(searchQuery.toLowerCase()) ||
             patient.patient.prenom.toLowerCase().includes(searchQuery.toLowerCase()) ||
-            patient.patient.numeroSecu.includes(searchQuery)
+            (patient.patient.numeroSecu || '').includes(searchQuery)
     );
 
     return (
@@ -75,7 +92,15 @@ export default function PatientFilesPage() {
             </Card>
 
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-                {filteredPatients.map((patientFile) => (
+                {loading ? (
+                    <Card>
+                        <CardContent className="py-10 text-center text-gray-500">Chargement des patients en salle d'attente...</CardContent>
+                    </Card>
+                ) : filteredPatients.length === 0 ? (
+                    <Card>
+                        <CardContent className="py-10 text-center text-gray-500">Aucun patient en salle d'attente.</CardContent>
+                    </Card>
+                ) : filteredPatients.map((patientFile) => (
                     <Card
                         key={patientFile.id}
                         className="hover:shadow-lg transition-shadow cursor-pointer"
@@ -302,24 +327,30 @@ export default function PatientFilesPage() {
 
                             <TabsContent value="documents" className="mt-4">
                                 <Card>
-                                    <CardContent className="py-12 text-center">
-                                        <FileText className="w-12 h-12 text-gray-400 mx-auto mb-2" />
-                                        <p className="text-gray-600">Aucun document disponible</p>
-                                        <input
-                                            type="file"
-                                            ref={fileInputRef}
-                                            className="hidden"
-                                            accept=".pdf,.doc,.docx,.jpg,.png"
-                                            onChange={(e) => {
-                                                if (e.target.files && e.target.files.length > 0) {
-                                                    alert("Fonctionnalité d'ajout de document en cours de développement");
-                                                }
-                                            }}
-                                        />
-                                        <Button size="sm" className="mt-4" onClick={() => fileInputRef.current?.click()}>
-                                            <Plus className="w-4 h-4 mr-2" />
-                                            Ajouter un document
-                                        </Button>
+                                    <CardContent className="py-6">
+                                        {selectedPatient.documents?.length > 0 ? (
+                                            <div className="space-y-3">
+                                                {selectedPatient.documents.map((doc) => (
+                                                    <div key={doc.id} className="border border-gray-200 rounded-xl p-3">
+                                                        <p className="font-semibold text-gray-900">{doc.titre}</p>
+                                                        <p className="text-xs text-gray-500 mt-1">{doc.type || 'Document médical'}</p>
+                                                        <a
+                                                            href={doc.urlFichier}
+                                                            target="_blank"
+                                                            rel="noreferrer"
+                                                            className="text-sm text-blue-600 hover:underline mt-2 inline-block"
+                                                        >
+                                                            Ouvrir le document
+                                                        </a>
+                                                    </div>
+                                                ))}
+                                            </div>
+                                        ) : (
+                                            <div className="py-6 text-center">
+                                                <FileText className="w-12 h-12 text-gray-400 mx-auto mb-2" />
+                                                <p className="text-gray-600">Aucun document disponible</p>
+                                            </div>
+                                        )}
                                     </CardContent>
                                 </Card>
                             </TabsContent>

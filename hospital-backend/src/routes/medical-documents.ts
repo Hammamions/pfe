@@ -4,6 +4,24 @@ import { authenticatePatient, AuthRequest } from '../middleware/auth';
 
 const router = Router();
 
+const formatBytes = (bytes: number) => {
+    if (!Number.isFinite(bytes) || bytes <= 0) return null;
+    if (bytes < 1024) return `${bytes} B`;
+    if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
+    return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+};
+
+const getRemoteFileSize = async (url: string) => {
+    try {
+        const headResponse = await fetch(url, { method: 'HEAD' });
+        const length = headResponse.headers.get('content-length');
+        if (!length) return null;
+        return formatBytes(parseInt(length, 10));
+    } catch {
+        return null;
+    }
+};
+
 router.get('/', authenticatePatient, async (req: AuthRequest, res: Response) => {
     try {
         const patient = await prisma.patient.findUnique({
@@ -14,7 +32,20 @@ router.get('/', authenticatePatient, async (req: AuthRequest, res: Response) => 
         if (!patient) return res.status(404).json({ error: 'Patient non trouvé' });
         if (!patient.dossierMedical) return res.json([]);
 
-        return res.json(patient.dossierMedical.documents);
+        const documentsWithMeta = await Promise.all(
+            patient.dossierMedical.documents.map(async (doc) => {
+                const remoteSize = await getRemoteFileSize(doc.urlFichier);
+                const praticien = doc.praticien?.trim() || 'Service hospitalier';
+                return {
+                    ...doc,
+                    praticien,
+                    emittedBy: praticien,
+                    size: remoteSize || 'Inconnue'
+                };
+            })
+        );
+
+        return res.json(documentsWithMeta);
     } catch (error) {
         console.error(error);
         return res.status(500).json({ error: 'Erreur serveur' });
@@ -29,7 +60,10 @@ router.post('/', authenticatePatient, async (req: AuthRequest, res: Response) =>
     }
 
     try {
-        const patient = await prisma.patient.findUnique({ where: { utilisateurId: req.userId } });
+        const patient = await prisma.patient.findUnique({
+            where: { utilisateurId: req.userId },
+            include: { utilisateur: true }
+        });
         if (!patient) return res.status(404).json({ error: 'Patient non trouvé' });
 
 
@@ -44,6 +78,7 @@ router.post('/', authenticatePatient, async (req: AuthRequest, res: Response) =>
                 titre,
                 urlFichier,
                 type: type || null,
+                praticien: `Patient ${patient.utilisateur.prenom} ${patient.utilisateur.nom}`,
                 dossierMedicalId: dossier.id
             }
         });

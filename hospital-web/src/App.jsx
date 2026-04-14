@@ -11,7 +11,7 @@ import PatientFiles from "./pages/docteur/PatientFiles";
 import PrescriptionGenerator from "./pages/docteur/PrescriptionGenerator";
 import SousAdminAppointments from "./pages/sous-admin/SousAdminAppointments";
 import SousAdminDashboard from "./pages/sous-admin/SousAdminDashboard";
-import SousAdminDoctors from "./pages/sous-admin/SousAdminDoctors";
+import SousAdminDocuments from "./pages/sous-admin/SousAdminDocuments";
 
 function App() {
     return (
@@ -33,7 +33,7 @@ function App() {
                     <Route index element={<Navigate to="dashboard" replace />} />
                     <Route path="dashboard" element={<SousAdminDashboard />} />
                     <Route path="appointments" element={<SousAdminAppointments />} />
-                    <Route path="doctors" element={<SousAdminDoctors />} />
+                    <Route path="documents" element={<SousAdminDocuments />} />
                 </Route>
 
                 <Route path="/admin" element={<AdminLayout />}>

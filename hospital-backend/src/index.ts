@@ -103,6 +103,6 @@ app.get('/api/health', (_req: Request, res: Response) => {
 });
 
 app.listen(PORT, () => {
-    console.log(`🚀 Server is running on http://localhost:${PORT}`);
-    console.log(`📋 Routes: /api/auth | /api/patients | /api/appointments | /api/documents | /api/urgence | /api/feedback | /api/professionals | /api/sous-admin`);
+    console.log(` Server is running on http://localhost:${PORT}`);
+    console.log(` Routes: /api/auth | /api/patients | /api/appointments | /api/documents | /api/urgence | /api/feedback | /api/professionals | /api/sous-admin`);
 });

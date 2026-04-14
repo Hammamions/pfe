@@ -1,8 +1,8 @@
 import {
     Activity,
     Calendar,
-    LogOut,
-    Users
+    FileText,
+    LogOut
 } from 'lucide-react';
 import { Link, Outlet, useLocation, useNavigate } from 'react-router-dom';
 import logo from '../../assets/logo sans bg.png';
@@ -57,9 +57,9 @@ export default function SousAdminLayout() {
                             <Calendar className="w-4 h-4" />
                             Rendez-vous
                         </Link>
-                        <Link to="/sous-admin/doctors" className={getLinkClass('/sous-admin/doctors')}>
-                            <Users className="w-4 h-4" />
-                            Médecins
+                        <Link to="/sous-admin/documents" className={getLinkClass('/sous-admin/documents')}>
+                            <FileText className="w-4 h-4" />
+                            Documents
                         </Link>
                     </nav>
 

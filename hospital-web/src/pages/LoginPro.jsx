@@ -53,7 +53,6 @@ const RoleSelector = ({ role, setRole }) => (
 
 const LoginPro = () => {
   const navigate = useNavigate();
-  const [activeTab, setActiveTab] = useState("connexion");
   const [isForgotPassword, setIsForgotPassword] = useState(false);
   const [resetEmail, setResetEmail] = useState("");
   const [rememberMe, setRememberMe] = useState(false);
@@ -64,8 +63,6 @@ const LoginPro = () => {
   const [formData, setFormData] = useState({
     email: "",
     password: "",
-    fullName: "",
-    confirmPassword: "",
   });
 
   const handleChange = (e) => {
@@ -115,47 +112,6 @@ const LoginPro = () => {
     }
   };
 
-  const handleRegister = async (e) => {
-    e.preventDefault();
-    if (formData.password !== formData.confirmPassword) {
-      setError("Les mots de passe ne correspondent pas.");
-      return;
-    }
-
-    setLoading(true);
-    setError("");
-
-    try {
-      let apiRole = 'MEDECIN';
-      if (role === 'Administrateur') apiRole = 'ADMIN';
-      if (role === 'Sous-Administrateur') apiRole = 'SOUS_ADMIN';
-
-      const response = await api.post('/auth/register', {
-        fullName: formData.fullName,
-        email: formData.email,
-        password: formData.password,
-        role: apiRole,
-      });
-
-      const { token, user } = response.data;
-
-      sessionStorage.setItem('proToken', token);
-      sessionStorage.setItem('proUser', JSON.stringify(user));
-
-      if (user.role === "DOCTOR" || user.role === "MEDECIN") {
-        navigate("/doctor/dashboard");
-      } else if (user.role === "ADMIN") {
-        navigate("/admin/dashboard");
-      } else if (user.role === "SOUS_ADMIN") {
-        navigate("/sous-admin/dashboard");
-      }
-    } catch (err) {
-      setError(err.response?.data?.error || "Erreur lors de la création du compte.");
-    } finally {
-      setLoading(false);
-    }
-  };
-
   const handleForgotPassword = (e) => {
     e.preventDefault();
     if (resetEmail) {
@@ -178,24 +134,9 @@ const LoginPro = () => {
         </div>
 
         <div className="bg-[#E2E8F0]/60 p-1 rounded-full flex mx-auto max-w-[340px]">
-          <button
-            onClick={() => setActiveTab("connexion")}
-            className={`flex-1 py-2 text-[15px] font-medium rounded-full transition-all duration-200 ${activeTab === "connexion"
-              ? "bg-white text-slate-900 shadow-sm"
-              : "text-slate-500 hover:text-slate-800"
-              }`}
-          >
+          <div className="flex-1 py-2 text-[15px] font-medium rounded-full bg-white text-slate-900 shadow-sm text-center">
             Connexion
-          </button>
-          <button
-            onClick={() => setActiveTab("inscription")}
-            className={`flex-1 py-2 text-[15px] font-medium rounded-full transition-all duration-200 ${activeTab === "inscription"
-              ? "bg-white text-slate-900 shadow-sm"
-              : "text-slate-500 hover:text-slate-800"
-              }`}
-          >
-            Inscription
-          </button>
+          </div>
         </div>
 
         <div className="bg-white px-8 py-8 rounded-2xl border border-slate-100/60" style={{ boxShadow: '0 4px 20px -2px rgba(0, 0, 0, 0.05)' }}>
@@ -246,7 +187,7 @@ const LoginPro = () => {
                 </div>
               </form>
             </>
-          ) : activeTab === "connexion" ? (
+          ) : (
             <>
               <div className="mb-6">
                 <h2 className="text-[17px] font-bold text-slate-900">Se connecter</h2>
@@ -331,101 +272,6 @@ const LoginPro = () => {
                     className={`flex w-full justify-center rounded-xl bg-[#030712] px-3 py-3.5 text-[15px] font-semibold text-white shadow-sm hover:bg-slate-800 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-slate-900 transition-colors ${loading ? 'opacity-50 cursor-not-allowed' : ''}`}
                   >
                     {loading ? 'Connexion en cours...' : 'Se connecter'}
-                  </button>
-                </div>
-              </form>
-            </>
-          ) : (
-            <>
-              <div className="mb-6">
-                <h2 className="text-[17px] font-bold text-slate-900">Créer un compte professionnel</h2>
-                <p className="text-[15px] text-slate-500 mt-1">Rejoignez le réseau Hôpital Connect</p>
-              </div>
-
-              <form onSubmit={handleRegister} className="space-y-4">
-                <RoleSelector role={role} setRole={setRole} />
-
-                <div>
-                  <label className="block text-[14px] font-semibold text-slate-900 mb-2">
-                    Nom complet (Dr. ...)
-                  </label>
-                  <input
-                    type="text"
-                    name="fullName"
-                    required
-                    value={formData.fullName}
-                    onChange={handleChange}
-                    placeholder="votre nom et prénom"
-                    className="block w-full rounded-xl border-0 py-3 px-4 text-slate-900 bg-[#F1F5F9] placeholder:text-slate-500 focus:ring-2 focus:ring-inset focus:ring-blue-600 sm:text-[15px] transition-all outline-none"
-                  />
-                </div>
-
-                <div>
-                  <label className="block text-[14px] font-semibold text-slate-900 mb-2">
-                    Email Professionnel
-                  </label>
-                  <div className="relative">
-                    <div className="pointer-events-none absolute inset-y-0 left-0 flex items-center pl-4">
-                      <Mail className="h-4 w-4 text-slate-400" />
-                    </div>
-                    <input
-                      type="email"
-                      name="email"
-                      required
-                      value={formData.email}
-                      onChange={handleChange}
-                      placeholder="dr.dupont@hopital.com"
-                      className="block w-full rounded-xl border-0 py-3 pl-11 text-slate-900 bg-[#F1F5F9] placeholder:text-slate-500 focus:ring-2 focus:ring-inset focus:ring-blue-600 sm:text-[15px] transition-all outline-none"
-                    />
-                  </div>
-                </div>
-
-                <div>
-                  <label className="block text-[14px] font-semibold text-slate-900 mb-2">
-                    Mot de passe
-                  </label>
-                  <div className="relative">
-                    <div className="pointer-events-none absolute inset-y-0 left-0 flex items-center pl-4">
-                      <Lock className="h-4 w-4 text-slate-400" />
-                    </div>
-                    <input
-                      type="password"
-                      name="password"
-                      required
-                      value={formData.password}
-                      onChange={handleChange}
-                      placeholder="••••••••"
-                      className="block w-full rounded-xl border-0 py-3 pl-11 text-slate-900 bg-[#F1F5F9] placeholder:text-slate-500 focus:ring-2 focus:ring-inset focus:ring-blue-600 sm:text-[15px] transition-all outline-none"
-                    />
-                  </div>
-                </div>
-
-                <div>
-                  <label className="block text-[14px] font-semibold text-slate-900 mb-2">
-                    Confirmer le mot de passe
-                  </label>
-                  <div className="relative">
-                    <div className="pointer-events-none absolute inset-y-0 left-0 flex items-center pl-4">
-                      <Lock className="h-4 w-4 text-slate-400" />
-                    </div>
-                    <input
-                      type="password"
-                      name="confirmPassword"
-                      required
-                      value={formData.confirmPassword}
-                      onChange={handleChange}
-                      placeholder="••••••••"
-                      className="block w-full rounded-xl border-0 py-3 pl-11 text-slate-900 bg-[#F1F5F9] placeholder:text-slate-500 focus:ring-2 focus:ring-inset focus:ring-blue-600 sm:text-[15px] transition-all outline-none"
-                    />
-                  </div>
-                </div>
-
-                <div className="pt-2">
-                  <button
-                    type="submit"
-                    className="flex w-full justify-center rounded-xl bg-[#030712] px-3 py-3.5 text-[15px] font-semibold text-white shadow-sm hover:bg-slate-800 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-slate-900 transition-colors"
-                  >
-                    S'inscrire
                   </button>
                 </div>
               </form>

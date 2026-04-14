@@ -81,7 +81,7 @@ model Document {
   titre            String
   urlFichier       String
   type             String?
-  praticien        String?        // <-- NOUVEAU: Nom de la personne qui a émis le document
+  praticien        String?       
   createdAt        DateTime       @default(now())
   dossierMedicalId Int
   dossierMedical   DossierMedical @relation(fields: [dossierMedicalId], references: [id], onDelete: Cascade)

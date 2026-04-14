@@ -8,24 +8,44 @@ import {
     TrendingUp,
     Users
 } from 'lucide-react';
+import { useEffect, useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { Badge } from '../../components/ui/badge';
 import { Button } from '../../components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '../../components/ui/card';
-import {
-    mockDoctorAppointments,
-    mockWaitingRoom
-} from '../../data/doctorMockData';
+import { mockDoctorAppointments } from '../../data/doctorMockData';
+import api from '../../lib/api';
 
 export default function DoctorDashboardPage() {
+    const [waitingPatients, setWaitingPatients] = useState([]);
     const today = new Date().toLocaleDateString('fr-FR', {
         day: '2-digit',
         month: '2-digit',
         year: 'numeric'
     });
-
-    const waitingPatients = mockWaitingRoom.filter((p) => p.statut === 'en attente');
     const navigate = useNavigate();
+
+    useEffect(() => {
+        let mounted = true;
+        const fetchWaitingRoom = async () => {
+            try {
+                const res = await api.get('/professionals/doctor-waiting-room', {
+                    params: { _t: Date.now() }
+                });
+                if (!mounted) return;
+                setWaitingPatients(Array.isArray(res.data) ? res.data : []);
+            } catch (err) {
+                console.error('Doctor waiting room fetch error:', err);
+                if (mounted) setWaitingPatients([]);
+            }
+        };
+        fetchWaitingRoom();
+        const intervalId = setInterval(fetchWaitingRoom, 5000);
+        return () => {
+            mounted = false;
+            clearInterval(intervalId);
+        };
+    }, []);
 
     const handleViewPatient = (patient) => {
         navigate('/doctor/patients', {
@@ -64,7 +84,7 @@ export default function DoctorDashboardPage() {
                         <div className="flex items-center justify-between">
                             <div>
                                 <p className="text-sm font-medium text-gray-500">En salle d'attente</p>
-                                <p className="text-3xl font-bold text-gray-900 mt-2">2</p>
+                                <p className="text-3xl font-bold text-gray-900 mt-2">{waitingPatients.length}</p>
                             </div>
                             <div className="w-14 h-14 bg-orange-50 text-orange-600 rounded-2xl flex items-center justify-center">
                                 <Clock className="w-7 h-7" />
@@ -124,7 +144,7 @@ export default function DoctorDashboardPage() {
                                 waitingPatients.map((patient) => (
                                     <div
                                         key={patient.id}
-                                        className={`p-5 rounded-xl border transition-all ${patient.priorite === 'urgente'
+                                        className={`p-5 rounded-xl border transition-all ${patient.isUrgent
                                             ? 'border-red-100 bg-red-50/50'
                                             : 'border-gray-100 bg-white hover:border-blue-100 hover:shadow-sm'
                                             }`}
@@ -134,18 +154,18 @@ export default function DoctorDashboardPage() {
                                                 <div>
                                                     <div className="flex items-center gap-3">
                                                         <h4 className="font-bold text-gray-900 text-lg">
-                                                            {patient.prenom} {patient.nom}
+                                                            {patient.patient?.prenom} {patient.patient?.nom}
                                                         </h4>
-                                                        {patient.priorite === 'urgente' && (
+                                                        {patient.isUrgent && (
                                                             <Badge className="bg-red-500 hover:bg-red-600 text-white border-0 shadow-sm">
                                                                 Urgente
                                                             </Badge>
                                                         )}
                                                     </div>
-                                                    <p className="text-gray-600 mt-1 font-medium">{patient.motif}</p>
+                                                    <p className="text-gray-600 mt-1 font-medium">{patient.motif || 'Consultation'}</p>
                                                     <div className="flex items-center gap-2 mt-3 text-sm text-gray-500">
                                                         <Clock className="w-4 h-4" />
-                                                        <span>Arrivée: {patient.heureArrivee}</span>
+                                                        <span>Arrivée: {patient.heure || '--:--'}</span>
                                                     </div>
                                                 </div>
                                             </div>

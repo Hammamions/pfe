@@ -38,9 +38,6 @@ router.post('/', authenticatePatient, async (req: AuthRequest, res: Response) =>
             }
         });
 
-        // No patient notification here: patient notifications are restricted
-        // to document received and appointment status updates only.
-
         return res.status(201).json(newUrgence);
     } catch (error) {
         console.error(error);

@@ -8,11 +8,44 @@ import { Input } from '../../components/ui/input';
 import { Label } from '../../components/ui/label';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '../../components/ui/tabs';
 import api from '../../lib/api';
-import { mockDoctorAppointments, mockWaitingRoom } from '../../data/doctorMockData';
+
+const getLocalDateInputValue = (date = new Date()) => {
+    const year = date.getFullYear();
+    const month = String(date.getMonth() + 1).padStart(2, '0');
+    const day = String(date.getDate()).padStart(2, '0');
+    return `${year}-${month}-${day}`;
+};
+
+const formatDateFr = (value) => {
+    if (!value) return '';
+    const [year, month, day] = value.split('-');
+    if (!year || !month || !day) return value;
+    return `${day}/${month}/${year}`;
+};
+
+const addDaysToDateInput = (dateInput, daysToAdd) => {
+    const [year, month, day] = dateInput.split('-').map(Number);
+    const base = new Date(year, month - 1, day);
+    base.setDate(base.getDate() + daysToAdd);
+    const y = base.getFullYear();
+    const m = String(base.getMonth() + 1).padStart(2, '0');
+    const d = String(base.getDate()).padStart(2, '0');
+    return `${y}-${m}-${d}`;
+};
+
+const getWeekDateInputs = (dateInput) => {
+    const [year, month, day] = dateInput.split('-').map(Number);
+    const current = new Date(year, month - 1, day);
+    const dayOfWeek = current.getDay(); // 0 dim, 1 lun ... 6 sam
+    const diffToMonday = dayOfWeek === 0 ? -6 : 1 - dayOfWeek;
+    const mondayInput = addDaysToDateInput(dateInput, diffToMonday);
+    return Array.from({ length: 7 }, (_, idx) => addDaysToDateInput(mondayInput, idx));
+};
 
 export default function DoctorAgendaPage() {
-    const [selectedDate, setSelectedDate] = useState(new Date().toISOString().split('T')[0]);
-    const [appointments, setAppointments] = useState(mockDoctorAppointments);
+    const [selectedDate, setSelectedDate] = useState(getLocalDateInputValue());
+    const [appointments, setAppointments] = useState([]);
+    const [weeklyAppointments, setWeeklyAppointments] = useState([]);
     const [isRescheduleOpen, setIsRescheduleOpen] = useState(false);
     const [selectedAppointment, setSelectedAppointment] = useState(null);
     const [newDate, setNewDate] = useState('');
@@ -45,6 +78,43 @@ export default function DoctorAgendaPage() {
         };
     }, []);
 
+    useEffect(() => {
+        let isMounted = true;
+        const fetchAgenda = async () => {
+            try {
+                const dailyRes = await api.get('/professionals/doctor-agenda', {
+                    params: { date: selectedDate, _t: Date.now() }
+                });
+                if (!isMounted) return;
+                setAppointments(Array.isArray(dailyRes.data) ? dailyRes.data : []);
+
+                const weekDates = getWeekDateInputs(selectedDate);
+                const weekResponses = await Promise.all(
+                    weekDates.map((date) =>
+                        api.get('/professionals/doctor-agenda', {
+                            params: { date, _t: Date.now() }
+                        })
+                    )
+                );
+                if (!isMounted) return;
+                const mergedWeekly = weekResponses.flatMap((res) =>
+                    Array.isArray(res.data) ? res.data : []
+                );
+                setWeeklyAppointments(mergedWeekly);
+            } catch (error) {
+                if (!isMounted) return;
+                console.error('Error fetching doctor agenda:', error);
+                setAppointments([]);
+                setWeeklyAppointments([]);
+            }
+        };
+
+        fetchAgenda();
+        return () => {
+            isMounted = false;
+        };
+    }, [selectedDate]);
+
     const handleRescheduleClick = (appointment) => {
         setSelectedAppointment(appointment);
         setNewDate(selectedDate);
@@ -54,22 +124,23 @@ export default function DoctorAgendaPage() {
 
     const confirmReschedule = () => {
         if (!selectedAppointment) return;
-
-        const updatedAppointments = appointments.map(apt => {
-            if (apt.id === selectedAppointment.id) {
-                return {
-                    ...apt,
-                    rescheduleStatus: 'pending',
-                    requestedDate: newDate,
-                    requestedTime: newTime
-                };
+        const submitReschedule = async () => {
+            try {
+                await api.post(`/professionals/doctor-agenda/${selectedAppointment.id}/reschedule-request`, {
+                    date: newDate,
+                    time: newTime
+                });
+                const res = await api.get('/professionals/doctor-agenda', {
+                    params: { date: selectedDate, _t: Date.now() }
+                });
+                setAppointments(Array.isArray(res.data) ? res.data : []);
+                setIsRescheduleOpen(false);
+                setSelectedAppointment(null);
+            } catch (error) {
+                console.error('Error sending reschedule request:', error);
             }
-            return apt;
-        });
-
-        setAppointments(updatedAppointments);
-        setIsRescheduleOpen(false);
-        setSelectedAppointment(null);
+        };
+        submitReschedule();
     };
 
     const timeSlots = Array.from({ length: 12 }, (_, i) => {
@@ -79,6 +150,23 @@ export default function DoctorAgendaPage() {
 
     const daysOfWeek = ['Lun', 'Mar', 'Mer', 'Jeu', 'Ven', 'Sam', 'Dim'];
     const workingDays = [true, true, true, true, true, false, false];
+    const weekDates = getWeekDateInputs(selectedDate);
+    const appointmentsByHour = appointments.reduce((acc, apt) => {
+        const hour = String(apt.heure || '').split(':')[0];
+        if (!hour) return acc;
+        if (!acc[hour]) acc[hour] = [];
+        acc[hour].push(apt);
+        return acc;
+    }, {});
+    const weeklyAppointmentsByDayHour = weeklyAppointments.reduce((acc, apt) => {
+        const day = String(apt.date || '');
+        const hour = String(apt.heure || '').split(':')[0];
+        if (!day || !hour) return acc;
+        const key = `${day}-${hour}`;
+        if (!acc[key]) acc[key] = [];
+        acc[key].push(apt);
+        return acc;
+    }, {});
 
     return (
         <div className="space-y-6">
@@ -100,7 +188,7 @@ export default function DoctorAgendaPage() {
                         <CardHeader>
                             <div className="flex items-center justify-between">
                                 <div>
-                                    <CardTitle>Planning du {selectedDate}</CardTitle>
+                                    <CardTitle>Planning du {formatDateFr(selectedDate)}</CardTitle>
                                     <CardDescription>Vos rendez-vous de la journée</CardDescription>
                                 </div>
                                 <input
@@ -114,55 +202,59 @@ export default function DoctorAgendaPage() {
                         <CardContent>
                             <div className="space-y-2">
                                 {timeSlots.map((time) => {
-                                    const appointment = appointments.find(
-                                        (apt) => apt.heure === time
-                                    );
+                                    const hourKey = time.split(':')[0];
+                                    const hourAppointments = appointmentsByHour[hourKey] || [];
                                     return (
                                         <div
                                             key={time}
-                                            className="flex items-center gap-4 p-3 rounded-lg border border-gray-200 hover:bg-gray-50 transition-colors"
+                                            className="flex items-start gap-4 p-3 rounded-lg border border-gray-200 hover:bg-gray-50 transition-colors"
                                         >
                                             <div className="w-20 font-semibold text-gray-700">{time}</div>
-                                            {appointment ? (
-                                                <>
-                                                    <div
-                                                        className="flex-1 flex items-center gap-3 cursor-pointer hover:bg-gray-100 p-2 rounded-lg transition-colors"
-                                                        onClick={() => handleRescheduleClick(appointment)}
-                                                        title="Cliquez pour reprogrammer"
-                                                    >
-                                                        <div className={`w-1 h-12 rounded-full ${appointment.rescheduleStatus === 'pending' ? 'bg-orange-500' : 'bg-blue-600'
-                                                            }`} />
-                                                        <div>
-                                                            <h4 className="font-semibold text-gray-900">
-                                                                {appointment.patient.prenom} {appointment.patient.nom}
-                                                            </h4>
-                                                            <p className="text-sm text-gray-600">
-                                                                {appointment.motif}
-                                                            </p>
-                                                            <div className="flex items-center gap-2">
-                                                                <p className="text-xs text-gray-500 mt-1">
-                                                                    Salle {appointment.salle} • {appointment.duree} min
-                                                                </p>
-                                                                {appointment.rescheduleStatus === 'pending' && (
-                                                                    <Badge variant="outline" className="text-xs text-orange-600 border-orange-200 bg-orange-50">
-                                                                        Reprogrammation demandée
-                                                                    </Badge>
-                                                                )}
+                                            {hourAppointments.length > 0 ? (
+                                                <div className="flex-1 grid grid-cols-1 md:grid-cols-2 gap-2">
+                                                    {hourAppointments.map((appointment) => (
+                                                        <div
+                                                            key={appointment.id}
+                                                            className="flex items-center justify-between gap-3 cursor-pointer hover:bg-gray-100 p-2 rounded-lg transition-colors border border-gray-100 bg-white"
+                                                            onClick={() => handleRescheduleClick(appointment)}
+                                                            title="Cliquez pour reprogrammer"
+                                                        >
+                                                            <div className="flex items-center gap-3 min-w-0">
+                                                                <div className={`w-1 h-12 rounded-full ${appointment.rescheduleStatus === 'pending' ? 'bg-orange-500' : 'bg-blue-600'
+                                                                    }`} />
+                                                                <div className="min-w-0">
+                                                                    <div className="flex items-center gap-2 flex-wrap">
+                                                                        <h4 className="font-semibold text-gray-900 truncate">
+                                                                            {appointment.patient.prenom} {appointment.patient.nom}
+                                                                        </h4>
+                                                                        {appointment.rescheduleStatus === 'pending' && (
+                                                                            <Badge variant="outline" className="text-xs text-orange-600 border-orange-200 bg-orange-50">
+                                                                                Reprogrammation demandée
+                                                                            </Badge>
+                                                                        )}
+                                                                    </div>
+                                                                    <p className="text-sm text-gray-600 truncate">
+                                                                        {appointment.motif}
+                                                                    </p>
+                                                                    <p className="text-xs text-gray-500 mt-1">
+                                                                        Salle {appointment.salle} • {appointment.duree} min
+                                                                    </p>
+                                                                </div>
                                                             </div>
+                                                            <Badge
+                                                                variant={
+                                                                    appointment.statut === 'en cours'
+                                                                        ? 'default'
+                                                                        : appointment.statut === 'terminé'
+                                                                            ? 'secondary'
+                                                                            : 'outline'
+                                                                }
+                                                            >
+                                                                {appointment.statut}
+                                                            </Badge>
                                                         </div>
-                                                    </div>
-                                                    <Badge
-                                                        variant={
-                                                            appointment.statut === 'en cours'
-                                                                ? 'default'
-                                                                : appointment.statut === 'terminé'
-                                                                    ? 'secondary'
-                                                                    : 'outline'
-                                                        }
-                                                    >
-                                                        {appointment.statut}
-                                                    </Badge>
-                                                </>
+                                                    ))}
+                                                </div>
                                             ) : (
 
                                                 <div className="flex-1 text-gray-400 text-sm">Disponible</div>
@@ -195,11 +287,14 @@ export default function DoctorAgendaPage() {
                                             </div>
                                         ))}
                                     </div>
-                                    {timeSlots.slice(0, 10).map((time) => (
+                                    {timeSlots.map((time) => (
                                         <div key={time} className="grid grid-cols-8 gap-2 mb-1">
                                             <div className="text-sm text-gray-600 py-2">{time}</div>
                                             {daysOfWeek.map((day, idx) => {
-                                                const hasAppointment = idx < 5 && Math.random() > 0.6;
+                                                const dayDate = weekDates[idx];
+                                                const hourKey = time.split(':')[0];
+                                                const slotAppointments = weeklyAppointmentsByDayHour[`${dayDate}-${hourKey}`] || [];
+                                                const hasAppointment = slotAppointments.length > 0;
                                                 return (
                                                     <div
                                                         key={day}
@@ -211,9 +306,16 @@ export default function DoctorAgendaPage() {
                                                             }`}
                                                     >
                                                         {hasAppointment && (
-                                                            <div className="font-medium text-blue-900 truncate">
-                                                                Patient
-                                                            </div>
+                                                            <>
+                                                                <div className="font-medium text-blue-900 truncate">
+                                                                    {slotAppointments[0]?.patient?.prenom} {slotAppointments[0]?.patient?.nom}
+                                                                </div>
+                                                                {slotAppointments.length > 1 && (
+                                                                    <div className="text-[10px] text-blue-700">
+                                                                        +{slotAppointments.length - 1} autre(s)
+                                                                    </div>
+                                                                )}
+                                                            </>
                                                         )}
                                                     </div>
                                                 );

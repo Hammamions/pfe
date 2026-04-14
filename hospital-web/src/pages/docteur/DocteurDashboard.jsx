@@ -13,11 +13,11 @@ import { Link, useNavigate } from 'react-router-dom';
 import { Badge } from '../../components/ui/badge';
 import { Button } from '../../components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '../../components/ui/card';
-import { mockDoctorAppointments } from '../../data/doctorMockData';
 import api from '../../lib/api';
 
 export default function DoctorDashboardPage() {
     const [waitingPatients, setWaitingPatients] = useState([]);
+    const [todayAppointments, setTodayAppointments] = useState([]);
     const today = new Date().toLocaleDateString('fr-FR', {
         day: '2-digit',
         month: '2-digit',
@@ -27,20 +27,25 @@ export default function DoctorDashboardPage() {
 
     useEffect(() => {
         let mounted = true;
-        const fetchWaitingRoom = async () => {
+        const fetchDoctorData = async () => {
             try {
-                const res = await api.get('/professionals/doctor-waiting-room', {
-                    params: { _t: Date.now() }
-                });
+                const [waitingRes, agendaRes] = await Promise.all([
+                    api.get('/professionals/doctor-waiting-room', { params: { _t: Date.now() } }),
+                    api.get('/professionals/doctor-agenda', { params: { _t: Date.now() } })
+                ]);
                 if (!mounted) return;
-                setWaitingPatients(Array.isArray(res.data) ? res.data : []);
+                setWaitingPatients(Array.isArray(waitingRes.data) ? waitingRes.data : []);
+                setTodayAppointments(Array.isArray(agendaRes.data) ? agendaRes.data : []);
             } catch (err) {
-                console.error('Doctor waiting room fetch error:', err);
-                if (mounted) setWaitingPatients([]);
+                console.error('Doctor dashboard fetch error:', err);
+                if (mounted) {
+                    setWaitingPatients([]);
+                    setTodayAppointments([]);
+                }
             }
         };
-        fetchWaitingRoom();
-        const intervalId = setInterval(fetchWaitingRoom, 5000);
+        fetchDoctorData();
+        const intervalId = setInterval(fetchDoctorData, 5000);
         return () => {
             mounted = false;
             clearInterval(intervalId);
@@ -70,7 +75,7 @@ export default function DoctorDashboardPage() {
                         <div className="flex items-center justify-between">
                             <div>
                                 <p className="text-sm font-medium text-gray-500">Rendez-vous du jour</p>
-                                <p className="text-3xl font-bold text-gray-900 mt-2">5</p>
+                                <p className="text-3xl font-bold text-gray-900 mt-2">{todayAppointments.length}</p>
                             </div>
                             <div className="w-14 h-14 bg-blue-50 text-blue-600 rounded-2xl flex items-center justify-center">
                                 <Calendar className="w-7 h-7" />
@@ -182,7 +187,7 @@ export default function DoctorDashboardPage() {
                             <CardDescription className="mt-1">Vos rendez-vous d'aujourd'hui</CardDescription>
                         </CardHeader>
                         <CardContent className="p-6 space-y-4">
-                            {mockDoctorAppointments.map((apt) => (
+                            {todayAppointments.map((apt) => (
                                 <div key={apt.id} className="group flex items-center justify-between p-4 bg-white border border-gray-100 rounded-xl hover:border-blue-200 hover:shadow-sm transition-all duration-200">
                                     <div className="flex items-center gap-6">
                                         <div className="text-center min-w-[70px]">
@@ -210,6 +215,11 @@ export default function DoctorDashboardPage() {
                                     </div>
                                 </div>
                             ))}
+                            {todayAppointments.length === 0 && (
+                                <div className="text-center py-8 text-gray-400">
+                                    Aucun rendez-vous planifié aujourd&apos;hui
+                                </div>
+                            )}
                         </CardContent>
                     </Card>
                 </div>

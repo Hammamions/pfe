@@ -179,6 +179,16 @@ export default function SousAdminAppointments() {
         }
     };
 
+    const handleStartConsultation = async (id) => {
+        try {
+            await api.patch(`/sous-admin/appointments/${id}/presence`, { presenceStatus: 'PRESENT' });
+            const res = await api.get('/professionals/all-appointments');
+            setAppointments(res.data);
+        } catch (err) {
+            console.error("Start consultation error:", err);
+        }
+    };
+
     const handlePlanify = async (requestId) => {
         if (!selectedTime || !selectedDoctorId || !selectedLocation || !selectedRoom) return;
 
@@ -731,14 +741,19 @@ export default function SousAdminAppointments() {
                                                                 </span>
                                                                 <Button
                                                                     size="sm"
-                                                                    disabled={!canCheckout}
                                                                     className={`mt-3 h-12 font-bold uppercase text-[10px] tracking-widest px-6 rounded-2xl shadow-xl transition-all ${canCheckout
                                                                         ? 'bg-gray-900 text-white hover:bg-black shadow-gray-200 hover:scale-105'
-                                                                        : 'bg-gray-200 text-gray-500 cursor-not-allowed shadow-gray-100'
+                                                                        : 'bg-indigo-600 text-white hover:bg-indigo-700 shadow-indigo-200 hover:scale-105'
                                                                         }`}
-                                                                    onClick={() => handleCheckout(p.id)}
+                                                                    onClick={() => {
+                                                                        if (canCheckout) {
+                                                                            handleCheckout(p.id);
+                                                                        } else {
+                                                                            handleStartConsultation(p.id);
+                                                                        }
+                                                                    }}
                                                                 >
-                                                                    Marquer sortie
+                                                                    {canCheckout ? 'Marquer sortie' : 'Démarrer consultation'}
                                                                 </Button>
                                                             </div>
                                                         );

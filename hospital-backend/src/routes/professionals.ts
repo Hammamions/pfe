@@ -8,6 +8,32 @@ const router = Router();
 
 const ABSENCE_NOTIFICATION_TITLE = '⚠️ Absence rendez-vous';
 
+function parseDateQuery(value?: string): Date {
+    if (!value) return new Date();
+    const match = value.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+    if (!match) return new Date(value);
+    const [, y, m, d] = match;
+    return new Date(Number(y), Number(m) - 1, Number(d));
+}
+
+function mergeDateAndTime(dateValue: string, timeValue?: string): Date {
+    const base = parseDateQuery(dateValue);
+    if (!timeValue) return base;
+    const match = timeValue.match(/^(\d{2}):(\d{2})/);
+    if (!match) return base;
+    const [, hh, mm] = match;
+    const merged = new Date(base);
+    merged.setHours(Number(hh), Number(mm), 0, 0);
+    return merged;
+}
+
+function formatLocalDate(date: Date): string {
+    const year = date.getFullYear();
+    const month = String(date.getMonth() + 1).padStart(2, '0');
+    const day = String(date.getDate()).padStart(2, '0');
+    return `${year}-${month}-${day}`;
+}
+
 async function autoCloseAbsentAppointments(params: {
     isSousAdmin: boolean;
     saId?: number;
@@ -423,6 +449,126 @@ router.get('/doctor-waiting-room', authenticateProfessional, async (req: AuthReq
             consultations: [],
             documents: apt.patient.dossierMedical?.documents || []
         })));
+    } catch (err) {
+        console.error(err);
+        return res.status(500).json({ error: 'Erreur serveur' });
+    }
+});
+
+router.get('/doctor-agenda', authenticateProfessional, async (req: AuthRequest, res: Response) => {
+    try {
+        if (req.role !== 'DOCTOR' && req.role !== 'MEDECIN') {
+            return res.status(403).json({ error: 'Accès réservé aux médecins' });
+        }
+
+        const medecin = await prisma.medecin.findUnique({ where: { utilisateurId: req.userId } });
+        if (!medecin) return res.status(404).json({ error: 'Médecin non trouvé' });
+
+        const targetDate = parseDateQuery(req.query.date as string | undefined);
+        const startOfDay = new Date(targetDate); startOfDay.setHours(0, 0, 0, 0);
+        const endOfDay = new Date(targetDate); endOfDay.setHours(23, 59, 59, 999);
+
+        const appointments = await prisma.rendezVous.findMany({
+            where: {
+                medecinId: medecin.id,
+                date: { gte: startOfDay, lte: endOfDay },
+                statut: { not: 'ANNULE' as any }
+            },
+            include: {
+                patient: {
+                    include: {
+                        utilisateur: true
+                    }
+                }
+            },
+            orderBy: { date: 'asc' }
+        });
+
+        return res.json(appointments.map((apt: any) => {
+            const rawMotif = apt.motif || '';
+            return {
+                id: apt.id,
+                date: formatLocalDate(apt.date),
+                heure: apt.date.toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' }),
+                duree: 30,
+                statut: String(apt.statut || '').toLowerCase(),
+                rescheduleStatus: (apt.statut as any) === 'REPORTE' || /\[REPORT\]/.test(rawMotif) ? 'pending' : null,
+                salle: apt.salle || 'À définir',
+                motif: rawMotif
+                    .replace(/\[SPEC:[^\]]+\]/g, '')
+                    .replace(/\[ANNULER\]/g, '')
+                    .replace(/\[REPORT\]/g, '')
+                    .replace(/\[PRESENT:1\]/g, '')
+                    .replace(/\[URGENT:(?:0|1)\]/g, '')
+                    .replace(/\[DOC:1\]/g, '')
+                    .replace(/\[DOC_NAME:[^\]]+\]/g, '')
+                    .replace(/\[DOC_TRAITE:1\]/g, '')
+                    .trim() || 'Consultation',
+                patient: {
+                    id: apt.patientId,
+                    nom: apt.patient.utilisateur.nom,
+                    prenom: apt.patient.utilisateur.prenom
+                }
+            };
+        }));
+    } catch (err) {
+        console.error(err);
+        return res.status(500).json({ error: 'Erreur serveur' });
+    }
+});
+
+router.post('/doctor-agenda/:id/reschedule-request', authenticateProfessional, async (req: AuthRequest, res: Response) => {
+    try {
+        if (req.role !== 'DOCTOR' && req.role !== 'MEDECIN') {
+            return res.status(403).json({ error: 'Accès réservé aux médecins' });
+        }
+
+        const medecin = await prisma.medecin.findUnique({ where: { utilisateurId: req.userId } });
+        if (!medecin) return res.status(404).json({ error: 'Médecin non trouvé' });
+
+        const appointmentId = Number(req.params.id);
+        if (Number.isNaN(appointmentId)) {
+            return res.status(400).json({ error: 'Identifiant de rendez-vous invalide' });
+        }
+
+        const { date, time } = req.body || {};
+        if (!date) {
+            return res.status(400).json({ error: 'Date de reprogrammation requise' });
+        }
+
+        const appointment = await prisma.rendezVous.findFirst({
+            where: { id: appointmentId, medecinId: medecin.id },
+            include: {
+                patient: { include: { utilisateur: true } },
+                sousAdmin: { include: { utilisateur: true } }
+            }
+        });
+        if (!appointment) {
+            return res.status(404).json({ error: 'Rendez-vous non trouvé pour ce médecin' });
+        }
+
+        const newDateTime = mergeDateAndTime(String(date), String(time || ''));
+        const hasReportTag = /\[REPORT\]/.test(appointment.motif || '');
+        const updated = await prisma.rendezVous.update({
+            where: { id: appointment.id },
+            data: {
+                statut: 'REPORTE' as any,
+                date: newDateTime,
+                motif: hasReportTag ? appointment.motif : `[REPORT] ${appointment.motif || ''}`.trim()
+            }
+        });
+
+        if (appointment.sousAdmin?.utilisateurId) {
+            await prisma.notification.create({
+                data: {
+                    utilisateurId: appointment.sousAdmin.utilisateurId,
+                    titre: '📌 Demande de report médecin',
+                    message: `Le Dr a demandé le report du rendez-vous #${appointment.id} de ${appointment.patient.utilisateur.prenom} ${appointment.patient.utilisateur.nom}.`
+                }
+            });
+        }
+
+        return res.json({ message: 'Demande de reprogrammation envoyée', appointment: updated });
     } catch (err) {
         console.error(err);
         return res.status(500).json({ error: 'Erreur serveur' });

@@ -5,30 +5,11 @@ import { normalizeSpecialty } from '../utils/specialty';
 
 const router = Router();
 
-const ONE_HOUR_MS = 60 * 60 * 1000;
-
-const hasPatientOneHourConflict = async ({
-    patientId,
-    date,
-    excludeAppointmentId
-}: {
-    patientId: number;
-    date: Date;
-    excludeAppointmentId?: number;
-}) => {
-    const windowStart = new Date(date.getTime() - ONE_HOUR_MS);
-    const windowEnd = new Date(date.getTime() + ONE_HOUR_MS);
-    const conflict = await prisma.rendezVous.findFirst({
-        where: {
-            patientId,
-            statut: { not: 'ANNULE' as any },
-            date: { gte: windowStart, lte: windowEnd },
-            ...(excludeAppointmentId ? { id: { not: excludeAppointmentId } } : {})
-        },
-        select: { id: true }
-    });
-    return !!conflict;
-};
+const isDatabaseUnavailableError = (error: unknown) =>
+    typeof error === 'object' &&
+    error !== null &&
+    'code' in error &&
+    (error as { code?: string }).code === 'P1001';
 
 router.get('/', authenticatePatient, async (req: AuthRequest, res: Response) => {
     try {
@@ -103,6 +84,7 @@ router.get('/', authenticatePatient, async (req: AuthRequest, res: Response) => 
             else if ((apt.statut as any) === 'EN_COURS') status = 'en_cours';
             else if ((apt.statut as any) === 'ANNULE') status = 'termine';
             if (apt.motif?.startsWith('[ANNULER]')) status = 'demande_annulation';
+            if (apt.motif?.startsWith('[REPORT]') || (apt.statut as any) === 'REPORTE') status = 'reporte';
             const hasDocuments = /\[DOC:1\]/.test(apt.motif || '');
             const documentNameMatch = (apt.motif || '').match(/\[DOC_NAME:([^\]]+)\]/);
             const documentName = documentNameMatch ? documentNameMatch[1] : null;
@@ -141,6 +123,9 @@ router.get('/', authenticatePatient, async (req: AuthRequest, res: Response) => 
         return res.json(formatted);
     } catch (error) {
         console.error(error);
+        if (isDatabaseUnavailableError(error)) {
+            return res.status(503).json({ error: "Base de données temporairement indisponible. Réessayez dans quelques instants." });
+        }
         return res.status(500).json({ error: 'Erreur serveur' });
     }
 });
@@ -157,14 +142,6 @@ router.post('/', authenticatePatient, async (req: AuthRequest, res: Response) =>
         const appointmentDate = date
             ? new Date(date)
             : new Date(Date.now() + 7 * 24 * 60 * 60 * 1000);
-
-        const hasConflict = await hasPatientOneHourConflict({
-            patientId: patient.id,
-            date: appointmentDate
-        });
-        if (hasConflict) {
-            return res.status(409).json({ error: 'Conflit planning: vous avez déjà un rendez-vous à moins de 1 heure.' });
-        }
 
         const specialty = req.body.specialty || '';
         const docsFlag = hasDocuments ? ' [DOC:1]' : '';
@@ -263,17 +240,6 @@ router.put('/:id', authenticatePatient, async (req: AuthRequest, res: Response) 
         let finalDate = appointment.date;
 
         if (newDate) finalDate = new Date(newDate);
-
-        if (newDate) {
-            const hasConflict = await hasPatientOneHourConflict({
-                patientId: patient.id,
-                date: finalDate,
-                excludeAppointmentId: parseInt(id as string)
-            });
-            if (hasConflict) {
-                return res.status(409).json({ error: 'Conflit planning: vous avez déjà un rendez-vous à moins de 1 heure.' });
-            }
-        }
 
         if (requestedStatus === 'ANNULE') {
             finalStatus = 'REPORTE';

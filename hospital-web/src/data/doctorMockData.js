@@ -1,142 +1,80 @@
 export const mockDoctor = {
-    id: 1,
-    nom: "Martin",
-    prenom: "Sophie",
-    specialite: "Cardiologue",
-    numeroOrdre: "123456789",
-    telephone: "01 23 45 67 89",
-    email: "dr.martin@hopital.fr"
+    id: 'doc-1',
+    nom: 'Makhbouche',
+    prenom: 'Imen',
+    specialite: 'Médecine générale',
+    numeroOrdre: 'TN-45872',
+    telephone: '+216 90 000 000'
 };
-
-export const mockWaitingRoom = [
-    {
-        id: 1,
-        nom: "Dupont",
-        prenom: "Marie",
-        motif: "Consultation de suivi",
-        heureArrivee: "09:45",
-        priorite: "normale",
-        statut: "en attente"
-    },
-    {
-        id: 2,
-        nom: "Martin",
-        prenom: "Pierre",
-        motif: "Douleurs thoraciques",
-        heureArrivee: "10:15",
-        priorite: "urgente",
-        statut: "en attente"
-    }
-];
-
-export const mockDoctorAppointments = [
-    {
-        id: 1,
-        heure: "10:00",
-        duree: 30,
-        patient: { id: 101, nom: "Dupont", prenom: "Marie" },
-        motif: "Contrôle de routine",
-        statut: "prévu",
-        salle: "A101"
-    },
-    {
-        id: 2,
-        heure: "10:30",
-        duree: 30,
-        patient: { id: 102, nom: "Bernard", prenom: "Jean" },
-        motif: "Suivi diabète",
-        statut: "prévu",
-        salle: "A101"
-    },
-    {
-        id: 3,
-        heure: "11:00",
-        duree: 30,
-        patient: { id: 103, nom: "Petit", prenom: "Claire" },
-        motif: "Première consultation",
-        statut: "prévu",
-        salle: "A101"
-    },
-    {
-        id: 4,
-        heure: "14:00",
-        duree: 45,
-        patient: { id: 104, nom: "Lefevre", prenom: "Marc" },
-        motif: "Bilan complet",
-        statut: "prévu",
-        salle: "A101",
-        rescheduleStatus: null,
-        requestedTime: null
-    },
-    {
-        id: 5,
-        heure: "15:00",
-        duree: 30,
-        patient: { id: 105, nom: "Rousseau", prenom: "Anne" },
-        motif: "Résultats examens",
-        statut: "prévu",
-        salle: "A101",
-        rescheduleStatus: null,
-        requestedTime: null
-    }
-];
 
 export const mockPatientFiles = [
     {
-        id: "1",
+        id: 'pat-1',
         patient: {
-            id: "p1",
-            nom: "Dupont",
-            prenom: "Marie",
-            dateNaissance: "15/05/1980",
-            email: "marie.dupont@email.com",
-            telephone: "06 12 34 56 78",
-            numeroSecu: "2 80 05 75 123 456 78",
-            groupeSanguin: "A+"
+            id: 'pat-1',
+            nom: 'Ben Salah',
+            prenom: 'Amine',
+            dateNaissance: '14/03/1988',
+            numeroSecu: '1880314XXXX',
+            email: 'amine.bensalah@example.com',
+            telephone: '+216 98 111 111'
         },
-        allergies: ["Pénicilline"],
-        antecedents: ["Hypertension"],
-        consultations: []
+        allergies: ['Pénicilline']
     },
     {
-        id: "2",
+        id: 'pat-2',
         patient: {
-            id: "p2",
-            nom: "Martin",
-            prenom: "Pierre",
-            dateNaissance: "20/03/1975",
-            email: "pierre.martin@email.com",
-            telephone: "06 98 76 54 32",
-            numeroSecu: "1 75 03 92 123 456 78",
-            groupeSanguin: "O+"
+            id: 'pat-2',
+            nom: 'Trabelsi',
+            prenom: 'Nour',
+            dateNaissance: '22/11/1995',
+            numeroSecu: '2951122XXXX',
+            email: 'nour.trabelsi@example.com',
+            telephone: '+216 98 222 222'
         },
-        allergies: [],
-        antecedents: [],
-        consultations: []
+        allergies: []
     }
 ];
 
 export const aiSuggestions = {
-    symptoms: ["Fièvre", "Toux", "Fatigue", "Céphalées", "Nausées"],
+    symptoms: [
+        'Douleur thoracique',
+        'Dyspnée',
+        'Palpitations',
+        'Fatigue',
+        'Toux sèche'
+    ],
     diagnoses: [
         {
-            nom: "Grippe",
-            probabilite: 85,
-            criteres: ["Fièvre > 38°C", "Toux sèche", "Fatigue intense"]
+            nom: 'Syndrome coronarien aigu',
+            probabilite: 78,
+            criteres: ['Douleur thoracique', 'Irradiation bras', 'Facteurs de risque']
         },
         {
-            nom: "COVID-19",
-            probabilite: 60,
-            criteres: ["Fièvre", "Toux", "Perte de goût/odorat"]
+            nom: 'Angor stable',
+            probabilite: 62,
+            criteres: ['Douleur à l’effort', 'Soulagement au repos']
+        },
+        {
+            nom: 'Douleur musculosquelettique',
+            probabilite: 35,
+            criteres: ['Douleur localisée', 'Reproductible à la palpation']
         }
     ],
     treatments: [
         {
-            medicament: "Paracétamol",
-            dosage: "1000mg",
-            frequence: "3-4 fois/jour",
-            duree: "5 jours",
-            indication: "Douleur et fièvre"
+            medicament: 'Paracétamol',
+            dosage: '1 g',
+            frequence: '3 fois / jour',
+            duree: '5 jours',
+            indication: 'Antalgique de première intention'
+        },
+        {
+            medicament: 'Aspirine',
+            dosage: '75 mg',
+            frequence: '1 fois / jour',
+            duree: '30 jours',
+            indication: 'Prévention cardiovasculaire selon contexte clinique'
         }
     ]
 };

@@ -1,9 +1,8 @@
-import { PrismaClient } from '@prisma/client';
 import { Response, Router } from 'express';
+import { prisma } from '../lib/prisma';
 import { authenticatePatient, AuthRequest } from '../middleware/auth';
 
 const router = Router();
-const prisma = new PrismaClient();
 
 
 router.get('/profile', authenticatePatient, async (req: AuthRequest, res: Response) => {
@@ -34,8 +33,9 @@ router.get('/profile', authenticatePatient, async (req: AuthRequest, res: Respon
             history: d?.historiqueMedical || [],
             emergencyContact: {
                 name: d?.contactUrgenceNom || '',
-                relation: d?.contactUrgenceRelation || '',
-                phone: d?.contactUrgenceTelephone || ''
+                relation: '',
+                phone: d?.contactUrgenceTelephone || '',
+                email: d?.contactUrgenceEmail || ''
             }
         });
     } catch (error) {
@@ -62,10 +62,34 @@ router.get('/notifications', authenticatePatient, async (req: AuthRequest, res: 
 router.patch('/notifications/:id/read', authenticatePatient, async (req: AuthRequest, res: Response) => {
     try {
         const updated = await prisma.notification.update({
-            where: { id: parseInt(req.params.id) },
+            where: { id: parseInt(req.params.id as string) },
             data: { lue: true }
         });
         return res.json(updated);
+    } catch (error) {
+        console.error(error);
+        return res.status(500).json({ error: 'Erreur serveur' });
+    }
+});
+
+router.delete('/notifications/:id', authenticatePatient, async (req: AuthRequest, res: Response) => {
+    try {
+        const notificationId = parseInt(req.params.id as string);
+        if (Number.isNaN(notificationId)) {
+            return res.status(400).json({ error: 'ID notification invalide' });
+        }
+
+        const existing = await prisma.notification.findFirst({
+            where: { id: notificationId, utilisateurId: req.userId }
+        });
+        if (!existing) {
+            return res.status(404).json({ error: 'Notification non trouvée' });
+        }
+
+        await prisma.notification.delete({
+            where: { id: notificationId }
+        });
+        return res.json({ message: 'Notification supprimée' });
     } catch (error) {
         console.error(error);
         return res.status(500).json({ error: 'Erreur serveur' });
@@ -78,7 +102,7 @@ router.get('/consultations', authenticatePatient, async (req: AuthRequest, res: 
         const patient = await prisma.patient.findUnique({ where: { utilisateurId: req.userId } });
         if (!patient) return res.status(404).json({ error: 'Patient non trouvé' });
 
-        const consultations = await prisma.consultation.findMany({
+        const consultations = await prisma.rendezVous.findMany({
             where: { patientId: patient.id },
             orderBy: { date: 'desc' }
         });

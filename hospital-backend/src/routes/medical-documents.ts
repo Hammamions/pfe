@@ -1,10 +1,8 @@
-import { PrismaClient } from '@prisma/client';
 import { Response, Router } from 'express';
+import { prisma } from '../lib/prisma';
 import { authenticatePatient, AuthRequest } from '../middleware/auth';
 
 const router = Router();
-const prisma = new PrismaClient();
-
 
 router.get('/', authenticatePatient, async (req: AuthRequest, res: Response) => {
     try {
@@ -76,7 +74,7 @@ router.delete('/:id', authenticatePatient, async (req: AuthRequest, res: Respons
         if (!patient || !patient.dossierMedical) return res.status(404).json({ error: 'Dossier non trouvé' });
 
         await prisma.document.deleteMany({
-            where: { id: parseInt(req.params.id), dossierMedicalId: patient.dossierMedical.id }
+            where: { id: parseInt(req.params.id as string), dossierMedicalId: patient.dossierMedical.id }
         });
 
         return res.json({ message: 'Document supprimé' });

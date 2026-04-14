@@ -12,12 +12,12 @@ export default function SousAdminLayout() {
     const location = useLocation();
     const navigate = useNavigate();
 
-    // Get user from localStorage
-    const user = JSON.parse(localStorage.getItem('proUser') || '{}');
+    // Get user from current tab session storage
+    const user = JSON.parse(sessionStorage.getItem('proUser') || '{}');
 
     const handleLogout = () => {
-        localStorage.removeItem('proToken');
-        localStorage.removeItem('proUser');
+        sessionStorage.removeItem('proToken');
+        sessionStorage.removeItem('proUser');
         navigate('/login-pro');
     };
 

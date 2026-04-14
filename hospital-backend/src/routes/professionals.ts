@@ -1,9 +1,12 @@
-import { PrismaClient } from '@prisma/client';
 import { Response, Router } from 'express';
+import { prisma } from '../lib/prisma';
 import { authenticateProfessional, AuthRequest } from '../middleware/auth';
+import { ensureSalleAttenteForTodaysAppointments } from '../utils/salleAttenteSync';
+import { normalizeSpecialty } from '../utils/specialty';
 
 const router = Router();
-const prisma = new PrismaClient();
+
+// normalizeSpecialty is imported from ../utils/specialty
 
 
 router.get('/doctors', authenticateProfessional, async (req: AuthRequest, res: Response) => {
@@ -20,14 +23,6 @@ router.get('/doctors', authenticateProfessional, async (req: AuthRequest, res: R
         }
 
         const doctors = await prisma.medecin.findMany({
-            where: (isSousAdmin && sa && sa.specialite)
-                ? {
-                    OR: [
-                        { specialite: sa.specialite },
-                        { specialite: sa.specialite.toLowerCase() }
-                    ]
-                }
-                : (specialite ? { specialite: specialite as string } : {}),
             include: {
                 utilisateur: true,
                 conges: { where: { startDate: { lte: endOfDay }, endDate: { gte: startOfDay } } },
@@ -36,8 +31,14 @@ router.get('/doctors', authenticateProfessional, async (req: AuthRequest, res: R
                 }
             }
         });
+        const targetSpecialty = normalizeSpecialty(
+            (isSousAdmin && sa?.specialite) ? sa.specialite : (specialite as string | undefined)
+        );
+        const filteredDoctors = targetSpecialty
+            ? doctors.filter((doc) => normalizeSpecialty(doc.specialite) === targetSpecialty)
+            : doctors;
 
-        return res.json(doctors.map(doc => {
+        return res.json(filteredDoctors.map(doc => {
             const isOnLeave = doc.conges.length > 0;
             const count = doc.rendezVous.length;
             let status = 'Disponible';
@@ -71,15 +72,17 @@ router.get('/cardiology', authenticateProfessional, async (req: AuthRequest, res
 
     try {
         const doctors = await prisma.medecin.findMany({
-            where: { specialite: 'Cardiologie' },
             include: {
                 utilisateur: true,
                 conges: { where: { startDate: { lte: endOfDay }, endDate: { gte: startOfDay } } },
                 rendezVous: { where: { date: { gte: startOfDay, lte: endOfDay }, statut: { not: 'ANNULE' } } }
             }
         });
+        const filteredDoctors = doctors.filter(
+            (doc) => normalizeSpecialty(doc.specialite) === normalizeSpecialty('Cardiologie')
+        );
 
-        return res.json(doctors.map(doc => {
+        return res.json(filteredDoctors.map(doc => {
             const isOnLeave = doc.conges.length > 0;
             const count = doc.rendezVous.length;
             let status = 'Disponible';
@@ -100,8 +103,6 @@ router.get('/cardiology', authenticateProfessional, async (req: AuthRequest, res
                 appointments: doc.rendezVous.map(a => ({
                     id: a.id,
                     time: a.date.toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' }),
-                    isUrgent: a.isUrgent,
-                    presenceStatus: a.presenceStatus
                 }))
             };
         }));
@@ -125,28 +126,27 @@ router.get('/tactical-stats', authenticateProfessional, async (req: AuthRequest,
             sa = await prisma.sousAdmin.findUnique({ where: { utilisateurId: req.userId } });
         }
 
-        const statsAppointments = await prisma.rendezVous.findMany({
+        const queueStats = await prisma.salleAttente.findMany({
+            where: {
+                sousAdminId: isSousAdmin && sa ? sa.id : undefined,
+                joinedAt: { gte: startOfDay, lte: endOfDay }
+            }
+        });
+
+        const totalCount = await prisma.rendezVous.count({
             where: {
                 date: { gte: startOfDay, lte: endOfDay },
-                ...(isSousAdmin && sa ? {
-                    sousAdminId: sa.id,
-                    ...(sa.specialite ? {
-                        OR: [
-                            { specialite: sa.specialite },
-                            { specialite: sa.specialite.toLowerCase() }
-                        ]
-                    } : {})
-                } : {})
+                ...(isSousAdmin && sa ? { sousAdminId: sa.id } : {})
             }
         });
 
         return res.json({
-            total: statsAppointments.length,
-            pending: statsAppointments.filter(a => a.presenceStatus === 'PREVU' && a.statut === 'CONFIRME').length,
-            present: statsAppointments.filter(a => a.presenceStatus === 'PRESENT').length,
-            urgent: statsAppointments.filter(a => a.isUrgent).length,
-            late: statsAppointments.filter(a => a.presenceStatus === 'EN_RETARD').length,
-            absent: statsAppointments.filter(a => a.presenceStatus === 'ABSENT').length
+            total: totalCount,
+            pending: queueStats.filter(a => a.presenceStatus === 'PREVU' && a.status === 'EN_ATTENTE').length,
+            present: queueStats.filter(a => a.presenceStatus === 'PRESENT').length,
+            urgent: queueStats.filter(a => a.isUrgent).length,
+            late: queueStats.filter(a => a.presenceStatus === 'EN_RETARD').length,
+            absent: queueStats.filter(a => a.presenceStatus === 'ABSENT').length
         });
     } catch (err) {
         console.error(err);
@@ -163,40 +163,135 @@ router.get('/all-appointments', authenticateProfessional, async (req: AuthReques
             sa = await prisma.sousAdmin.findUnique({ where: { utilisateurId: req.userId } });
         }
 
+        if (isSousAdmin && sa) {
+            await ensureSalleAttenteForTodaysAppointments(prisma, sa.id);
+        }
+
         const appointments = await prisma.rendezVous.findMany({
             where: {
                 ...(isSousAdmin && sa ? {
-                    sousAdminId: sa.id,
-                    ...(sa.specialite ? {
-                        OR: [
-                            { specialite: sa.specialite },
-                            { specialite: sa.specialite.toLowerCase() }
-                        ]
-                    } : {})
+                    OR: [
+                        { sousAdminId: sa.id },
+                        { sousAdminId: null }
+                    ]
                 } : {})
             },
             include: {
                 medecin: { include: { utilisateur: true } },
-                patient: { include: { utilisateur: true } }
+                patient: {
+                    include: {
+                        utilisateur: true,
+                        salleAttente: {
+                            orderBy: { joinedAt: 'desc' },
+                            take: 1
+                        }
+                    }
+                }
             },
             orderBy: { date: 'asc' }
         });
 
-        return res.json(appointments.map(apt => ({
+        const saSpecNormalized = normalizeSpecialty(sa?.specialite);
+        const filtered = (isSousAdmin && sa) ? appointments.filter(apt => {
+            if (apt.sousAdminId === sa.id) return true;
+            if (apt.sousAdminId === null && normalizeSpecialty(apt.specialite) === saSpecNormalized) return true;
+            return false;
+        }) : appointments;
+
+        return res.json(filtered.map((apt: any) => {
+            const rawMotif = apt.motif || '';
+            const requestType = apt.statut !== 'ANNULE' && rawMotif.includes('[ANNULER]')
+                ? 'ANNULATION'
+                : apt.statut !== 'ANNULE' && rawMotif.includes('[REPORT]')
+                    ? 'REPORT'
+                    : null;
+            const cleanMotif = rawMotif
+                .replace(/\[SPEC:[^\]]+\]/g, '')
+                .replace(/\[ANNULER\]/g, '')
+                .replace(/\[REPORT\]/g, '')
+                .replace(/\[DOC:1\]/g, '')
+                .replace(/\[DOC_NAME:[^\]]+\]/g, '')
+                .trim();
+
+            return {
+                id: apt.id,
+                patientId: apt.patientId,
+                date: apt.date.toISOString().split('T')[0],
+                time: apt.date.toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' }),
+                patientName: `${apt.patient.utilisateur.prenom} ${apt.patient.utilisateur.nom}`,
+                doctor: apt.medecin
+                    ? `Dr. ${apt.medecin.utilisateur.prenom} ${apt.medecin.utilisateur.nom}`
+                    : 'À définir',
+                specialty: apt.medecin?.specialite || apt.specialite || '',
+                motif: cleanMotif,
+                status: apt.statut,
+                statut: apt.statut, // Keep both for safety
+                requestType,
+                lieu: apt.lieu,
+                salle: apt.salle,
+                presenceStatus: apt.patient.salleAttente?.[0]?.presenceStatus || 'PREVU',
+                isUrgent: apt.patient.salleAttente?.[0]?.isUrgent || false
+            };
+        }));
+    } catch (err) {
+        console.error(err);
+        return res.status(500).json({ error: 'Erreur serveur' });
+    }
+});
+
+router.get('/doctor-waiting-room', authenticateProfessional, async (req: AuthRequest, res: Response) => {
+    try {
+        if (req.role !== 'DOCTOR' && req.role !== 'MEDECIN') {
+            return res.status(403).json({ error: 'Accès réservé aux médecins' });
+        }
+
+        const medecin = await prisma.medecin.findUnique({ where: { utilisateurId: req.userId } });
+        if (!medecin) return res.status(404).json({ error: 'Médecin non trouvé' });
+
+        const today = new Date();
+        const startOfDay = new Date(today); startOfDay.setHours(0, 0, 0, 0);
+        const endOfDay = new Date(today); endOfDay.setHours(23, 59, 59, 999);
+
+        const appointments = await prisma.rendezVous.findMany({
+            where: {
+                medecinId: medecin.id,
+                statut: { in: ['CONFIRME', 'EN_COURS'] as any },
+                date: { gte: startOfDay, lte: endOfDay }
+            },
+            include: {
+                patient: {
+                    include: {
+                        utilisateur: true,
+                        dossierMedical: true,
+                        salleAttente: {
+                            where: {
+                                joinedAt: { gte: startOfDay, lte: endOfDay }
+                            }
+                        }
+                    }
+                }
+            },
+            orderBy: { date: 'asc' }
+        });
+
+        const waiting = appointments.filter((apt: any) =>
+            apt.patient?.salleAttente?.some((sa: any) => sa.presenceStatus === 'PRESENT')
+        );
+
+        return res.json(waiting.map((apt: any) => ({
             id: apt.id,
-            date: apt.date.toISOString().split('T')[0],
-            time: apt.date.toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' }),
+            patientId: apt.patientId,
             patientName: `${apt.patient.utilisateur.prenom} ${apt.patient.utilisateur.nom}`,
-            doctor: apt.medecin
-                ? `Dr. ${apt.medecin.utilisateur.prenom} ${apt.medecin.utilisateur.nom}`
-                : 'À définir',
-            specialty: apt.medecin?.specialite || '',
-            motif: apt.motif || '',
-            status: apt.statut,
-            isUrgent: apt.isUrgent,
-            presenceStatus: apt.presenceStatus,
-            lieu: apt.lieu,
-            salle: apt.salle
+            motif: apt.motif || 'Consultation',
+            heure: apt.date.toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' }),
+            lieu: apt.lieu || 'À définir',
+            salle: apt.salle || 'À définir',
+            dossierMedical: {
+                bloodGroup: apt.patient.dossierMedical?.groupeSanguin || 'Non précisé',
+                allergies: apt.patient.dossierMedical?.allergies || [],
+                history: apt.patient.dossierMedical?.historiqueMedical || [],
+                socialSecurity: apt.patient.dossierMedical?.numSecuriteSociale || ''
+            }
         })));
     } catch (err) {
         console.error(err);

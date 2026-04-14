@@ -19,6 +19,18 @@ import api from '../../lib/api';
 
 const HOURS = Array.from({ length: 11 }, (_, i) => (i + 8).toString().padStart(2, '0'));
 const MINUTES = ["00", "05", "10", "15", "20", "25", "30", "35", "40", "45", "50", "55"];
+const AVAILABLE_LOCATIONS = [
+    'Batiment Principal',
+    'Batiment A',
+    'Batiment B',
+    'Batiment C'
+];
+const ROOMS_BY_LOCATION = {
+    'Batiment Principal': ['A-101', 'A-102', 'A-103', 'A-203'],
+    'Batiment A': ['A1-01', 'A1-02', 'A2-10', 'A3-12'],
+    'Batiment B': ['B-101', 'B-201', 'B-202', 'B-305'],
+    'Batiment C': ['C-01', 'C-02', 'C-10', 'C-12']
+};
 
 const generateNextDates = () => {
     const dates = [];
@@ -37,9 +49,11 @@ const generateNextDates = () => {
 };
 
 export default function SousAdminAppointments() {
+    const REFRESH_INTERVAL_MS = 3000;
     const [activeTab, setActiveTab] = useState('requests');
     const [planningRequestId, setPlanningRequestId] = useState(null);
     const [appointments, setAppointments] = useState([]);
+    const [waitingRoom, setWaitingRoom] = useState([]);
     const [doctors, setDoctors] = useState([]);
     const [loading, setLoading] = useState(true);
 
@@ -49,44 +63,103 @@ export default function SousAdminAppointments() {
     const [selectedDoctorId, setSelectedDoctorId] = useState(null);
     const [doctorSearch, setDoctorSearch] = useState('');
     const [isDoctorDropdownOpen, setIsDoctorDropdownOpen] = useState(false);
+    const [selectedLocation, setSelectedLocation] = useState('Batiment Principal');
+    const [selectedRoom, setSelectedRoom] = useState('A-102');
+    const [planificationError, setPlanificationError] = useState('');
 
     const availableDates = useMemo(() => generateNextDates(), []);
     const selectedTime = selectedHour && selectedMinute ? `${selectedHour}:${selectedMinute}` : null;
+    const availableRooms = ROOMS_BY_LOCATION[selectedLocation] || [];
 
     useEffect(() => {
+        let isMounted = true;
+        let intervalId = null;
+        let firstLoad = true;
+
         const fetchData = async () => {
             try {
-                setLoading(true);
-                const [aptsRes, docsRes] = await Promise.all([
-                    api.get('/professionals/all-appointments'),
-                    api.get('/professionals/doctors')
+                const ts = Date.now();
+                if (isMounted && firstLoad) setLoading(true);
+                const [aptsRes, docsRes, wrRes] = await Promise.allSettled([
+                    api.get('/professionals/all-appointments', { params: { _t: ts, status: 'live' } }),
+                    api.get('/professionals/doctors', { params: { _t: ts, status: 'live' } }),
+                    api.get('/sous-admin/waiting-room', { params: { _t: ts } })
                 ]);
-                setAppointments(aptsRes.data);
-                setDoctors(docsRes.data);
+                if (!isMounted) return;
+
+                if (aptsRes.status === 'fulfilled') {
+                    setAppointments(Array.isArray(aptsRes.value.data) ? aptsRes.value.data : []);
+                } else {
+                    console.error("Appointments live refresh error:", aptsRes.reason);
+                }
+
+                if (docsRes.status === 'fulfilled') {
+                    setDoctors(Array.isArray(docsRes.value.data) ? docsRes.value.data : []);
+                } else {
+                    console.error("Doctors refresh error:", docsRes.reason);
+                }
+
+                if (wrRes.status === 'fulfilled') {
+                    setWaitingRoom(Array.isArray(wrRes.value.data) ? wrRes.value.data : []);
+                } else {
+                    console.error("Waiting room refresh error:", wrRes.reason);
+                }
             } catch (err) {
                 console.error("Fetch data error:", err);
             } finally {
-                setLoading(false);
+                if (isMounted && firstLoad) {
+                    setLoading(false);
+                    firstLoad = false;
+                }
             }
         };
+
         fetchData();
+        intervalId = setInterval(fetchData, REFRESH_INTERVAL_MS);
+        window.addEventListener('focus', fetchData);
+        document.addEventListener('visibilitychange', fetchData);
+
+        return () => {
+            isMounted = false;
+            if (intervalId) clearInterval(intervalId);
+            window.removeEventListener('focus', fetchData);
+            document.removeEventListener('visibilitychange', fetchData);
+        };
     }, []);
 
     const sortedRequests = useMemo(() => {
-        return appointments.filter(a => a.status === 'EN_ATTENTE');
+        return appointments.filter(
+            a => a.status === 'EN_ATTENTE' || a.requestType === 'ANNULATION' || a.requestType === 'REPORT'
+        );
     }, [appointments]);
 
     const todayWaiting = useMemo(() => {
         const todayStr = new Date().toISOString().split('T')[0];
-        return appointments.filter(a => a.status !== 'EN_ATTENTE' && a.date === todayStr);
-    }, [appointments]);
+        const base = appointments.filter(
+            (a) =>
+                a.date === todayStr &&
+                (a.status === 'CONFIRME' || a.status === 'EN_COURS')
+        );
+        const joinedAtByPatient = new Map(
+            (waitingRoom || []).map((e) => [e.patientId, new Date(e.joinedAt).getTime()])
+        );
+        return [...base].sort((a, b) => {
+            const ja = a.patientId != null ? joinedAtByPatient.get(a.patientId) : undefined;
+            const jb = b.patientId != null ? joinedAtByPatient.get(b.patientId) : undefined;
+            if (ja != null && jb != null && ja !== jb) return ja - jb;
+            if (ja != null && jb == null) return -1;
+            if (ja == null && jb != null) return 1;
+            if (a.isUrgent !== b.isUrgent) return a.isUrgent ? -1 : 1;
+            return (a.time || '').localeCompare(b.time || '');
+        });
+    }, [appointments, waitingRoom]);
 
     const handleTacticalUpdate = async (id, data) => {
         try {
             if (data.presenceStatus) {
-                await api.patch(`/sous-admin/appointments/${id}/presence`, { status: data.presenceStatus });
+                await api.patch(`/sous-admin/appointments/${id}/presence`, { presenceStatus: data.presenceStatus });
             } else if (data.isUrgent !== undefined) {
-
+                await api.patch(`/sous-admin/appointments/${id}/urgent`, { isUrgent: data.isUrgent });
             }
 
             const res = await api.get('/professionals/all-appointments');
@@ -96,16 +169,27 @@ export default function SousAdminAppointments() {
         }
     };
 
+    const handleCheckout = async (id) => {
+        try {
+            await api.patch(`/sous-admin/appointments/${id}/checkout`);
+            const res = await api.get('/professionals/all-appointments');
+            setAppointments(res.data);
+        } catch (err) {
+            console.error("Checkout error:", err);
+        }
+    };
+
     const handlePlanify = async (requestId) => {
-        if (!selectedTime || !selectedDoctorId) return;
+        if (!selectedTime || !selectedDoctorId || !selectedLocation || !selectedRoom) return;
 
         try {
+            setPlanificationError('');
             const finalDate = new Date(`${selectedDate}T${selectedHour}:${selectedMinute}:00`);
             await api.patch(`/sous-admin/appointments/${requestId}/assign`, {
                 date: finalDate,
                 medecinId: parseInt(selectedDoctorId),
-                lieu: 'Hôpital Sahloul Sousse',
-                salle: 'Salle A-102'
+                lieu: selectedLocation,
+                salle: selectedRoom
             });
 
             const res = await api.get('/professionals/all-appointments');
@@ -113,6 +197,38 @@ export default function SousAdminAppointments() {
             setPlanningRequestId(null);
         } catch (err) {
             console.error("Planify error:", err);
+            const backendMessage = err?.response?.data?.error || '';
+            if (backendMessage.toLowerCase().includes('médecin')) {
+                setPlanificationError("Le médecin est occupé ou indisponible à cette heure. Choisissez un autre créneau.");
+            } else if (backendMessage.toLowerCase().includes('salle')) {
+                setPlanificationError("La salle est déjà occupée à cette heure. Sélectionnez une autre salle ou un autre créneau.");
+            } else if (err?.response?.status === 409) {
+                setPlanificationError("Un autre patient est déjà planifié sur ce créneau. Merci de choisir une autre heure.");
+            } else {
+                setPlanificationError("Impossible de planifier ce rendez-vous pour le moment. Réessayez.");
+            }
+        }
+    };
+
+    const handleRejectRequest = async (requestId) => {
+        try {
+            await api.patch(`/sous-admin/appointments/${requestId}/reject-request`);
+            const res = await api.get('/professionals/all-appointments');
+            setAppointments(res.data);
+            if (planningRequestId === requestId) setPlanningRequestId(null);
+        } catch (err) {
+            console.error("Reject request error:", err);
+        }
+    };
+
+    const handleCancelAppointment = async (requestId) => {
+        try {
+            await api.patch(`/sous-admin/appointments/${requestId}/cancel`);
+            const res = await api.get('/professionals/all-appointments');
+            setAppointments(res.data);
+            if (planningRequestId === requestId) setPlanningRequestId(null);
+        } catch (err) {
+            console.error("Cancel appointment error:", err);
         }
     };
 
@@ -209,6 +325,11 @@ export default function SousAdminAppointments() {
                                                 <div className="flex items-center gap-4">
                                                     <span className="font-bold text-gray-900 text-xl tracking-tight">{req.patientName}</span>
                                                     <span className="px-3 py-1 bg-gray-100 text-gray-500 rounded-full text-[10px] font-bold uppercase tracking-widest">{req.time}</span>
+                                                    {req.requestType && (
+                                                        <span className={`px-3 py-1 rounded-full text-[10px] font-bold uppercase tracking-widest ${req.requestType === 'ANNULATION' ? 'bg-rose-100 text-rose-700' : 'bg-amber-100 text-amber-700'}`}>
+                                                            {req.requestType === 'ANNULATION' ? "Demande d'annulation" : 'Demande de report'}
+                                                        </span>
+                                                    )}
                                                 </div>
                                                 <div className="flex items-center gap-3 mt-2">
                                                     <div className="p-1 rounded bg-blue-50">
@@ -218,24 +339,64 @@ export default function SousAdminAppointments() {
                                                 </div>
                                             </div>
                                         </div>
-                                        <Button
-                                            variant={planningRequestId === req.id ? "secondary" : "default"}
-                                            size="xl"
-                                            className={`h-14 font-bold uppercase text-xs tracking-[0.2em] px-8 rounded-2xl transition-all duration-500 ${planningRequestId === req.id ? 'bg-rose-50 text-rose-600 hover:bg-rose-100 shadow-none' : 'bg-gray-900 text-white hover:bg-black hover:scale-105 shadow-xl shadow-gray-200'}`}
-                                            onClick={() => {
-                                                setPlanningRequestId(planningRequestId === req.id ? null : req.id);
-                                                setSelectedHour(null);
-                                                setSelectedMinute(null);
-                                                setIsDoctorDropdownOpen(false);
-                                            }}
-                                        >
-                                            {planningRequestId === req.id ? "Fermer" : "Planifier"}
-                                            <Calendar className="w-4 h-4 ml-3" />
-                                        </Button>
+                                        <div className="flex items-center gap-3">
+                                            {(req.requestType === 'ANNULATION') ? (
+                                                <>
+                                                    <Button
+                                                        size="xl"
+                                                        className="h-14 font-bold uppercase text-xs tracking-[0.2em] px-8 rounded-2xl bg-rose-600 text-white hover:bg-rose-700"
+                                                        onClick={() => handleCancelAppointment(req.id)}
+                                                    >
+                                                        Annuler RDV
+                                                    </Button>
+                                                    <Button
+                                                        size="xl"
+                                                        className="h-14 font-bold uppercase text-xs tracking-[0.2em] px-8 rounded-2xl bg-gray-100 text-gray-800 hover:bg-gray-200"
+                                                        onClick={() => handleRejectRequest(req.id)}
+                                                    >
+                                                        Refuser
+                                                    </Button>
+                                                </>
+                                            ) : (
+                                                <>
+                                                    <Button
+                                                        variant={planningRequestId === req.id ? "secondary" : "default"}
+                                                        size="xl"
+                                                        className={`h-14 font-bold uppercase text-xs tracking-[0.2em] px-8 rounded-2xl transition-all duration-500 ${planningRequestId === req.id ? 'bg-rose-50 text-rose-600 hover:bg-rose-100 shadow-none' : 'bg-gray-900 text-white hover:bg-black hover:scale-105 shadow-xl shadow-gray-200'}`}
+                                                        onClick={() => {
+                                                            setPlanningRequestId(planningRequestId === req.id ? null : req.id);
+                                                                setPlanificationError('');
+                                                            setSelectedHour(null);
+                                                            setSelectedMinute(null);
+                                                            setSelectedLocation('Batiment Principal');
+                                                            setSelectedRoom('A-102');
+                                                            setIsDoctorDropdownOpen(false);
+                                                        }}
+                                                    >
+                                                        {planningRequestId === req.id ? "Fermer" : (req.requestType === 'REPORT' ? 'Replanifier' : 'Planifier')}
+                                                        <Calendar className="w-4 h-4 ml-3" />
+                                                    </Button>
+                                                    {req.requestType === 'REPORT' && (
+                                                        <Button
+                                                            size="xl"
+                                                            className="h-14 font-bold uppercase text-xs tracking-[0.2em] px-8 rounded-2xl bg-gray-100 text-gray-800 hover:bg-gray-200"
+                                                            onClick={() => handleRejectRequest(req.id)}
+                                                        >
+                                                            Refuser
+                                                        </Button>
+                                                    )}
+                                                </>
+                                            )}
+                                        </div>
                                     </div>
 
                                     {planningRequestId === req.id && (
                                         <div className="mt-10 overflow-hidden animate-in fade-in zoom-in-95 duration-700 text-left">
+                                            {planificationError && (
+                                                <div className="mb-4 rounded-2xl border border-rose-200 bg-rose-50 px-5 py-4">
+                                                    <p className="text-sm font-bold text-rose-700">{planificationError}</p>
+                                                </div>
+                                            )}
                                             <div className="bg-white rounded-[2.5rem] p-1 shadow-2xl border border-gray-50">
                                                 <div className="bg-gray-900 rounded-[2.2rem] p-10 text-white space-y-10">
                                                     <div className="flex flex-row items-center justify-between">
@@ -373,6 +534,45 @@ export default function SousAdminAppointments() {
                                                                     </div>
                                                                 )}
                                                             </div>
+
+                                                            <div className="space-y-4 mt-8">
+                                                                <h4 className="text-[11px] font-bold uppercase tracking-[0.2em] text-gray-500">4. Lieu & Salle Disponible</h4>
+                                                                <div className="grid grid-cols-1 gap-4">
+                                                                    <div className="bg-white/5 p-5 rounded-2xl border border-white/5">
+                                                                        <p className="text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-3">Lieu</p>
+                                                                        <div className="grid grid-cols-2 gap-2">
+                                                                            {AVAILABLE_LOCATIONS.map((location) => (
+                                                                                <button
+                                                                                    key={location}
+                                                                                    onClick={() => {
+                                                                                        setSelectedLocation(location);
+                                                                                        const firstRoom = (ROOMS_BY_LOCATION[location] || [])[0] || '';
+                                                                                        setSelectedRoom(firstRoom);
+                                                                                    }}
+                                                                                    className={`py-2 px-3 rounded-xl text-xs font-bold transition-all duration-300 border-2 ${selectedLocation === location ? 'bg-white text-gray-900 border-white shadow-lg' : 'bg-white/5 text-gray-400 border-transparent hover:bg-white/10'}`}
+                                                                                >
+                                                                                    {location}
+                                                                                </button>
+                                                                            ))}
+                                                                        </div>
+                                                                    </div>
+
+                                                                    <div className="bg-white/5 p-5 rounded-2xl border border-white/5">
+                                                                        <p className="text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-3">Salle</p>
+                                                                        <div className="grid grid-cols-2 gap-2">
+                                                                            {availableRooms.map((room) => (
+                                                                                <button
+                                                                                    key={room}
+                                                                                    onClick={() => setSelectedRoom(room)}
+                                                                                    className={`py-2 px-3 rounded-xl text-xs font-bold transition-all duration-300 border-2 ${selectedRoom === room ? 'bg-white text-gray-900 border-white shadow-lg' : 'bg-white/5 text-gray-400 border-transparent hover:bg-white/10'}`}
+                                                                                >
+                                                                                    {room}
+                                                                                </button>
+                                                                            ))}
+                                                                        </div>
+                                                                    </div>
+                                                                </div>
+                                                            </div>
                                                         </div>
                                                     </div>
 
@@ -386,9 +586,9 @@ export default function SousAdminAppointments() {
                                                             </p>
                                                         </div>
                                                         <Button
-                                                            disabled={!selectedTime || !selectedDoctorId}
+                                                            disabled={!selectedTime || !selectedDoctorId || !selectedLocation || !selectedRoom}
                                                             size="xl"
-                                                            className={`h-16 w-full sm:w-auto px-12 rounded-[1.5rem] font-bold uppercase text-[13px] tracking-[0.3em] transition-all duration-500 shadow-2xl ${(!selectedTime || !selectedDoctorId) ? 'bg-white/5 text-gray-600 cursor-not-allowed' : 'bg-white text-gray-900 hover:scale-105 hover:bg-gray-100 shadow-white/10'}`}
+                                                            className={`h-16 w-full sm:w-auto px-12 rounded-[1.5rem] font-bold uppercase text-[13px] tracking-[0.3em] transition-all duration-500 shadow-2xl ${(!selectedTime || !selectedDoctorId || !selectedLocation || !selectedRoom) ? 'bg-white/5 text-gray-600 cursor-not-allowed' : 'bg-white text-gray-900 hover:scale-105 hover:bg-gray-100 shadow-white/10'}`}
                                                             onClick={() => handlePlanify(req.id)}
                                                         >
                                                             Lancer l'Intervention
@@ -412,7 +612,9 @@ export default function SousAdminAppointments() {
                     <TabsContent value="waiting" className="m-0 focus-visible:outline-none focus-visible:ring-0">
                         <div className="p-10 border-b border-gray-50 bg-gray-50/20 text-left">
                             <h3 className="font-bold text-gray-900 text-xl uppercase tracking-tighter">Flux Tactique</h3>
-                            <p className="text-xs text-gray-400 font-bold mt-1">Marquez les arrivées pour synchroniser les salles de consultation.</p>
+                            <p className="text-xs text-gray-400 font-bold mt-1">
+                                Marquez les arrivées pour synchroniser les salles de consultation. L&apos;ordre de la liste suit la table Salle d&apos;attente (arrivée à l&apos;accueil), puis urgence et heure de RDV.
+                            </p>
                         </div>
                         <div className="overflow-x-auto">
                             <table className="w-full text-left border-collapse">
@@ -434,13 +636,15 @@ export default function SousAdminAppointments() {
                                                     </div>
                                                     <div>
                                                         <div className="font-bold text-gray-900 text-lg tracking-tight mb-1">{p.patientName}</div>
-                                                        <div
-                                                            className={`text-[10px] font-bold uppercase tracking-widest flex items-center gap-2 cursor-pointer hover:opacity-80 transition-all ${p.isUrgent ? 'text-rose-500' : 'text-gray-400'}`}
+                                                        <button
+                                                            type="button"
+                                                            title="Cliquer pour marquer urgent ou normal"
+                                                            className={`text-left text-[10px] font-bold uppercase tracking-widest flex items-center gap-2 cursor-pointer hover:opacity-80 transition-all ${p.isUrgent ? 'text-rose-500' : 'text-gray-400'}`}
                                                             onClick={() => handleTacticalUpdate(p.id, { isUrgent: !p.isUrgent })}
                                                         >
                                                             <div className={`w-1.5 h-1.5 rounded-full ${p.isUrgent ? 'bg-rose-500 animate-ping' : 'bg-gray-300'}`} />
                                                             {p.isUrgent ? 'Urgent' : 'Normal'}
-                                                        </div>
+                                                        </button>
                                                     </div>
                                                 </div>
                                             </td>
@@ -511,7 +715,29 @@ export default function SousAdminAppointments() {
                                                                 <div className="w-8 h-8 rounded-full bg-emerald-100 flex items-center justify-center mb-1">
                                                                     <div className="w-1.5 h-1.5 rounded-full bg-emerald-500 shadow-[0_0_10px_rgba(16,185,129,0.5)]" />
                                                                 </div>
-                                                                <span className="text-[10px] font-bold text-emerald-600 uppercase tracking-widest leading-none">Pris en Charge</span>
+                                                                <span className="text-[10px] font-bold text-emerald-600 uppercase tracking-widest leading-none">En cours</span>
+                                                                <Button
+                                                                    size="sm"
+                                                                    className="mt-3 h-12 bg-gray-900 text-white hover:bg-black font-bold uppercase text-[10px] tracking-widest px-6 rounded-2xl shadow-xl shadow-gray-200 hover:scale-105 transition-all"
+                                                                    onClick={() => handleCheckout(p.id)}
+                                                                >
+                                                                    Marquer sortie
+                                                                </Button>
+                                                            </div>
+                                                        );
+                                                    }
+                                                    // Default: allow validation when scheduled/expected (PREVU/EN_RETARD/etc.)
+                                                    if (stat.type !== 'danger') {
+                                                        return (
+                                                            <div className="flex flex-col items-center gap-4">
+                                                                <Button
+                                                                    size="sm"
+                                                                    className="h-14 bg-emerald-600 text-white hover:bg-emerald-700 font-bold uppercase text-[11px] tracking-widest px-8 rounded-2xl shadow-xl shadow-emerald-100 hover:scale-105 transition-all gap-3"
+                                                                    onClick={() => handleTacticalUpdate(p.id, { presenceStatus: 'PRESENT' })}
+                                                                >
+                                                                    <Plus className="w-5 h-5" />
+                                                                    Valider Présence
+                                                                </Button>
                                                             </div>
                                                         );
                                                     }

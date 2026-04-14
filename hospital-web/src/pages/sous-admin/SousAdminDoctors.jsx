@@ -30,7 +30,7 @@ export default function SousAdminDoctors() {
     const [doctors, setDoctors] = useState([]);
     const [loading, setLoading] = useState(true);
 
-    const user = JSON.parse(localStorage.getItem('proUser') || '{}');
+    const user = JSON.parse(sessionStorage.getItem('proUser') || '{}');
 
     useEffect(() => {
         const fetchDoctors = async () => {

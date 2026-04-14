@@ -87,7 +87,7 @@ const LoginPro = () => {
       const { token, user } = response.data;
 
 
-      const mappedRole = user.role === 'DOCTOR' ? 'Médecin' :
+      const mappedRole = (user.role === 'DOCTOR' || user.role === 'MEDECIN') ? 'Médecin' :
         user.role === 'ADMIN' ? 'Administrateur' :
           user.role === 'SOUS_ADMIN' ? 'Sous-Administrateur' : '';
 
@@ -100,7 +100,7 @@ const LoginPro = () => {
       sessionStorage.setItem('proToken', token);
       sessionStorage.setItem('proUser', JSON.stringify(user));
 
-      if (user.role === "DOCTOR") {
+      if (user.role === "DOCTOR" || user.role === "MEDECIN") {
         navigate("/doctor/dashboard");
       } else if (user.role === "ADMIN") {
         navigate("/admin/dashboard");

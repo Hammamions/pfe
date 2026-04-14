@@ -12,7 +12,7 @@ const api = axios.create({
 // Interceptor to add the token to every request
 api.interceptors.request.use(
     (config) => {
-        const token = localStorage.getItem('proToken');
+        const token = sessionStorage.getItem('proToken');
         if (token) {
             config.headers.Authorization = `Bearer ${token}`;
         }
@@ -28,8 +28,8 @@ api.interceptors.response.use(
     (response) => response,
     (error) => {
         if (error.response && error.response.status === 401) {
-            localStorage.removeItem('proToken');
-            localStorage.removeItem('proUser');
+            sessionStorage.removeItem('proToken');
+            sessionStorage.removeItem('proUser');
             // Optional: redirect to login if not already there
             if (!window.location.pathname.includes('/login-pro')) {
                 window.location.href = '/login-pro';

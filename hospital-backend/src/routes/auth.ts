@@ -1,15 +1,14 @@
-import { PrismaClient } from '@prisma/client';
 import bcrypt from 'bcryptjs';
 import { Request, Response, Router } from 'express';
 import jwt from 'jsonwebtoken';
+import { prisma } from '../lib/prisma';
 import { sendResetEmail } from '../utils/mail';
 
 const router = Router();
-const prisma = new PrismaClient();
 const JWT_SECRET = process.env.JWT_SECRET || 'tunisante_secret_key_2026';
 
 router.post('/register', async (req: Request, res: Response) => {
-    const { email, password, fullName } = req.body;
+    const { email, password, fullName, role } = req.body;
 
     if (!email || !password || !fullName) {
         return res.status(400).json({ error: 'Tous les champs sont obligatoires' });
@@ -27,26 +26,41 @@ router.post('/register', async (req: Request, res: Response) => {
 
         const hashedPassword = await bcrypt.hash(password, 10);
 
+        let assignedRole = 'PATIENT';
+        if (role === 'MEDECIN') assignedRole = 'MEDECIN';
+        if (role === 'ADMIN') assignedRole = 'ADMIN';
+        if (role === 'SOUS_ADMIN') assignedRole = 'SOUS_ADMIN';
+
+        const userData: any = {
+            email,
+            motDePasse: hashedPassword,
+            nom,
+            prenom,
+            role: assignedRole,
+        };
+
+        if (assignedRole === 'PATIENT') {
+            userData.patient = { create: {} };
+        } else if (assignedRole === 'MEDECIN') {
+            userData.medecin = { create: {} };
+        } else if (assignedRole === 'ADMIN') {
+            userData.admin = { create: {} };
+        } else if (assignedRole === 'SOUS_ADMIN') {
+            userData.sousAdmin = { create: {} };
+        }
+
         const utilisateur = await prisma.utilisateur.create({
-            data: {
-                email,
-                motDePasse: hashedPassword,
-                nom,
-                prenom,
-                role: 'PATIENT',
-                patient: {
-                    create: {}
-                }
-            }
+            data: userData
         });
 
-        const token = jwt.sign({ userId: utilisateur.id, email: utilisateur.email, role: 'PATIENT' }, JWT_SECRET, { expiresIn: '7d' });
+        const token = jwt.sign({ userId: utilisateur.id, email: utilisateur.email, role: utilisateur.role }, JWT_SECRET, { expiresIn: '7d' });
 
         return res.status(201).json({
             token,
             user: {
+                id: utilisateur.id,
                 email: utilisateur.email,
-                role: 'PATIENT',
+                role: utilisateur.role,
                 nom: utilisateur.nom,
                 prenom: utilisateur.prenom,
                 lastName: utilisateur.nom,
@@ -99,8 +113,9 @@ router.post('/login', async (req: Request, res: Response) => {
                 history: d?.historiqueMedical || [],
                 emergencyContact: {
                     name: d?.contactUrgenceNom || '',
-                    relation: d?.contactUrgenceRelation || '',
-                    phone: d?.contactUrgenceTelephone || ''
+                    relation: '',
+                    phone: d?.contactUrgenceTelephone || '',
+                    email: d?.contactUrgenceEmail || ''
                 }
             };
         } else if (utilisateur.role === 'MEDECIN' && utilisateur.medecin) {
@@ -178,7 +193,8 @@ router.put('/profile', async (req: Request, res: Response) => {
                     historiqueMedical: history || [],
                     contactUrgenceNom: emergencyContact?.name,
                     contactUrgenceRelation: emergencyContact?.relation,
-                    contactUrgenceTelephone: emergencyContact?.phone
+                    contactUrgenceTelephone: emergencyContact?.phone,
+                    contactUrgenceEmail: emergencyContact?.email
                 },
                 update: {
                     dateNaissance: birthDate || undefined,
@@ -189,6 +205,7 @@ router.put('/profile', async (req: Request, res: Response) => {
                     contactUrgenceNom: emergencyContact?.name || undefined,
                     contactUrgenceRelation: emergencyContact?.relation || undefined,
                     contactUrgenceTelephone: emergencyContact?.phone || undefined,
+                    contactUrgenceEmail: emergencyContact?.email || undefined,
                 }
             });
         }
@@ -242,7 +259,8 @@ router.post('/register-full', async (req: Request, res: Response) => {
                                 historiqueMedical: profileData.history || [],
                                 contactUrgenceNom: profileData.emergencyContact?.name,
                                 contactUrgenceRelation: profileData.emergencyContact?.relation,
-                                contactUrgenceTelephone: profileData.emergencyContact?.phone
+                                contactUrgenceTelephone: profileData.emergencyContact?.phone,
+                                contactUrgenceEmail: profileData.emergencyContact?.email
                             }
                         }
                     }

@@ -7,7 +7,14 @@
         "start": "node dist/index.js",
         "dev": "nodemon --exec ts-node --transpile-only src/index.ts",
         "build": "tsc",
-        "seed": "ts-node --transpile-only prisma/seed.ts"
+        "seed": "ts-node --transpile-only prisma/seed.ts",
+        "create-sa": "ts-node src/utils/create-sa.ts",
+        "db:migrate": "prisma migrate dev",
+        "db:push": "prisma db push",
+        "db:pull": "prisma db pull",
+        "db:sync": "prisma db pull && prisma generate",
+        "db:studio": "prisma studio",
+        "db:generate": "prisma generate"
     },
     "prisma": {
         "seed": "ts-node --transpile-only prisma/seed.ts"
@@ -30,7 +37,7 @@
         "@types/jsonwebtoken": "^9.0.7",
         "@types/node": "^22.0.0",
         "nodemon": "^3.1.9",
-        "prisma": "5.22.0",
+        "prisma": "^5.22.0",
         "ts-node": "^10.9.2",
         "typescript": "^5.7.0"
     }

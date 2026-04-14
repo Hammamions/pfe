@@ -1,9 +1,8 @@
-import { PrismaClient } from '@prisma/client';
 import { Response, Router } from 'express';
+import { prisma } from '../lib/prisma';
 import { authenticatePatient, AuthRequest } from '../middleware/auth';
 
 const router = Router();
-const prisma = new PrismaClient();
 
 
 router.get('/', authenticatePatient, async (req: AuthRequest, res: Response) => {
@@ -39,14 +38,8 @@ router.post('/', authenticatePatient, async (req: AuthRequest, res: Response) =>
             }
         });
 
-        // Notify patient
-        await prisma.notification.create({
-            data: {
-                utilisateurId: req.userId!,
-                titre: '🚨 Urgence signalée',
-                message: `Votre demande d'urgence (${typeUrgence}) a été enregistrée. Les secours ont été alertés.`
-            }
-        });
+        // No patient notification here: patient notifications are restricted
+        // to document received and appointment status updates only.
 
         return res.status(201).json(newUrgence);
     } catch (error) {

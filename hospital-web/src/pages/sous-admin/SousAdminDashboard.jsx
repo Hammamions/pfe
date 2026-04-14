@@ -12,6 +12,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '../../components/ui/ca
 import api from '../../lib/api';
 
 export default function SousAdminDashboard() {
+    const REFRESH_INTERVAL_MS = 3000;
     const [stats, setStats] = useState({
         pendingCount: 0,
         todayCount: 0,
@@ -22,33 +23,52 @@ export default function SousAdminDashboard() {
     const [loading, setLoading] = useState(true);
 
     useEffect(() => {
+        let isMounted = true;
+        let intervalId = null;
+
         const fetchDashboardData = async () => {
             try {
+                const ts = Date.now();
+                const [statsRes, activitiesRes, aptsRes] = await Promise.all([
+                    api.get('/sous-admin/stats', { params: { _t: ts } }),
+                    api.get('/sous-admin/activities', { params: { _t: ts } }),
+                    api.get('/professionals/all-appointments', { params: { _t: ts } })
+                ]);
 
-                const statsRes = await api.get('/sous-admin/stats');
+                if (!isMounted) return;
+
+                const pendingAll = aptsRes.data.filter(
+                    a => a.status === 'EN_ATTENTE' || a.requestType === 'ANNULATION' || a.requestType === 'REPORT'
+                );
                 setStats({
-                    pendingCount: statsRes.data.pending,
+                    // Keep the counter consistent with the "Dernières demandes" list.
+                    pendingCount: pendingAll.length,
                     todayCount: statsRes.data.total,
                     presentCount: statsRes.data.present
                 });
 
-                const activitiesRes = await api.get('/sous-admin/activities');
                 setActivities(activitiesRes.data);
 
-                const aptsRes = await api.get('/professionals/all-appointments');
-                const pending = aptsRes.data
-                    .filter(a => a.status === 'EN_ATTENTE')
-                    .slice(0, 3);
+                const pending = pendingAll.slice(0, 3);
                 setRecentRequests(pending);
-
             } catch (err) {
                 console.error("Dashboard fetch error:", err);
             } finally {
-                setLoading(false);
+                if (isMounted) setLoading(false);
             }
         };
 
         fetchDashboardData();
+        intervalId = setInterval(fetchDashboardData, REFRESH_INTERVAL_MS);
+        window.addEventListener('focus', fetchDashboardData);
+        document.addEventListener('visibilitychange', fetchDashboardData);
+
+        return () => {
+            isMounted = false;
+            if (intervalId) clearInterval(intervalId);
+            window.removeEventListener('focus', fetchDashboardData);
+            document.removeEventListener('visibilitychange', fetchDashboardData);
+        };
     }, []);
 
     if (loading) {
@@ -75,7 +95,7 @@ export default function SousAdminDashboard() {
                     <div className="absolute top-0 right-0 w-24 h-24 bg-white/10 rounded-full -mr-12 -mt-12 blur-xl group-hover:scale-150 transition-transform duration-700" />
                     <CardContent className="p-6">
                         <Inbox className="w-8 h-8 text-indigo-200/40 mb-3" />
-                        <p className="text-[10px] font-bold text-white/60 uppercase tracking-widest whitespace-nowrap">Demandes En Attente</p>
+                        <p className="text-[10px] font-bold text-white/60 uppercase tracking-widest whitespace-nowrap">Demandes à Traiter</p>
                         <h3 className="text-2xl font-black mt-1 tracking-tight">{stats.pendingCount}</h3>
                     </CardContent>
                 </Card>
@@ -112,7 +132,7 @@ export default function SousAdminDashboard() {
                         <CardHeader className="p-10 pb-0 flex flex-row items-center justify-between">
                             <div>
                                 <CardTitle className="text-xl font-bold text-gray-900 uppercase tracking-tight">Dernières Demandes</CardTitle>
-                                <p className="text-xs text-gray-400 font-bold mt-1">Actions prioritaires requises.</p>
+                                <p className="text-xs text-gray-400 font-bold mt-1">Nouvelles demandes, reports et annulations.</p>
                             </div>
                             <Link to="/sous-admin/appointments">
                                 <Button variant="ghost" className="text-indigo-600 font-bold text-xs uppercase tracking-wider gap-2">
@@ -129,18 +149,25 @@ export default function SousAdminDashboard() {
                                         </div>
                                         <div>
                                             <h4 className="font-bold text-gray-900">{req.patientName}</h4>
-                                            <span className="text-xs font-bold text-blue-700 opacity-70">{req.motif}</span>
+                                            <div className="flex items-center gap-2 mt-1">
+                                                <span className="text-xs font-bold text-blue-700 opacity-70">{req.motif}</span>
+                                                {req.requestType && (
+                                                    <span className={`px-2 py-0.5 rounded-full text-[9px] font-bold uppercase tracking-wider ${req.requestType === 'ANNULATION' ? 'bg-rose-100 text-rose-700' : 'bg-amber-100 text-amber-700'}`}>
+                                                        {req.requestType === 'ANNULATION' ? 'Annulation' : 'Report'}
+                                                    </span>
+                                                )}
+                                            </div>
                                         </div>
                                     </div>
                                     <Link to="/sous-admin/appointments">
                                         <Button size="sm" className="bg-gray-100 text-gray-900 hover:bg-gray-900 hover:text-white rounded-xl font-bold text-[10px] uppercase tracking-wider h-10 shadow-none">
-                                            Planifier
+                                            Traiter
                                         </Button>
                                     </Link>
                                 </div>
                             )) : (
                                 <div className="py-10 text-center text-gray-400 font-bold italic">
-                                    Aucune demande en attente
+                                    Aucune demande à traiter
                                 </div>
                             )}
                         </CardContent>

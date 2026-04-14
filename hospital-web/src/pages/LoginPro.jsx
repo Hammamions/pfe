@@ -97,8 +97,8 @@ const LoginPro = () => {
         return;
       }
 
-      localStorage.setItem('proToken', token);
-      localStorage.setItem('proUser', JSON.stringify(user));
+      sessionStorage.setItem('proToken', token);
+      sessionStorage.setItem('proUser', JSON.stringify(user));
 
       if (user.role === "DOCTOR") {
         navigate("/doctor/dashboard");
@@ -126,10 +126,31 @@ const LoginPro = () => {
     setError("");
 
     try {
+      let apiRole = 'MEDECIN';
+      if (role === 'Administrateur') apiRole = 'ADMIN';
+      if (role === 'Sous-Administrateur') apiRole = 'SOUS_ADMIN';
 
-      alert("L'inscription doit être validée par un administrateur.");
+      const response = await api.post('/auth/register', {
+        fullName: formData.fullName,
+        email: formData.email,
+        password: formData.password,
+        role: apiRole,
+      });
+
+      const { token, user } = response.data;
+
+      sessionStorage.setItem('proToken', token);
+      sessionStorage.setItem('proUser', JSON.stringify(user));
+
+      if (user.role === "DOCTOR" || user.role === "MEDECIN") {
+        navigate("/doctor/dashboard");
+      } else if (user.role === "ADMIN") {
+        navigate("/admin/dashboard");
+      } else if (user.role === "SOUS_ADMIN") {
+        navigate("/sous-admin/dashboard");
+      }
     } catch (err) {
-      setError("Erreur lors de la création du compte.");
+      setError(err.response?.data?.error || "Erreur lors de la création du compte.");
     } finally {
       setLoading(false);
     }

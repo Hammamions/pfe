@@ -2,5 +2,11 @@
   "name": "pfe-hospital-system",
   "private": true,
   "version": "1.0.0",
-  "description": "Système hospitalier intelligent - Root project"
+  "description": "Système hospitalier intelligent - Root project",
+  "dependencies": {
+    "@prisma/client": "^7.7.0"
+  },
+  "devDependencies": {
+    "prisma": "^7.7.0"
+  }
 }

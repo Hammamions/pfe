@@ -1,5 +1,5 @@
 import { Clock, Users } from 'lucide-react';
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { Badge } from '../../components/ui/badge';
 import { Button } from '../../components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '../../components/ui/card';
@@ -7,6 +7,7 @@ import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, D
 import { Input } from '../../components/ui/input';
 import { Label } from '../../components/ui/label';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '../../components/ui/tabs';
+import api from '../../lib/api';
 import { mockDoctorAppointments, mockWaitingRoom } from '../../data/doctorMockData';
 
 export default function DoctorAgendaPage() {
@@ -16,6 +17,33 @@ export default function DoctorAgendaPage() {
     const [selectedAppointment, setSelectedAppointment] = useState(null);
     const [newDate, setNewDate] = useState('');
     const [newTime, setNewTime] = useState('');
+    const [liveWaitingRoom, setLiveWaitingRoom] = useState([]);
+
+    useEffect(() => {
+        let isMounted = true;
+        const fetchWaitingRoom = async () => {
+            try {
+                const res = await api.get('/professionals/doctor-waiting-room', { params: { _t: Date.now() } });
+                if (!isMounted) return;
+                setLiveWaitingRoom(Array.isArray(res.data) ? res.data : []);
+            } catch (error) {
+                if (!isMounted) return;
+                console.error('Error fetching doctor waiting room:', error);
+            }
+        };
+
+        fetchWaitingRoom();
+        const intervalId = setInterval(fetchWaitingRoom, 3000);
+        window.addEventListener('focus', fetchWaitingRoom);
+        document.addEventListener('visibilitychange', fetchWaitingRoom);
+
+        return () => {
+            isMounted = false;
+            clearInterval(intervalId);
+            window.removeEventListener('focus', fetchWaitingRoom);
+            document.removeEventListener('visibilitychange', fetchWaitingRoom);
+        };
+    }, []);
 
     const handleRescheduleClick = (appointment) => {
         setSelectedAppointment(appointment);
@@ -211,60 +239,43 @@ export default function DoctorAgendaPage() {
                                     </CardTitle>
                                     <CardDescription>Patients actuellement en attente</CardDescription>
                                 </div>
-                                <Badge variant="secondary">
-                                    {mockWaitingRoom.filter((p) => p.statut === 'en attente').length}{' '}
-                                    patient(s)
-                                </Badge>
+                                <Badge variant="secondary">{liveWaitingRoom.length} patient(s)</Badge>
                             </div>
                         </CardHeader>
                         <CardContent>
                             <div className="space-y-3">
-                                {mockWaitingRoom.map((patient) => (
+                                {liveWaitingRoom.map((patient) => (
                                     <div
                                         key={patient.id}
-                                        className={`p-4 rounded-lg border-2 ${patient.statut === 'en consultation'
-                                            ? 'border-blue-300 bg-blue-50'
-                                            : patient.priorite === 'urgente'
-                                                ? 'border-red-300 bg-red-50'
-                                                : 'border-gray-200 bg-white'
-                                            }`}
+                                        className="p-4 rounded-lg border-2 border-blue-300 bg-blue-50"
                                     >
                                         <div className="flex items-start justify-between">
                                             <div className="flex-1">
                                                 <div className="flex items-center gap-2 mb-1">
                                                     <h4 className="font-semibold text-gray-900">
-                                                        {patient.prenom} {patient.nom}
+                                                        {patient.patientName}
                                                     </h4>
-                                                    {patient.priorite === 'urgente' && (
-                                                        <Badge variant="destructive" className="text-xs">
-                                                            Urgente
-                                                        </Badge>
-                                                    )}
-                                                    <Badge
-                                                        variant={
-                                                            patient.statut === 'en consultation'
-                                                                ? 'default'
-                                                                : 'secondary'
-                                                        }
-                                                        className="text-xs"
-                                                    >
-                                                        {patient.statut}
-                                                    </Badge>
+                                                    <Badge variant="default" className="text-xs">présent</Badge>
                                                 </div>
-                                                <p className="text-sm text-gray-600">{patient.motif}</p>
+                                                <p className="text-sm text-gray-600">{patient.motif || 'Consultation'}</p>
                                                 <div className="flex items-center gap-2 mt-2 text-xs text-gray-500">
                                                     <Clock className="w-3 h-3" />
-                                                    <span>Arrivée: {patient.heureArrivee}</span>
+                                                    <span>Heure: {patient.heure}</span>
                                                     <span>•</span>
-                                                    <span>
-                                                        Temps d'attente:{' '}
-                                                        {Math.floor(Math.random() * 30) + 5} min
-                                                    </span>
+                                                    <span>{patient.lieu} • Salle {patient.salle}</span>
+                                                </div>
+                                                <div className="mt-3 rounded-md border border-gray-200 bg-gray-50 p-3 text-xs text-gray-700">
+                                                    <p><span className="font-semibold">Groupe sanguin:</span> {patient.dossierMedical?.bloodGroup || 'Non précisé'}</p>
+                                                    <p><span className="font-semibold">Allergies:</span> {(patient.dossierMedical?.allergies || []).join(', ') || 'Aucune'}</p>
+                                                    <p><span className="font-semibold">Antécédents:</span> {(patient.dossierMedical?.history || []).slice(0, 3).join(', ') || 'Aucun'}</p>
                                                 </div>
                                             </div>
                                         </div>
                                     </div>
                                 ))}
+                                {liveWaitingRoom.length === 0 && (
+                                    <div className="text-center text-gray-400 py-8">Aucun patient présent en salle d'attente.</div>
+                                )}
                             </div>
                         </CardContent>
                     </Card>

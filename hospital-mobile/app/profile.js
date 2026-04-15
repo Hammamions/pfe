@@ -1,31 +1,23 @@
 
 import { Feather, Ionicons } from '@expo/vector-icons';
 import { Stack, useRouter } from 'expo-router';
-import { useEffect, useState } from 'react';
+import { useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Alert, Dimensions, Modal, SafeAreaView, ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
 import { theme } from '../theme';
 import { useApp } from './AppContext';
-import CustomCalendar from './components/CustomCalendar';
 import HeaderSidebar from './components/HeaderSidebar';
 
 const { width } = Dimensions.get('window');
 
-const InfoField = ({ label, value, icon, iconType = 'feather', isEditing, isRTL, t, multiline = false, onChangeText, required = false, error = false, editable = true, keyboardType = 'default' }) => (
+const InfoField = ({ label, value, icon, iconType = 'feather', isEditing, isRTL, t, multiline = false, onChangeText }) => (
     <View style={styles.infoField}>
-        <View style={[styles.labelRow, isRTL && { flexDirection: 'row-reverse' }]}>
-            <Text style={[styles.infoLabel, isRTL && { textAlign: 'right' }]}>{label}</Text>
-            {required && isEditing && <Text style={{ color: '#ef4444', marginLeft: 4, fontWeight: 'bold' }}>*</Text>}
-        </View>
-        <View style={[
-            styles.inputWrapper,
-            isRTL && { flexDirection: 'row-reverse' },
-            isEditing && error && { borderColor: '#ef4444', borderBottomWidth: 2 }
-        ]}>
+        <Text style={[styles.infoLabel, isRTL && { textAlign: 'right' }]}>{label}</Text>
+        <View style={[styles.inputWrapper, isRTL && { flexDirection: 'row-reverse' }]}>
             {icon && (
                 iconType === 'feather' ?
-                    <Feather name={icon} size={18} color={isEditing && error ? "#ef4444" : "#94a3b8"} style={isRTL ? { marginLeft: 10 } : { marginRight: 10 }} /> :
-                    <Ionicons name={icon} size={18} color={isEditing && error ? "#ef4444" : "#94a3b8"} style={isRTL ? { marginLeft: 10 } : { marginRight: 10 }} />
+                    <Feather name={icon} size={18} color="#94a3b8" style={isRTL ? { marginLeft: 10 } : { marginRight: 10 }} /> :
+                    <Ionicons name={icon} size={18} color="#94a3b8" style={isRTL ? { marginLeft: 10 } : { marginRight: 10 }} />
             )}
             {isEditing ? (
                 <TextInput
@@ -33,15 +25,11 @@ const InfoField = ({ label, value, icon, iconType = 'feather', isEditing, isRTL,
                     value={value}
                     onChangeText={onChangeText}
                     multiline={multiline}
-                    placeholder=""
-                    editable={editable}
-                    keyboardType={keyboardType}
                 />
             ) : (
                 <Text style={[styles.valueText, isRTL && { textAlign: 'right' }, { flex: 1 }]}>{value || t('notSpecified')}</Text>
             )}
         </View>
-        {isEditing && error && <Text style={[styles.errorText, isRTL && { textAlign: 'right' }]}>{error}</Text>}
     </View>
 );
 
@@ -55,71 +43,33 @@ const Profile = () => {
     const [editData, setEditData] = useState({ ...patient });
     const [activeModal, setActiveModal] = useState(null);
     const [newTagValue, setNewTagValue] = useState('');
-    const [errors, setErrors] = useState({});
-    const [showDateModal, setShowDateModal] = useState(false);
     const isRTL = i18n.language === 'ar';
-
-    useEffect(() => {
-        if (!isEditing) {
-            setEditData({ ...patient });
-        }
-    }, [patient, isEditing]);
-
-    const validateEmail = (email) => {
-        return String(email)
-            .toLowerCase()
-            .match(/^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$/);
-    };
-
-    const validatePhone = (phone) => {
-        return String(phone).match(/^\d{8}$/);
-    };
-
-    const validateDate = (date) => {
-        return String(date).match(/^\d{4}-\d{2}-\d{2}$/) || String(date).match(/^\d{2}\/\d{2}\/\d{4}$/);
-    };
 
     const handleEditToggle = () => {
         if (isEditing) {
-            setEditData({ ...patient });
-            setErrors({});
-        } else {
             setEditData({ ...patient });
         }
         setIsEditing(!isEditing);
     };
 
     const handleSave = () => {
-        const newErrors = {};
-        if (!editData.lastName?.trim()) newErrors.lastName = t('fieldRequired');
-        if (!editData.firstName?.trim()) newErrors.firstName = t('fieldRequired');
-        if (!editData.birthDate?.trim()) newErrors.birthDate = t('fieldRequired');
-        if (!editData.email?.trim()) newErrors.email = t('fieldRequired');
-        else if (!validateEmail(editData.email)) newErrors.email = t('invalidEmail');
+        const isEmergencyComplete = editData.emergencyContact.name.trim() &&
+            editData.emergencyContact.relation.trim() &&
+            editData.emergencyContact.phone.trim() &&
+            editData.emergencyContact.email.trim();
 
-        if (!editData.phone?.trim()) newErrors.phone = t('fieldRequired');
-        else if (!validatePhone(editData.phone)) newErrors.phone = t('invalidPhone');
+        const isMainComplete = editData.lastName.trim() && editData.firstName.trim() &&
+            editData.birthDate.trim() && editData.email.trim() &&
+            editData.phone.trim() && editData.bloodGroup.trim() &&
+            editData.socialSecurity.trim();
 
-        if (!editData.bloodGroup?.trim()) newErrors.bloodGroup = t('fieldRequired');
-        if (!editData.socialSecurity?.trim()) newErrors.socialSecurity = t('fieldRequired');
-
-        if (!editData.emergencyContact.name?.trim()) newErrors.emergencyName = t('fieldRequired');
-        if (!editData.emergencyContact.relation?.trim()) newErrors.emergencyRelation = t('fieldRequired');
-        if (!editData.emergencyContact.phone?.trim()) newErrors.emergencyPhone = t('fieldRequired');
-        else if (!validatePhone(editData.emergencyContact.phone)) newErrors.emergencyPhone = t('invalidPhone');
-
-        if (!editData.emergencyContact.email?.trim()) newErrors.emergencyEmail = t('fieldRequired');
-        else if (!validateEmail(editData.emergencyContact.email)) newErrors.emergencyEmail = t('invalidEmail');
-
-        if (Object.keys(newErrors).length > 0) {
-            setErrors(newErrors);
+        if (!isMainComplete || !isEmergencyComplete) {
             Alert.alert(t('error'), t('fillAllFields'));
             return;
         }
 
         setPatient({ ...editData });
         setIsEditing(false);
-        setErrors({});
     };
 
     const handleInputChange = (field, value, section = null) => {
@@ -180,11 +130,10 @@ const Profile = () => {
                 <View style={styles.heroCard}>
                     <View style={styles.avatarLarge}>
                         <Text style={styles.avatarText}>
-                            {(patient.firstName || patient.prenom || "?").charAt(0).toUpperCase()}
-                            {(patient.lastName || patient.nom || "").charAt(0).toUpperCase()}
+                            {t(patient.firstName)?.charAt(0)}{t(patient.lastName)?.charAt(0)}
                         </Text>
                     </View>
-                    <Text style={styles.heroName}>{patient.firstName} {patient.lastName}</Text>
+                    <Text style={styles.heroName}>{t(patient.firstName)} {t(patient.lastName)}</Text>
                     <Text style={styles.heroEmail}>{patient.email}</Text>
 
                     <View style={styles.heroDivider} />
@@ -215,31 +164,19 @@ const Profile = () => {
                     <Text style={[styles.sectionTitle, isRTL && { textAlign: 'right' }]}>{t('personalInfo')}</Text>
                     <Text style={[styles.sectionSubtitle, isRTL && { textAlign: 'right' }]}>{t('personalContactDesc')}</Text>
 
-                    <InfoField label={t('lastName')} value={isEditing ? editData.lastName : patient.lastName} isEditing={isEditing} isRTL={isRTL} t={t} onChangeText={(text) => handleInputChange('lastName', text)} required error={errors.lastName} />
-                    <InfoField label={t('firstName')} value={isEditing ? editData.firstName : patient.firstName} isEditing={isEditing} isRTL={isRTL} t={t} onChangeText={(text) => handleInputChange('firstName', text)} required error={errors.firstName} />
-                    {isEditing ? (
-                        <TouchableOpacity onPress={() => setShowDateModal(true)}>
-                            <InfoField label={t('birthDate')} value={editData.birthDate} isEditing={true} isRTL={isRTL} t={t} icon="calendar" required error={errors.birthDate} />
-                        </TouchableOpacity>
-                    ) : (
-                        <InfoField label={t('birthDate')} value={patient.birthDate} isEditing={false} isRTL={isRTL} t={t} icon="calendar" required error={errors.birthDate} />
-                    )}
-                    <InfoField label={t('email')} value={isEditing ? editData.email : patient.email} isEditing={isEditing} isRTL={isRTL} t={t} onChangeText={(text) => handleInputChange('email', text)} icon="mail" required error={errors.email} />
-                    <InfoField label={t('phone')} value={isEditing ? editData.phone : patient.phone} isEditing={isEditing} isRTL={isRTL} t={t} onChangeText={(text) => handleInputChange('phone', text)} icon="phone" keyboardType="phone-pad" required error={errors.phone} />
+                    <InfoField label={t('lastName')} value={isEditing ? editData.lastName : t(patient.lastName)} isEditing={isEditing} isRTL={isRTL} t={t} onChangeText={(text) => handleInputChange('lastName', text)} />
+                    <InfoField label={t('firstName')} value={isEditing ? editData.firstName : t(patient.firstName)} isEditing={isEditing} isRTL={isRTL} t={t} onChangeText={(text) => handleInputChange('firstName', text)} />
+                    <InfoField label={t('birthDate')} value={isEditing ? editData.birthDate : patient.birthDate} isEditing={isEditing} isRTL={isRTL} t={t} onChangeText={(text) => handleInputChange('birthDate', text)} icon="calendar" />
+                    <InfoField label={t('email')} value={isEditing ? editData.email : patient.email} isEditing={isEditing} isRTL={isRTL} t={t} onChangeText={(text) => handleInputChange('email', text)} icon="mail" />
+                    <InfoField label={t('phone')} value={isEditing ? editData.phone : patient.phone} isEditing={isEditing} isRTL={isRTL} t={t} onChangeText={(text) => handleInputChange('phone', text)} icon="phone" />
                 </View>
 
                 <View style={styles.card}>
                     <Text style={[styles.sectionTitle, isRTL && { textAlign: 'right' }]}>{t('medicalInfo')}</Text>
                     <Text style={[styles.sectionSubtitle, isRTL && { textAlign: 'right' }]}>{t('medicalInfoDescHeader')}</Text>
 
-                    {isEditing ? (
-                        <TouchableOpacity onPress={() => setBloodModalVisible(true)}>
-                            <InfoField label={t('bloodGroup')} value={editData.bloodGroup} isEditing={true} isRTL={isRTL} t={t} icon="water-outline" iconType="ionicons" required error={errors.bloodGroup} editable={false} />
-                        </TouchableOpacity>
-                    ) : (
-                        <InfoField label={t('bloodGroup')} value={patient.bloodGroup} isEditing={false} isRTL={isRTL} t={t} icon="water-outline" iconType="ionicons" required error={errors.bloodGroup} />
-                    )}
-                    <InfoField label={t('socialSecurity')} value={isEditing ? editData.socialSecurity : patient.socialSecurity} isEditing={isEditing} isRTL={isRTL} t={t} onChangeText={(text) => handleInputChange('socialSecurity', text)} icon="shield" required error={errors.socialSecurity} />
+                    <InfoField label={t('bloodGroup')} value={isEditing ? editData.bloodGroup : patient.bloodGroup} isEditing={isEditing} isRTL={isRTL} t={t} onChangeText={(text) => handleInputChange('bloodGroup', text)} icon="water-outline" iconType="ionicons" />
+                    <InfoField label={t('socialSecurity')} value={isEditing ? editData.socialSecurity : patient.socialSecurity} isEditing={isEditing} isRTL={isRTL} t={t} onChangeText={(text) => handleInputChange('socialSecurity', text)} icon="shield" />
 
                     <View style={styles.infoField}>
                         <View style={[styles.rowWithIcon, isRTL && { flexDirection: 'row-reverse' }]}>
@@ -247,7 +184,7 @@ const Profile = () => {
                             <Text style={[styles.infoLabel, { marginBottom: 0 }]}>{t('allergies')}</Text>
                         </View>
                         <View style={[styles.tagContainer, isRTL && { flexDirection: 'row-reverse' }, { marginTop: 10 }]}>
-                            {((isEditing ? editData.allergies : patient.allergies) || []).map((tag, i) => (
+                            {(isEditing ? editData.allergies : patient.allergies).map((tag, i) => (
                                 <View key={i} style={styles.tagAllergy}>
                                     <Text style={styles.tagAllergyText}>{t(tag)}</Text>
                                     {isEditing && (
@@ -271,7 +208,7 @@ const Profile = () => {
                             <Text style={[styles.infoLabel, { marginBottom: 0 }]}>{t('medicalHistory')}</Text>
                         </View>
                         <View style={[styles.tagContainer, isRTL && { flexDirection: 'row-reverse' }, { marginTop: 10 }]}>
-                            {((isEditing ? editData.history : patient.history) || []).map((tag, i) => (
+                            {(isEditing ? editData.history : patient.history).map((tag, i) => (
                                 <View key={i} style={styles.tagHistory}>
                                     <Text style={styles.tagHistoryText}>{t(tag)}</Text>
                                     {isEditing && (
@@ -296,47 +233,37 @@ const Profile = () => {
 
                     <InfoField
                         label={t('fullName')}
-                        value={isEditing ? editData.emergencyContact?.name : patient.emergencyContact?.name}
+                        value={isEditing ? editData.emergencyContact.name : patient.emergencyContact.name}
                         isEditing={isEditing}
                         isRTL={isRTL}
                         t={t}
                         onChangeText={(text) => handleInputChange('name', text, 'emergencyContact')}
-                        required
-                        error={errors.emergencyName}
                     />
                     <InfoField
                         label={t('relation')}
-                        value={isEditing ? editData.emergencyContact?.relation : patient.emergencyContact?.relation}
+                        value={isEditing ? editData.emergencyContact.relation : t(patient.emergencyContact.relation)}
                         isEditing={isEditing}
                         isRTL={isRTL}
                         t={t}
                         onChangeText={(text) => handleInputChange('relation', text, 'emergencyContact')}
-                        required
-                        error={errors.emergencyRelation}
                     />
                     <InfoField
                         label={t('phone')}
-                        value={isEditing ? editData.emergencyContact?.phone : patient.emergencyContact?.phone}
+                        value={isEditing ? editData.emergencyContact.phone : patient.emergencyContact.phone}
                         isEditing={isEditing}
                         isRTL={isRTL}
                         t={t}
                         onChangeText={(text) => handleInputChange('phone', text, 'emergencyContact')}
                         icon="phone"
-                        keyboardType="phone-pad"
-                        required
-                        error={errors.emergencyPhone}
                     />
                     <InfoField
                         label={t('email')}
-                        value={isEditing ? editData.emergencyContact?.email : patient.emergencyContact?.email}
+                        value={isEditing ? editData.emergencyContact.email : patient.emergencyContact.email}
                         isEditing={isEditing}
                         isRTL={isRTL}
                         t={t}
                         onChangeText={(text) => handleInputChange('email', text, 'emergencyContact')}
                         icon="mail"
-                        keyboardType="email-address"
-                        required
-                        error={errors.emergencyEmail}
                     />
                 </View>
 
@@ -390,16 +317,7 @@ const Profile = () => {
                         <Text style={styles.modalTitle}>{t('bloodGroup')}</Text>
                         <View style={styles.bloodOptions}>
                             {['A+', 'A-', 'B+', 'B-', 'AB+', 'AB-', 'O+', 'O-'].map((bg) => (
-                                <TouchableOpacity
-                                    key={bg}
-                                    style={styles.bloodOption}
-                                    onPress={() => {
-                                        if (isEditing) {
-                                            setEditData(prev => ({ ...prev, bloodGroup: bg }));
-                                        }
-                                        setBloodModalVisible(false);
-                                    }}
-                                >
+                                <TouchableOpacity key={bg} style={styles.bloodOption} onPress={() => { if (isEditing) { setEditData(prev => ({ ...prev, bloodGroup: bg })); } else setBloodModalVisible(false); }}>
                                     <Text style={styles.bloodOptionText}>{bg}</Text>
                                 </TouchableOpacity>
                             ))}
@@ -411,26 +329,7 @@ const Profile = () => {
                         </View>
                     </View>
                 </View>
-            </Modal>
-            <Modal transparent visible={showDateModal} animationType="fade" onRequestClose={() => setShowDateModal(false)}>
-                <View style={styles.modalOverlay}>
-                    <View style={styles.modalContent}>
-                        <Text style={styles.modalTitle}>{t('birthDate')}</Text>
-                        <CustomCalendar
-                            visible={showDateModal}
-                            onClose={() => setShowDateModal(false)}
-                            onSelect={(date) => {
-                                handleInputChange('birthDate', date);
-                                setShowDateModal(false);
-                            }}
-                            initialDate={(isEditing ? editData.birthDate : patient.birthDate) || new Date().toISOString().split('T')[0]}
-                            isRTL={isRTL}
-                            t={t}
-                        />
-                    </View>
-                </View>
-            </Modal>
-        </SafeAreaView>
+            </Modal>        </SafeAreaView>
     );
 };
 
@@ -552,11 +451,6 @@ const styles = StyleSheet.create({
     },
     infoField: {
         marginBottom: 20,
-    },
-    labelRow: {
-        flexDirection: 'row',
-        alignItems: 'center',
-        marginBottom: 8,
     },
     infoLabel: {
         fontSize: 13,
@@ -729,12 +623,6 @@ const styles = StyleSheet.create({
         borderWidth: 1,
         borderColor: '#f1f5f9',
         marginBottom: 20,
-    },
-    errorText: {
-        color: '#ef4444',
-        fontSize: 12,
-        marginTop: 4,
-        fontWeight: '600',
     },
     modalActions: {
         flexDirection: 'row',

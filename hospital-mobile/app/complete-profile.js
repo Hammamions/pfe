@@ -1,64 +1,36 @@
 import { Feather, Ionicons } from '@expo/vector-icons';
-import AsyncStorage from './utils/storage';
-import Constants from 'expo-constants';
 import { LinearGradient } from 'expo-linear-gradient';
-import { Stack, useLocalSearchParams, useRouter } from 'expo-router';
-import { useEffect, useState } from 'react';
+import { Stack, useRouter } from 'expo-router';
+import { useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { ActivityIndicator, Alert, Modal, SafeAreaView, ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
+import { Alert, Modal, SafeAreaView, ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
 import { theme } from '../theme';
 import { useApp } from './AppContext';
-import CustomCalendar from './components/CustomCalendar';
 
-const InfoField = ({ label, value, icon, iconType = 'feather', isRTL, t, keyboardType, onChangeText, required = false, error = false, editable = true }) => (
+const InfoField = ({ label, value, icon, iconType = 'feather', isRTL, t, keyboardType, onChangeText }) => (
     <View style={styles.infoField}>
-        <View style={styles.labelRow}>
-            <Text style={[styles.infoLabel, isRTL && { textAlign: 'right' }]}>{label}</Text>
-            {required && <Text style={{ color: '#ef4444', marginLeft: 4, fontWeight: 'bold' }}>*</Text>}
-        </View>
-        <View style={[
-            styles.inputWrapper,
-            isRTL && { flexDirection: 'row-reverse' },
-            error && { borderColor: '#ef4444', borderBottomWidth: 2 }
-        ]}>
+        <Text style={[styles.infoLabel, isRTL && { textAlign: 'right' }]}>{label}</Text>
+        <View style={[styles.inputWrapper, isRTL && { flexDirection: 'row-reverse' }]}>
             {icon && (
                 iconType === 'feather' ?
-                    <Feather name={icon} size={18} color={error ? "#ef4444" : "#94a3b8"} style={isRTL ? { marginLeft: 10 } : { marginRight: 10 }} /> :
-                    <Ionicons name={icon} size={18} color={error ? "#ef4444" : "#94a3b8"} style={isRTL ? { marginLeft: 10 } : { marginRight: 10 }} />
+                    <Feather name={icon} size={18} color="#94a3b8" style={isRTL ? { marginLeft: 10 } : { marginRight: 10 }} /> :
+                    <Ionicons name={icon} size={18} color="#94a3b8" style={isRTL ? { marginLeft: 10 } : { marginRight: 10 }} />
             )}
             <TextInput
                 style={[styles.input, isRTL && { textAlign: 'right' }, { flex: 1 }]}
                 value={value}
                 onChangeText={onChangeText}
                 keyboardType={keyboardType}
-                placeholder=""
-                editable={editable}
-                autoComplete="off"
-                textContentType="none"
-                importantForAutofill="no"
-                autoCorrect={false}
             />
         </View>
-        {error && <Text style={[styles.errorText, isRTL && { textAlign: 'right' }]}>{error}</Text>}
     </View>
 );
 
 const CompleteProfile = () => {
     const router = useRouter();
-    const params = useLocalSearchParams();
     const { t, i18n } = useTranslation();
-    const { patient, setPatient, syncAllData } = useApp();
+    const { patient, setPatient } = useApp();
     const isRTL = i18n.language === 'ar';
-    const API_URL = (() => {
-        const hostUri =
-            Constants.expoConfig?.hostUri ||
-            Constants.manifest2?.extra?.expoGo?.debuggerHost ||
-            '';
-        const host = hostUri.split(':')[0];
-        return host ? `http://${host}:4000` : 'http://localhost:4000';
-    })();
-    const [errors, setErrors] = useState({});
-    const [loading, setLoading] = useState(false);
 
     const [formData, setFormData] = useState({
         lastName: '',
@@ -78,67 +50,7 @@ const CompleteProfile = () => {
         }
     });
 
-    const validateEmail = (email) => {
-        return String(email)
-            .toLowerCase()
-            .match(/^(([^<>()[\]\\.,;:\s@"]+(\.[^<>()[\]\\.,;:\s@"]+)*)|(".+"))@((\[[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}\])|(([a-zA-Z\-0-9]+\.)+[a-zA-Z]{2,}))$/);
-    };
-
-    const validatePhone = (phone) => {
-        return String(phone).match(/^\d{8}$/);
-    };
-
-    const validateDate = (date) => {
-        return String(date).match(/^\d{4}-\d{2}-\d{2}$/) || String(date).match(/^\d{2}\/\d{2}\/\d{4}$/);
-    };
-
-    useEffect(() => {
-        const loadUserData = async () => {
-            try {
-                let prefilledData = {};
-
-                if (params.registrationData) {
-                    try {
-                        const parsed = typeof params.registrationData === 'string'
-                            ? JSON.parse(params.registrationData)
-                            : params.registrationData;
-
-                        if (parsed.email) prefilledData.email = parsed.email;
-                        if (parsed.fullName) {
-                            const nameParts = parsed.fullName.trim().split(' ');
-                            prefilledData.firstName = nameParts[0] || '';
-                            prefilledData.lastName = nameParts.slice(1).join(' ') || '';
-                        }
-                    } catch (e) {
-                        console.error('Failed to parse registrationData in useEffect', e);
-                    }
-                }
-
-                const userJson = await AsyncStorage.getItem('user');
-                if (userJson) {
-                    const user = JSON.parse(userJson);
-                    prefilledData = {
-                        ...prefilledData,
-                        email: prefilledData.email || user.email || ''
-                    };
-                }
-
-                if (Object.keys(prefilledData).length > 0) {
-                    setFormData(prev => ({
-                        ...prev,
-                        ...prefilledData
-                    }));
-                }
-            } catch (e) {
-                console.warn('Failed to load user data for pre-fill', e);
-            }
-        };
-        loadUserData();
-    }, [params.registrationData]);
-
     const [activeModal, setActiveModal] = useState(null);
-    const [showBloodModal, setShowBloodModal] = useState(false);
-    const [showDateModal, setShowDateModal] = useState(false);
     const [newTagValue, setNewTagValue] = useState('');
 
     const handleInputChange = (field, value, section = null) => {
@@ -147,21 +59,8 @@ const CompleteProfile = () => {
                 ...formData,
                 [section]: { ...formData[section], [field]: value }
             });
-            const errorKey = section === 'emergencyContact'
-                ? `emergency${field.charAt(0).toUpperCase()}${field.slice(1)}`
-                : field;
-            if (errors[errorKey]) {
-                const newErrors = { ...errors };
-                delete newErrors[errorKey];
-                setErrors(newErrors);
-            }
         } else {
             setFormData({ ...formData, [field]: value });
-            if (errors[field]) {
-                const newErrors = { ...errors };
-                delete newErrors[field];
-                setErrors(newErrors);
-            }
         }
     };
 
@@ -182,128 +81,28 @@ const CompleteProfile = () => {
         setNewTagValue('');
     };
 
-    const handleComplete = async () => {
-        const newErrors = {};
-        if (!formData.lastName?.trim()) newErrors.lastName = t('fieldRequired');
-        if (!formData.firstName?.trim()) newErrors.firstName = t('fieldRequired');
-        if (!formData.birthDate?.trim()) newErrors.birthDate = t('fieldRequired');
-        if (!formData.email?.trim()) newErrors.email = t('fieldRequired');
-        else if (!validateEmail(formData.email.trim())) newErrors.email = t('invalidEmail');
+    const handleComplete = () => {
+        const isEmergencyComplete = formData.emergencyContact.name.trim() &&
+            formData.emergencyContact.relation.trim() &&
+            formData.emergencyContact.phone.trim() &&
+            formData.emergencyContact.email.trim();
 
-        if (!formData.phone?.trim()) newErrors.phone = t('fieldRequired');
-        else if (!validatePhone(formData.phone.trim())) newErrors.phone = t('invalidPhone');
+        const isMainComplete = formData.lastName.trim() && formData.firstName.trim() &&
+            formData.birthDate.trim() && formData.email.trim() &&
+            formData.phone.trim() && formData.bloodGroup.trim() &&
+            formData.socialSecurity.trim();
 
-        if (!formData.bloodGroup?.trim()) newErrors.bloodGroup = t('fieldRequired');
-        if (!formData.socialSecurity?.trim()) newErrors.socialSecurity = t('fieldRequired');
-
-        const ec = formData.emergencyContact;
-        if (!ec.name?.trim()) newErrors.emergencyName = t('fieldRequired');
-        if (!ec.relation?.trim()) newErrors.emergencyRelation = t('fieldRequired');
-
-        if (!ec.phone?.trim()) {
-            newErrors.emergencyPhone = t('fieldRequired');
-        } else if (!validatePhone(ec.phone.trim())) {
-            newErrors.emergencyPhone = t('invalidPhone');
-        }
-
-        if (!ec.email?.trim()) {
-            newErrors.emergencyEmail = t('fieldRequired');
-        } else if (!validateEmail(ec.email.trim())) {
-            newErrors.emergencyEmail = t('invalidEmail');
-        }
-
-        if (Object.keys(newErrors).length > 0) {
-            setErrors(newErrors);
-            console.log('[DEBUG] Validation failed:', newErrors);
+        if (!isMainComplete || !isEmergencyComplete) {
             Alert.alert(t('error'), t('fillAllFields'));
             return;
         }
 
-        setLoading(true);
-        try {
-            let parsedRegistrationData = params.registrationData;
-            if (typeof params.registrationData === 'string') {
-                try {
-                    parsedRegistrationData = JSON.parse(params.registrationData);
-                } catch (e) {
-                    console.error('Failed to parse registrationData', e);
-                }
-            }
-
-            if (parsedRegistrationData) {
-                console.log('[DEBUG] Calling API: POST /api/auth/register-full');
-                const res = await fetch(`${API_URL}/api/auth/register-full`, {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({
-                        userData: parsedRegistrationData,
-                        profileData: formData
-                    })
-                });
-
-                if (!res.ok) {
-                    const data = await res.json();
-                    throw new Error(data.error || 'Erreur lors de la création du compte.');
-                }
-
-                const data = await res.json();
-                console.log('[DEBUG] Full Register Response:', JSON.stringify(data, null, 2));
-
-                const mergedPatient = {
-                    ...data.user,
-                    ...formData,
-                    phone: formData.phone,
-                    emergencyContact: { ...formData.emergencyContact },
-                    allergies: [...(formData.allergies || [])],
-                    history: [...(formData.history || [])]
-                };
-
-                await AsyncStorage.setItem('token', data.token);
-                await AsyncStorage.setItem('user', JSON.stringify(data.user));
-                await AsyncStorage.setItem('patient', JSON.stringify(mergedPatient));
-
-                setPatient(mergedPatient);
-                syncAllData(data.token);
-
-                Alert.alert(t('success'), t('profileUpdated'));
-                router.replace('/dashboard');
-            } else {
-                const token = await AsyncStorage.getItem('token');
-                if (!token) {
-                    Alert.alert(t('error'), 'Session expirée. Veuillez vous reconnecter.');
-                    router.replace('/login');
-                    return;
-                }
-
-                console.log('[DEBUG] Calling API: PUT /api/auth/profile');
-                const res = await fetch(`${API_URL}/api/auth/profile`, {
-                    method: 'PUT',
-                    headers: {
-                        'Content-Type': 'application/json',
-                        'Authorization': `Bearer ${token}`
-                    },
-                    body: JSON.stringify(formData)
-                });
-
-                const data = await res.json();
-                if (!res.ok) {
-                    throw new Error(data.error || 'Erreur lors de la sauvegarde du profil.');
-                }
-
-                await AsyncStorage.setItem('user', JSON.stringify(data.user));
-                await AsyncStorage.setItem('patient', JSON.stringify({ ...patient, ...formData }));
-
-                setPatient({ ...patient, ...formData });
-                router.replace('/dashboard');
-            }
-        } catch (error) {
-            console.error('Operation error:', error);
-            Alert.alert(t('error'), error.message || 'Impossible de contacter le serveur. Vérifiez votre connexion.');
-        } finally {
-            setLoading(false);
-        }
+        setPatient({
+            ...patient,
+            ...formData,
+        });
+        router.replace('/dashboard');
     };
-
 
     return (
         <LinearGradient
@@ -327,22 +126,18 @@ const CompleteProfile = () => {
                         <View style={styles.card}>
                             <Text style={[styles.sectionTitle, isRTL && { textAlign: 'right' }]}>{t('personalInfo')}</Text>
 
-                            <InfoField label={t('lastName')} value={formData.lastName} isRTL={isRTL} t={t} onChangeText={(text) => handleInputChange('lastName', text)} required error={errors.lastName} />
-                            <InfoField label={t('firstName')} value={formData.firstName} isRTL={isRTL} t={t} onChangeText={(text) => handleInputChange('firstName', text)} required error={errors.firstName} />
-                            <TouchableOpacity onPress={() => setShowDateModal(true)}>
-                                <InfoField label={t('birthDate')} value={formData.birthDate} isRTL={isRTL} t={t} icon="calendar" required error={errors.birthDate} editable={false} />
-                            </TouchableOpacity>
-                            <InfoField label={t('email')} value={formData.email} isRTL={isRTL} t={t} onChangeText={(text) => handleInputChange('email', text)} icon="mail" keyboardType="email-address" required error={errors.email} />
-                            <InfoField label={t('phone')} value={formData.phone} isRTL={isRTL} t={t} onChangeText={(text) => handleInputChange('phone', text)} icon="phone" keyboardType="phone-pad" required error={errors.phone} />
+                            <InfoField label={t('lastName')} value={formData.lastName} isRTL={isRTL} t={t} onChangeText={(text) => handleInputChange('lastName', text)} />
+                            <InfoField label={t('firstName')} value={formData.firstName} isRTL={isRTL} t={t} onChangeText={(text) => handleInputChange('firstName', text)} />
+                            <InfoField label={t('birthDate')} value={formData.birthDate} isRTL={isRTL} t={t} onChangeText={(text) => handleInputChange('birthDate', text)} icon="calendar" />
+                            <InfoField label={t('email')} value={formData.email} isRTL={isRTL} t={t} onChangeText={(text) => handleInputChange('email', text)} icon="mail" keyboardType="email-address" />
+                            <InfoField label={t('phone')} value={formData.phone} isRTL={isRTL} t={t} onChangeText={(text) => handleInputChange('phone', text)} icon="phone" keyboardType="phone-pad" />
                         </View>
 
                         <View style={styles.card}>
                             <Text style={[styles.sectionTitle, isRTL && { textAlign: 'right' }]}>{t('medicalInfo')}</Text>
 
-                            <TouchableOpacity onPress={() => setShowBloodModal(true)}>
-                                <InfoField label={t('bloodGroup')} value={formData.bloodGroup} isRTL={isRTL} t={t} icon="water-outline" iconType="ionicons" required error={errors.bloodGroup} editable={false} />
-                            </TouchableOpacity>
-                            <InfoField label={t('socialSecurity')} value={formData.socialSecurity} isRTL={isRTL} t={t} onChangeText={(text) => handleInputChange('socialSecurity', text)} icon="shield" keyboardType="numeric" required error={errors.socialSecurity} />
+                            <InfoField label={t('bloodGroup')} value={formData.bloodGroup} isRTL={isRTL} t={t} onChangeText={(text) => handleInputChange('bloodGroup', text)} icon="water-outline" iconType="ionicons" />
+                            <InfoField label={t('socialSecurity')} value={formData.socialSecurity} isRTL={isRTL} t={t} onChangeText={(text) => handleInputChange('socialSecurity', text)} icon="shield" keyboardType="numeric" />
 
                             <View style={styles.infoField}>
                                 <View style={[styles.rowWithIcon, isRTL && { flexDirection: 'row-reverse' }]}>
@@ -388,22 +183,14 @@ const CompleteProfile = () => {
                         <View style={styles.card}>
                             <Text style={[styles.sectionTitle, isRTL && { textAlign: 'right' }]}>{t('emergencyContact')}</Text>
 
-                            <InfoField label={t('fullName')} value={formData.emergencyContact.name} isRTL={isRTL} t={t} onChangeText={(text) => handleInputChange('name', text, 'emergencyContact')} required error={errors.emergencyName} />
-                            <InfoField label={t('relation')} value={formData.emergencyContact.relation} isRTL={isRTL} t={t} onChangeText={(text) => handleInputChange('relation', text, 'emergencyContact')} required error={errors.emergencyRelation} />
-                            <InfoField label={t('phone')} value={formData.emergencyContact.phone} isRTL={isRTL} t={t} onChangeText={(text) => handleInputChange('phone', text, 'emergencyContact')} icon="phone" keyboardType="phone-pad" required error={errors.emergencyPhone} />
-                            <InfoField label={t('email')} value={formData.emergencyContact.email} isRTL={isRTL} t={t} onChangeText={(text) => handleInputChange('email', text, 'emergencyContact')} icon="mail" keyboardType="email-address" required error={errors.emergencyEmail} />
+                            <InfoField label={t('fullName')} value={formData.emergencyContact.name} isRTL={isRTL} t={t} onChangeText={(text) => handleInputChange('name', text, 'emergencyContact')} />
+                            <InfoField label={t('relation')} value={formData.emergencyContact.relation} isRTL={isRTL} t={t} onChangeText={(text) => handleInputChange('relation', text, 'emergencyContact')} />
+                            <InfoField label={t('phone')} value={formData.emergencyContact.phone} isRTL={isRTL} t={t} onChangeText={(text) => handleInputChange('phone', text, 'emergencyContact')} icon="phone" keyboardType="phone-pad" />
+                            <InfoField label={t('email')} value={formData.emergencyContact.email} isRTL={isRTL} t={t} onChangeText={(text) => handleInputChange('email', text, 'emergencyContact')} icon="mail" keyboardType="email-address" />
                         </View>
 
-                        <TouchableOpacity
-                            style={[styles.saveBtn, loading && { opacity: 0.7 }]}
-                            onPress={handleComplete}
-                            disabled={loading}
-                        >
-                            {loading ? (
-                                <ActivityIndicator color="#fff" />
-                            ) : (
-                                <Text style={styles.saveBtnText}>{t('finishRegistration')}</Text>
-                            )}
+                        <TouchableOpacity style={styles.saveBtn} onPress={handleComplete}>
+                            <Text style={styles.saveBtnText}>{t('finishRegistration')}</Text>
                         </TouchableOpacity>
 
                     </View>
@@ -450,36 +237,6 @@ const CompleteProfile = () => {
                         </View>
                     </View>
                 </Modal>
-
-                <Modal transparent visible={showBloodModal} animationType="fade" onRequestClose={() => setShowBloodModal(false)}>
-                    <View style={styles.modalOverlay}>
-                        <View style={styles.modalContent}>
-                            <Text style={styles.modalTitle}>{t('bloodGroup')}</Text>
-                            <View style={styles.bloodOptions}>
-                                {['A+', 'A-', 'B+', 'B-', 'AB+', 'AB-', 'O+', 'O-'].map((bg) => (
-                                    <TouchableOpacity key={bg} style={styles.bloodOption} onPress={() => { handleInputChange('bloodGroup', bg); setShowBloodModal(false); }}>
-                                        <Text style={styles.bloodOptionText}>{bg}</Text>
-                                    </TouchableOpacity>
-                                ))}
-                            </View>
-                            <TouchableOpacity style={styles.modalCloseBtn} onPress={() => setShowBloodModal(false)}>
-                                <Text style={styles.modalCancelText}>{t('cancel')}</Text>
-                            </TouchableOpacity>
-                        </View>
-                    </View>
-                </Modal>
-
-                <CustomCalendar
-                    visible={showDateModal}
-                    onClose={() => setShowDateModal(false)}
-                    onSelect={(date) => {
-                        handleInputChange('birthDate', date);
-                        setShowDateModal(false);
-                    }}
-                    initialDate={formData.birthDate}
-                    isRTL={isRTL}
-                    t={t}
-                />
 
             </SafeAreaView>
         </LinearGradient>
@@ -553,11 +310,6 @@ const styles = StyleSheet.create({
     },
     infoField: {
         marginBottom: 20,
-    },
-    labelRow: {
-        flexDirection: 'row',
-        alignItems: 'center',
-        marginBottom: 8,
     },
     infoLabel: {
         fontSize: 13,
@@ -720,42 +472,6 @@ const styles = StyleSheet.create({
     },
     modalSaveBtnDisabled: {
         backgroundColor: '#94a3b8',
-    },
-    bloodOptions: {
-        flexDirection: 'row',
-        flexWrap: 'wrap',
-        justifyContent: 'center',
-        gap: 8,
-        marginVertical: 10,
-    },
-    bloodOption: {
-        backgroundColor: '#f1f5f9',
-        paddingHorizontal: 15,
-        paddingVertical: 10,
-        borderRadius: 10,
-        minWidth: 60,
-        alignItems: 'center',
-    },
-    bloodOptionText: {
-        color: '#1e293b',
-        fontWeight: '700',
-        fontSize: 16,
-    },
-    modalCancelText: {
-        color: '#64748b',
-        fontWeight: '600',
-        textAlign: 'center',
-        marginTop: 10,
-    },
-    datePickerContainer: {
-        alignItems: 'center',
-        width: '100%',
-    },
-    errorText: {
-        color: '#ef4444',
-        fontSize: 12,
-        marginTop: 4,
-        fontWeight: '600',
     },
 });
 

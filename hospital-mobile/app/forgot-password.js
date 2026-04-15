@@ -2,7 +2,7 @@ import { LinearGradient } from 'expo-linear-gradient';
 import { Stack, useRouter } from 'expo-router';
 import { useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { ActivityIndicator, Alert, Image, SafeAreaView, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
+import { ActivityIndicator, Image, SafeAreaView, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
 import { theme } from '../theme';
 
 const ForgotPassword = () => {
@@ -13,29 +13,13 @@ const ForgotPassword = () => {
     const [loading, setLoading] = useState(false);
     const isRTL = i18n.language === 'ar';
 
-    const API_URL = 'http://192.168.1.3:4000';
-
-    const handleSubmit = async () => {
+    const handleSubmit = () => {
         if (!email) return;
         setLoading(true);
-        try {
-            const res = await fetch(`${API_URL}/api/auth/forgot-password`, {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ email })
-            });
-            const data = await res.json();
+        setTimeout(() => {
             setLoading(false);
-            if (res.ok) {
-                setSubmitted(true);
-            } else {
-                Alert.alert(t('error'), data.error || "Erreur lors de la récupération");
-            }
-        } catch (error) {
-            setLoading(false);
-            Alert.alert(t('error'), "Impossible de contacter le serveur");
-            console.error(error);
-        }
+            setSubmitted(true);
+        }, 1500);
     };
 
     return (
@@ -73,8 +57,6 @@ const ForgotPassword = () => {
                                     onChangeText={setEmail}
                                     keyboardType="email-address"
                                     autoCapitalize="none"
-                                    autoComplete="off"
-                                    textContentType="none"
                                     returnKeyType="send"
                                     onSubmitEditing={handleSubmit}
                                 />

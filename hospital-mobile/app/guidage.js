@@ -16,22 +16,13 @@ const Guidage = () => {
     const [activeNav, setActiveNav] = useState(null);
     const isRTL = i18n.language === 'ar';
 
-    const filteredDepartments = services.filter(dep => {
-        const trName = t(dep.name.toLowerCase()) || dep.name;
-        return dep.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-            trName.toLowerCase().includes(searchTerm.toLowerCase());
-    });
+    const filteredDepartments = services.filter(dep =>
+        dep.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
+        t(dep.name.toLowerCase()).toLowerCase().includes(searchTerm.toLowerCase())
+    );
 
     const handleNav = (depName) => {
         setActiveNav(depName);
-    };
-
-    const displayTranslation = (text) => {
-        if (text === null || text === undefined) return '';
-        const stringText = String(text);
-        const key = stringText.toLowerCase();
-        const tr = t(key);
-        return tr === key ? stringText : tr;
     };
 
     return (
@@ -60,7 +51,7 @@ const Guidage = () => {
                         <View style={[styles.navHeader, isRTL && { flexDirection: 'row-reverse' }]}>
                             <View style={isRTL && { alignItems: 'flex-end' }}>
                                 <Text style={styles.navStatus}>{t('navigationInProgress')}</Text>
-                                <Text style={styles.navDestination}>{t('towards')}: {displayTranslation(activeNav)}</Text>
+                                <Text style={styles.navDestination}>{t('towards')}: {t(activeNav.toLowerCase()) || activeNav}</Text>
                             </View>
                             <TouchableOpacity style={styles.stopBtn} onPress={() => setActiveNav(null)}>
                                 <Text style={styles.stopBtnText}>{t('stop')}</Text>
@@ -95,7 +86,7 @@ const Guidage = () => {
                                     <View style={styles.stepDot} />
                                 </View>
                                 <View style={[styles.stepTextContent, isRTL && { paddingLeft: 0, paddingRight: 15, alignItems: 'flex-end' }]}>
-                                    <Text style={styles.stepTitle}>{t('arrivalAt')} {displayTranslation(activeNav)}</Text>
+                                    <Text style={styles.stepTitle}>{t('arrivalAt')} {t(activeNav.toLowerCase())}</Text>
                                     <Text style={styles.stepDesc}>{t('showCard')}</Text>
                                 </View>
                             </View>
@@ -115,10 +106,10 @@ const Guidage = () => {
                                 <View style={[styles.depIconContainer, { backgroundColor: dep.bgColor }]}>
                                     <Feather name={dep.icon} size={22} color={dep.color} />
                                 </View>
-                                <Text style={styles.depFloor}>{displayTranslation(dep.floor)}</Text>
+                                <Text style={styles.depFloor}>{t(dep.floor)}</Text>
                             </View>
-                            <Text style={[styles.depName, isRTL && { textAlign: 'right' }]}>{displayTranslation(dep.name)}</Text>
-                            <Text style={[styles.depRoom, isRTL && { textAlign: 'right' }]}>{t('room')}: {displayTranslation(dep.location)}</Text>
+                            <Text style={[styles.depName, isRTL && { textAlign: 'right' }]}>{t(dep.name.toLowerCase()) || dep.name}</Text>
+                            <Text style={[styles.depRoom, isRTL && { textAlign: 'right' }]}>{t('room')}: {t(dep.location)}</Text>
                             <View style={styles.navBadge}>
                                 <Text style={styles.navBadgeText}>{t('startNavigation')} →</Text>
                             </View>
@@ -138,8 +129,8 @@ const Guidage = () => {
                                 <Feather name={eq.icon} size={22} color={eq.color} />
                             </View>
                             <View style={[styles.eqInfo, isRTL && { alignItems: 'flex-end' }]}>
-                                <Text style={styles.eqName}>{displayTranslation(eq.name)}</Text>
-                                <Text style={styles.eqFloor}>{displayTranslation(eq.location)}</Text>
+                                <Text style={styles.eqName}>{t(eq.name.toLowerCase()) || eq.name}</Text>
+                                <Text style={styles.eqFloor}>{t(eq.location)}</Text>
                             </View>
                         </TouchableOpacity>
                     ))}
@@ -296,8 +287,9 @@ const styles = StyleSheet.create({
         ...theme.shadows.sm,
     },
     depHeader: {
-        flexDirection: 'column',
-        alignItems: 'flex-start',
+        flexDirection: 'row',
+        justifyContent: 'space-between',
+        alignItems: 'center',
         marginBottom: 12,
     },
     depIconContainer: {
@@ -315,7 +307,6 @@ const styles = StyleSheet.create({
         paddingHorizontal: 8,
         paddingVertical: 4,
         borderRadius: 8,
-        marginTop: 10,
     },
     depName: {
         fontSize: 15,
@@ -329,14 +320,14 @@ const styles = StyleSheet.create({
         marginBottom: 12,
     },
     navBadge: {
-        backgroundColor: '#eff6ff',
-        paddingVertical: 8,
-        paddingHorizontal: 14,
-        borderRadius: 12,
+        backgroundColor: theme.colors.lightBlue,
+        paddingVertical: 6,
+        paddingHorizontal: 10,
+        borderRadius: 8,
         alignSelf: 'flex-start',
     },
     navBadgeText: {
-        fontSize: 12,
+        fontSize: 10,
         fontWeight: '700',
         color: theme.colors.primary,
     },

@@ -1,0 +1,9 @@
+﻿d8f5549be74c6a541b408defdf24a48ce84116a4	HEAD
+749fe8885a71f72374943af3aa5431fa0ac12955	refs/heads/connexion-patient-web
+d8f5549be74c6a541b408defdf24a48ce84116a4	refs/heads/master
+8181dfdce79f0ae48e4352b0418683efa2dca0cb	refs/pull/1/head
+9f5c88abfd18bcaf49afe310fa707871c0db9c61	refs/pull/2/head
+098fbce99a42c64cd9f32b9cf14f08a52e855152	refs/pull/3/head
+749fe8885a71f72374943af3aa5431fa0ac12955	refs/pull/4/head
+c54f9532e820f9d043aade991d15f205d927927b	refs/remotes/partenaire/HEAD
+c54f9532e820f9d043aade991d15f205d927927b	refs/remotes/partenaire/main

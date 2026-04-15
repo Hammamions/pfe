@@ -1,145 +1,74 @@
-import { Feather, MaterialCommunityIcons } from '@expo/vector-icons';
+import { Feather } from '@expo/vector-icons';
 import { Stack } from 'expo-router';
 import React, { useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { ActivityIndicator, Alert, Dimensions, Modal, Platform, RefreshControl, SafeAreaView, ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
+import { Dimensions, Modal, Platform, SafeAreaView, ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
 import { theme } from '../theme';
 import { useApp } from './AppContext';
 import HeaderSidebar from './components/HeaderSidebar';
-import AsyncStorage from './utils/storage';
 
 const { width } = Dimensions.get('window');
 
 const Appointments = () => {
     const { t, i18n } = useTranslation();
-    const { appointments = [], setAppointments, history = [], setHistory, requests = [], setRequests, syncAllData, API_URL } = useApp() || {};
+    const { appointments = [], setAppointments, history = [], setHistory, requests = [], setRequests } = useApp() || {};
     const [view, setView] = useState('list');
     const [activeTab, setActiveTab] = useState('upcoming');
     const [step, setStep] = useState(1);
     const [selectedAppointment, setSelectedAppointment] = useState(null);
     const [showDetailModal, setShowDetailModal] = useState(false);
-    const [historyFilter, setHistoryFilter] = useState('all');
+    const [showConfirmRequestModal, setShowConfirmRequestModal] = useState(false);
     const [showSuccessModal, setShowSuccessModal] = useState(false);
     const [requestType, setRequestType] = useState(null);
     const [selectedFile, setSelectedFile] = useState(null);
-    const [refreshing, setRefreshing] = useState(false);
-    const [isSubmitting, setIsSubmitting] = useState(false);
-    const [bookingFeedback, setBookingFeedback] = useState(null);
     const [formData, setFormData] = useState({
         specialty: '',
         reason: '',
     });
     const isRTL = i18n.language === 'ar';
 
-    const notifyUser = (title, message, kind = 'error') => {
-        setBookingFeedback({ message, kind });
-        if (Platform.OS !== 'web') {
-            Alert.alert(title, message);
-        }
-    };
-
     const specialties = [
-        { id: 'cardiology', name: t('cardiology'), icon: 'activity' },
-        { id: 'dermatology', name: t('dermatology'), icon: 'sun' },
-        { id: 'generalPractitioner', name: t('generalPractitioner'), icon: 'user' },
-        { id: 'gynecology', name: t('gynecology'), icon: 'baby-face-outline', iconType: 'MaterialCommunityIcons' },
-        { id: 'ophthalmology', name: t('ophthalmology'), icon: 'eye' },
-        { id: 'orthopedics', name: t('orthopedics'), icon: 'git-branch' },
-        { id: 'pediatrics', name: t('pediatrics'), icon: 'users' },
-        { id: 'rheumatology', name: t('rheumatology'), icon: 'anchor' },
-        { id: 'urology', name: t('urology'), icon: 'droplet' },
+        { id: 'cardio', name: t('cardiology'), icon: 'activity' },
+        { id: 'dermato', name: t('dermatology'), icon: 'sun' },
+        { id: 'general', name: t('generalPractitioner'), icon: 'user' },
+        { id: 'gyneco', name: t('gynecology'), icon: 'smile' },
+        { id: 'ophtalmo', name: t('ophthalmology'), icon: 'eye' },
+        { id: 'ortho', name: t('orthopedics'), icon: 'git-branch' },
+        { id: 'pediatre', name: t('pediatrics'), icon: 'users' },
+        { id: 'rhumato', name: t('rheumatology'), icon: 'anchor' },
+        { id: 'urologie', name: t('urology'), icon: 'droplet' },
     ];
 
     const currentAppointments = activeTab === 'upcoming'
-        ? appointments
+        ? appointments.filter(a => a.status === 'confirmed' || a.status === 'confirmé')
         : activeTab === 'history'
-            ? (historyFilter === 'all' ? history : history.filter(a => a.status === historyFilter))
+            ? history
             : requests;
 
-    const handleConfirmRequest = async (typeOverride = null) => {
+    const handleConfirmRequest = () => {
         if (!selectedAppointment) return;
 
-        try {
-            const token = await AsyncStorage.getItem('token');
-            if (!token) {
-                if (Platform.OS === 'web') window.alert('Session expirée');
-                return;
-            }
+        const newRequest = {
+            ...selectedAppointment,
+            requestId: Date.now(),
+            requestType: requestType,
+            requestDate: new Date().toLocaleDateString(),
+            requestStatus: 'pending',
+            status: 'en_attente',
+            attachedFile: selectedFile ? selectedFile.name : null
+        };
 
-            const effectiveRequestType = typeOverride || requestType;
-            let newStatus = 'ANNULE';
-            if (effectiveRequestType === 'reschedule') {
-                newStatus = 'REPORTE';
-            }
+        setRequests([...requests, newRequest]);
+        setAppointments(appointments.filter(a => a.id !== selectedAppointment.id));
 
-            const res = await fetch(`${API_URL}/api/appointments/${selectedAppointment.id}`, {
-                method: 'PUT',
-                headers: {
-                    'Content-Type': 'application/json',
-                    'Authorization': `Bearer ${token}`
-                },
-                body: JSON.stringify({ status: newStatus })
-            });
-
-            if (!res.ok) {
-                const errorData = await res.json();
-                const errorMsg = errorData.error || 'Erreur lors de la mise à jour';
-                if (Platform.OS === 'web') window.alert(errorMsg);
-                Alert.alert(t('error'), errorMsg);
-                return;
-            }
-
-            await syncAllData(token);
-
-            setShowDetailModal(false);
-            setTimeout(() => setShowSuccessModal(true), 500);
-        } catch (error) {
-            console.error('Error updating appointment:', error);
-            Alert.alert(t('error'), 'Impossible de contacter le serveur');
-        }
+        setShowConfirmRequestModal(false);
+        setShowDetailModal(false);
+        setTimeout(() => setShowSuccessModal(true), 500);
     };
-
-    const handleDeleteHistory = async (id) => {
-        try {
-            const token = await AsyncStorage.getItem('token');
-            if (!token) return;
-
-            const res = await fetch(`${API_URL}/api/appointments/${id}`, {
-                method: 'DELETE',
-                headers: {
-                    'Authorization': `Bearer ${token}`
-                }
-            });
-
-            if (!res.ok) {
-                Alert.alert(t('error'), 'Erreur lors de la suppression');
-                return;
-            }
-
-            await syncAllData(token);
-            setShowDetailModal(false);
-        } catch (error) {
-            console.error('Error deleting appointment:', error);
-        }
-    };
-
-    const onRefresh = React.useCallback(async () => {
-        setRefreshing(true);
-        try {
-            const token = await AsyncStorage.getItem('token');
-            if (token) {
-                await syncAllData(token);
-            }
-        } catch (error) {
-            console.error('Refresh error:', error);
-        } finally {
-            setRefreshing(false);
-        }
-    }, [syncAllData]);
 
     const initiateRequest = (type) => {
         setRequestType(type);
-        handleConfirmRequest(type);
+        setShowConfirmRequestModal(true);
     };
 
     const handleFileSelect = () => {
@@ -163,64 +92,23 @@ const Appointments = () => {
         }
     };
 
-    const handleConfirmBooking = async () => {
-        if (isSubmitting) return;
-        console.log(`[DEBUG] handleConfirmBooking started. API_URL: ${API_URL}`);
-        setBookingFeedback(null);
-        setIsSubmitting(true);
-        try {
-            const token = await AsyncStorage.getItem('token');
-            if (!token) {
-                notifyUser(t('error'), 'Session expirée. Reconnectez-vous puis réessayez.', 'error');
-                return;
-            }
-
-            console.log(`[DEBUG] Sending POST to ${API_URL}/api/appointments`);
-            const res = await fetch(`${API_URL}/api/appointments`, {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json',
-                    'Authorization': `Bearer ${token}`
-                },
-                body: JSON.stringify({
-                    specialty: formData.specialty,
-                    reason: formData.reason,
-                    hasDocuments: !!selectedFile,
-                    documentName: selectedFile?.name || null,
-                    date: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString(),
-                    isUrgent: false
-                })
-            });
-
-            console.log(`[DEBUG] POST response status: ${res.status}`);
-            if (!res.ok) {
-                let errorMsg = 'Erreur lors de la réservation';
-                try {
-                    const errorData = await res.json();
-                    errorMsg = errorData.error || errorMsg;
-                } catch (_e) {
-                    // Keep fallback message when backend response is not JSON
-                }
-                notifyUser(t('error'), errorMsg, 'error');
-                return;
-            }
-
-            notifyUser('Succès', 'Votre demande de rendez-vous a été envoyée.', 'success');
-            await syncAllData(token);
-
-            setView('list');
-            setActiveTab('requests');
-            setStep(1);
-            setFormData({ specialty: '', reason: '' });
-            setSelectedFile(null);
-
-            setShowSuccessModal(true);
-        } catch (error) {
-            console.error('Booking error:', error);
-            notifyUser(t('error'), `Erreur réseau: ${error.message}`, 'error');
-        } finally {
-            setIsSubmitting(false);
-        }
+    const handleConfirmBooking = () => {
+        const newRequest = {
+            id: Date.now(),
+            doctor: t('pending'),
+            specialty: formData.specialty,
+            date: "",
+            month: "",
+            time: t('pendingConfirmation'),
+            location: t('pendingConfirmation'),
+            motif: formData.reason,
+            status: "en_attente"
+        };
+        setRequests([...requests, newRequest]);
+        setView('list');
+        setActiveTab('requests');
+        setStep(1);
+        setFormData({ specialty: '', reason: '' });
     };
 
 
@@ -255,22 +143,18 @@ const Appointments = () => {
                                         key={spec.id}
                                         style={[
                                             styles.specCard,
-                                            formData.specialty === spec.id && styles.specCardActive,
+                                            formData.specialty === spec.name && styles.specCardActive,
                                             isRTL && { flexDirection: 'row-reverse' }
                                         ]}
-                                        onPress={() => setFormData({ ...formData, specialty: spec.id })}
+                                        onPress={() => setFormData({ ...formData, specialty: spec.name })}
                                     >
-                                        <View style={[styles.specIconCircle, formData.specialty === spec.id && styles.specIconCircleActive]}>
-                                            {spec.iconType === 'MaterialCommunityIcons' ? (
-                                                <MaterialCommunityIcons name={spec.icon} size={20} color={formData.specialty === spec.id ? "#fff" : "#2563eb"} />
-                                            ) : (
-                                                <Feather name={spec.icon} size={20} color={formData.specialty === spec.id ? "#fff" : "#2563eb"} />
-                                            )}
+                                        <View style={[styles.specIconCircle, formData.specialty === spec.name && styles.specIconCircleActive]}>
+                                            <Feather name={spec.icon} size={20} color={formData.specialty === spec.name ? "#fff" : "#2563eb"} />
                                         </View>
-                                        <Text style={[styles.specCardText, formData.specialty === spec.id && styles.specCardTextActive]}>
+                                        <Text style={[styles.specCardText, formData.specialty === spec.name && styles.specCardTextActive]}>
                                             {spec.name}
                                         </Text>
-                                        {formData.specialty === spec.id && (
+                                        {formData.specialty === spec.name && (
                                             <Feather name="check-circle" size={18} color="#2563eb" style={styles.specCheckIcon} />
                                         )}
                                     </TouchableOpacity>
@@ -294,6 +178,7 @@ const Appointments = () => {
 
                         {step === 3 && (
                             <View>
+                                <Text style={styles.cardTitle}>{t('medicalDocuments')}</Text>
                                 <Text style={styles.cardSubtitle}>{t('optionalFilesDesc')}</Text>
 
                                 <TouchableOpacity
@@ -326,23 +211,6 @@ const Appointments = () => {
                     </ScrollView>
 
                     <View style={styles.newAptFooter}>
-                        {!!bookingFeedback && (
-                            <View
-                                style={[
-                                    styles.bookingFeedbackBox,
-                                    bookingFeedback.kind === 'success' ? styles.bookingFeedbackSuccess : styles.bookingFeedbackError
-                                ]}
-                            >
-                                <Text
-                                    style={[
-                                        styles.bookingFeedbackText,
-                                        bookingFeedback.kind === 'success' ? styles.bookingFeedbackSuccessText : styles.bookingFeedbackErrorText
-                                    ]}
-                                >
-                                    {bookingFeedback.message}
-                                </Text>
-                            </View>
-                        )}
                         <TouchableOpacity
                             style={styles.backBtn}
                             onPress={() => step === 1 ? setView('list') : setStep(step - 1)}
@@ -350,15 +218,11 @@ const Appointments = () => {
                             <Text style={styles.backBtnText}>{t('back')}</Text>
                         </TouchableOpacity>
                         <TouchableOpacity
-                            style={[styles.nextBtn, (isSubmitting || (step === 1 && !formData.specialty || step === 2 && !formData.reason)) && styles.btnDisabled]}
+                            style={[styles.nextBtn, (step === 1 && !formData.specialty || step === 2 && !formData.reason) && styles.btnDisabled]}
                             onPress={() => step === 3 ? handleConfirmBooking() : setStep(step + 1)}
-                            disabled={isSubmitting || (step === 1 && !formData.specialty || step === 2 && !formData.reason)}
+                            disabled={step === 1 && !formData.specialty || step === 2 && !formData.reason}
                         >
-                            {isSubmitting ? (
-                                <ActivityIndicator color="#fff" size="small" />
-                            ) : (
-                                <Text style={styles.nextBtnText}>{step === 3 ? t('confirm') : t('continue')}</Text>
-                            )}
+                            <Text style={styles.nextBtnText}>{step === 3 ? t('confirm') : t('continue')}</Text>
                         </TouchableOpacity>
                     </View>
                 </View>
@@ -413,38 +277,7 @@ const Appointments = () => {
                 </View>
             </View>
 
-            {activeTab === 'history' && (
-                <View style={styles.historyFilterBar}>
-                    <TouchableOpacity
-                        style={[styles.filterChip, historyFilter === 'all' && styles.filterChipActive]}
-                        onPress={() => setHistoryFilter('all')}
-                    >
-                        <Text style={[styles.filterChipText, historyFilter === 'all' && styles.filterChipTextActive]}>{t('all')}</Text>
-                    </TouchableOpacity>
-                    <TouchableOpacity
-                        style={[styles.filterChip, historyFilter === 'termine' && styles.filterChipActive]}
-                        onPress={() => setHistoryFilter('termine')}
-                    >
-                        <View style={[styles.filterDot, { backgroundColor: '#475569' }]} />
-                        <Text style={[styles.filterChipText, historyFilter === 'termine' && styles.filterChipTextActive]}>{t('completed')}</Text>
-                    </TouchableOpacity>
-                    <TouchableOpacity
-                        style={[styles.filterChip, historyFilter === 'annule' && styles.filterChipActive]}
-                        onPress={() => setHistoryFilter('annule')}
-                    >
-                        <View style={[styles.filterDot, { backgroundColor: '#b91c1c' }]} />
-                        <Text style={[styles.filterChipText, historyFilter === 'annule' && styles.filterChipTextActive]}>{t('cancelled')}</Text>
-                    </TouchableOpacity>
-                </View>
-            )}
-
-            <ScrollView
-                contentContainerStyle={styles.scrollContent}
-                showsVerticalScrollIndicator={false}
-                refreshControl={
-                    <RefreshControl refreshing={refreshing} onRefresh={onRefresh} colors={["#2563eb"]} />
-                }
-            >
+            <ScrollView contentContainerStyle={styles.scrollContent} showsVerticalScrollIndicator={false}>
                 {currentAppointments.map((apt) => (
                     <TouchableOpacity
                         key={apt.id}
@@ -452,43 +285,34 @@ const Appointments = () => {
                         onPress={() => { setSelectedAppointment(apt); setShowDetailModal(true); }}
                     >
                         <View style={[styles.aptTop, isRTL && { flexDirection: 'row-reverse' }]}>
-                            {apt.isPlanned ? (
+                            {apt.status !== 'en_attente' && (
                                 <View style={styles.dateBox}>
                                     <Text style={styles.dateVal}>{apt.date}</Text>
                                     <Text style={styles.dateMonth}>{t(apt.month)}</Text>
                                 </View>
-                            ) : (
-                                <View style={[styles.dateBox, { backgroundColor: '#f1f5f9' }]}>
-                                    <Feather name="clock" size={24} color="#94a3b8" />
-                                </View>
                             )}
                             <View style={[styles.aptMain, isRTL && { paddingLeft: 0, paddingRight: 18, alignItems: 'flex-end' }]}>
                                 <View style={[styles.aptHeaderRow, isRTL && { flexDirection: 'row-reverse', width: '100%' }]}>
-                                    <View style={[{ flex: 1, paddingRight: 10 }, isRTL && { alignItems: 'flex-end', paddingRight: 0, paddingLeft: 10 }]}>
-                                        <Text style={styles.doctorName}>{(apt.status === 'en_attente' || apt.status === 'reporte' || apt.status === 'annule' || apt.status === 'demande_annulation') ? (apt.doctor === 'Médecin à définir' ? t('notSpecified') : apt.doctor) : t(apt.doctor)}</Text>
+                                    <View style={isRTL && { alignItems: 'flex-end' }}>
+                                        <Text style={styles.doctorName}>{t(apt.doctor)}</Text>
                                         <Text style={styles.specTextSmall}>{t(apt.specialty)}</Text>
                                     </View>
-                                    {(() => {
-                                        const config = {
-                                            en_attente: { bg: '#e0f2fe', color: '#0369a1', label: 'Nouvelle demande' },
-                                            reporte: { bg: '#fef3c7', color: '#b45309', label: 'Demande de report' },
-                                            demande_annulation: { bg: '#fee2e2', color: '#b91c1c', label: 'Demande annulation' },
-                                            annule: { bg: '#fee2e2', color: '#b91c1c', label: 'Annulé' },
-                                            termine: { bg: '#f1f5f9', color: '#475569', label: 'Terminé' },
-                                            en_cours: { bg: '#ffedd5', color: '#c2410c', label: 'En cours' },
-                                            confirme: { bg: '#dcfce7', color: '#15803d', label: 'Confirmé' }
-                                        };
-                                        const stat = (apt.status || '').toLowerCase().replace('é', 'e').replace('confirmed', 'confirme');
-                                        const c = config[stat] || { bg: '#f1f5f9', color: '#64748b', label: t(apt.status) };
-                                        return (
-                                            <View style={[styles.statusBadge, { backgroundColor: c.bg }]}>
-                                                <Text style={[styles.statusBadgeText, { color: c.color }]}>{c.label}</Text>
-                                            </View>
-                                        );
-                                    })()}
+                                    <View style={[styles.statusBadge, {
+                                        backgroundColor: activeTab === 'requests'
+                                            ? '#fef3c7'
+                                            : apt.status === 'confirmed' || apt.status === 'confirmé' ? '#dcfce7' : '#f1f5f9'
+                                    }]}>
+                                        <Text style={[styles.statusBadgeText, {
+                                            color: activeTab === 'requests'
+                                                ? '#b45309'
+                                                : apt.status === 'confirmed' || apt.status === 'confirmé' ? '#15803d' : '#64748b'
+                                        }]}>
+                                            {activeTab === 'requests' ? t('en_attente') : t(apt.status)}
+                                        </Text>
+                                    </View>
                                 </View>
 
-                                {activeTab === 'requests' && apt.requestType && (
+                                {activeTab === 'requests' && (
                                     <View style={styles.requestInfoBox}>
                                         <Feather name={apt.requestType === 'reschedule' ? "calendar" : "x-circle"} size={14} color="#6366f1" />
                                         <Text style={styles.requestInfoText}>
@@ -497,39 +321,30 @@ const Appointments = () => {
                                     </View>
                                 )}
 
-                                <View style={[styles.aptDetailsRow, isRTL && { flexDirection: 'row-reverse' }, { marginTop: 15 }]}>
+                                <View style={[styles.aptDetailsRow, isRTL && { flexDirection: 'row-reverse' }]}>
                                     <View style={[styles.detailItem, isRTL && { flexDirection: 'row-reverse' }]}>
                                         <Feather name="clock" size={14} color="#64748b" style={isRTL ? { marginLeft: 6 } : { marginRight: 6 }} />
-                                        <Text style={styles.detailText}>
-                                            {apt.isPlanned ? apt.time : t('dateNotDefined')}
-                                        </Text>
+                                        <Text style={styles.detailText}>{apt.time}</Text>
                                     </View>
                                 </View>
 
-                                <View style={[styles.aptDetailsRow, isRTL && { flexDirection: 'row-reverse' }, { marginTop: 10, flexWrap: 'wrap' }]}>
-                                    <View style={[styles.detailItem, isRTL && { flexDirection: 'row-reverse' }, { flexShrink: 1, marginRight: 10 }]}>
+                                <View style={[styles.aptDetailsRow, isRTL && { flexDirection: 'row-reverse' }]}>
+                                    <View style={[styles.detailItem, isRTL && { flexDirection: 'row-reverse', flex: 1 }]}>
                                         <Feather name="map-pin" size={14} color="#64748b" style={isRTL ? { marginLeft: 6 } : { marginRight: 6 }} />
                                         <Text style={styles.detailText} numberOfLines={1}>
-                                            {apt.isPlanned ? t(apt.location) : t('locationNotDefined')}
+                                            {apt.location}
                                         </Text>
                                     </View>
-                                    {apt.isPlanned && (
-                                        <View style={[styles.roomIndicator, isRTL && { flexDirection: 'row-reverse' }, { marginLeft: 0 }]}>
-                                            <View style={styles.roomDot} />
-                                            <Text style={styles.roomText}>{t('room')} {t(apt.room) || 'A301'}</Text>
-                                        </View>
-                                    )}
+                                    <View style={[styles.roomIndicator, isRTL && { flexDirection: 'row-reverse' }]}>
+                                        <View style={styles.roomDot} />
+                                        <Text style={styles.roomText}>{t('room')} {apt.room || 'A301'}</Text>
+                                    </View>
                                 </View>
 
-                                <View style={[styles.aptDivider, { marginVertical: 15 }]} />
-                                <View style={{ gap: 8 }}>
-                                    <Text style={[styles.motifText, isRTL && { textAlign: 'right' }, { marginTop: 0 }]}>
-                                        <Text style={{ fontWeight: '700' }}>{t('reason')}: </Text>{apt.motif}
-                                    </Text>
-                                    <Text style={[styles.motifText, isRTL && { textAlign: 'right' }, { marginTop: 0 }]}>
-                                        <Text style={{ fontWeight: '700' }}>Documents joints: </Text>{apt.hasDocuments ? "Oui 📎" : "Non"}
-                                    </Text>
-                                </View>
+                                <View style={styles.aptDivider} />
+                                <Text style={[styles.motifText, isRTL && { textAlign: 'right' }]}>
+                                    <Text style={{ fontWeight: '700' }}>{t('reason')}: </Text>{apt.motif}
+                                </Text>
                             </View>
                         </View>
                     </TouchableOpacity>
@@ -555,29 +370,21 @@ const Appointments = () => {
                             <ScrollView style={styles.modalBody}>
                                 <View style={styles.heroCard}>
                                     <Text style={styles.heroLabel}>{t('dateAndTime')}</Text>
-                                    {selectedAppointment.status === 'en_attente' || selectedAppointment.status === 'reporte' || selectedAppointment.status === 'annule' || selectedAppointment.status === 'demande_annulation' ? (
-                                        <Text style={styles.heroValue}>{t('dateNotDefined')}</Text>
-                                    ) : (
-                                        <>
-                                            <Text style={styles.heroValue}>
-                                                {selectedAppointment.date ? `${selectedAppointment.date} ${t(selectedAppointment.month)}` : t('dateNotDefined')} {selectedAppointment.year || '2026'}
-                                            </Text>
-                                            <Text style={styles.heroTime}>{selectedAppointment.time}</Text>
-                                        </>
-                                    )}
+                                    <Text style={styles.heroValue}>
+                                        {selectedAppointment.date ? `${selectedAppointment.date} ${t(selectedAppointment.month)}` : t('dateNotDefined')} {selectedAppointment.year || '2026'}
+                                    </Text>
+                                    <Text style={styles.heroTime}>{selectedAppointment.time}</Text>
                                 </View>
 
                                 <View style={styles.detailItemModal}>
                                     <Text style={styles.detailLabel}>{t('practitioner')}</Text>
-                                    <Text style={styles.detailValue}>{selectedAppointment.isPlanned ? t(selectedAppointment.doctor) : t('notSpecified')}</Text>
-                                    <Text style={styles.detailSub}>{selectedAppointment.isPlanned ? t(selectedAppointment.specialty) : ''}</Text>
+                                    <Text style={styles.detailValue}>{t(selectedAppointment.doctor)}</Text>
+                                    <Text style={styles.detailSub}>{t(selectedAppointment.specialty)}</Text>
                                 </View>
 
                                 <View style={styles.detailItemModal}>
                                     <Text style={styles.detailLabel}>{t('location')}</Text>
-                                    <Text style={styles.detailValue}>
-                                        {selectedAppointment.isPlanned ? t(selectedAppointment.location) : t('locationNotDefined')}
-                                    </Text>
+                                    <Text style={styles.detailValue}>{selectedAppointment.location}</Text>
                                 </View>
 
                                 <View style={styles.detailItemModal}>
@@ -585,46 +392,69 @@ const Appointments = () => {
                                     <Text style={styles.detailValue}>{selectedAppointment.motif || t('notSpecified')}</Text>
                                 </View>
 
-                                {(selectedAppointment.status === 'confirmed' || selectedAppointment.status === 'confirmé' || selectedAppointment.status === 'confirme' || selectedAppointment.status === 'en_cours') && selectedAppointment.status !== 'en_attente' && (
+                                {(selectedAppointment.status === 'confirmed' || selectedAppointment.status === 'confirmé') && selectedAppointment.status !== 'en_attente' && (
                                     <View style={styles.modalActions}>
                                         <TouchableOpacity
                                             style={[styles.actionBtn, styles.rescheduleBtn]}
                                             onPress={() => initiateRequest('reschedule')}
                                         >
-                                            <Text style={styles.actionBtnText}>{t('reportRequest')}</Text>
+                                            <Text style={styles.actionBtnText}>{t('reschedule')}</Text>
                                         </TouchableOpacity>
                                         <TouchableOpacity
                                             style={[styles.actionBtn, styles.cancelBtnModal]}
                                             onPress={() => initiateRequest('cancel')}
                                         >
-                                            <Text style={styles.actionBtnTextDanger}>{t('cancelRequest')}</Text>
-                                        </TouchableOpacity>
-                                    </View>
-                                )}
-
-                                {selectedAppointment.status === 'en_attente' && (
-                                    <View style={styles.modalActions}>
-                                        <TouchableOpacity
-                                            style={[styles.actionBtn, styles.cancelBtnModal]}
-                                            onPress={() => initiateRequest('cancel')}
-                                        >
-                                            <Text style={styles.actionBtnTextDanger}>{t('cancelRequest')}</Text>
-                                        </TouchableOpacity>
-                                    </View>
-                                )}
-
-                                {activeTab === 'history' && (
-                                    <View style={styles.modalActions}>
-                                        <TouchableOpacity
-                                            style={[styles.actionBtn, styles.cancelBtnModal]}
-                                            onPress={() => handleDeleteHistory(selectedAppointment.id)}
-                                        >
-                                            <Text style={styles.actionBtnTextDanger}>{t('delete')}</Text>
+                                            <Text style={styles.actionBtnTextDanger}>{t('cancelAppointment')}</Text>
                                         </TouchableOpacity>
                                     </View>
                                 )}
                             </ScrollView>
                         )}
+                    </View>
+                </View>
+            </Modal>
+
+            <Modal
+                visible={showConfirmRequestModal}
+                transparent={true}
+                animationType="fade"
+                onRequestClose={() => setShowConfirmRequestModal(false)}
+            >
+                <View style={[styles.modalOverlay, { justifyContent: 'center' }]}>
+                    <View style={[styles.modalContent, styles.confirmModalContent]}>
+                        <View style={styles.modalHeader}>
+                            <Text style={styles.modalTitle}>
+                                {requestType === 'reschedule' ? t('reportRequest') : t('cancelRequest')}
+                            </Text>
+                        </View>
+                        <View style={styles.modalBody}>
+                            <Text style={styles.confirmText}>{t('requestConfirmation')}</Text>
+                            {requestType === 'reschedule' && (
+                                <View style={styles.fileUploadSection}>
+                                    <Text style={styles.detailLabel}>{t('motif')}</Text>
+                                    <TextInput
+                                        style={styles.textArea}
+                                        placeholder={t('reason')}
+                                        multiline
+                                        numberOfLines={3}
+                                    />
+                                </View>
+                            )}
+                            <View style={styles.confirmActions}>
+                                <TouchableOpacity
+                                    style={[styles.confirmBtn, styles.cancelBtn]}
+                                    onPress={() => setShowConfirmRequestModal(false)}
+                                >
+                                    <Text style={styles.confirmBtnText}>{t('back')}</Text>
+                                </TouchableOpacity>
+                                <TouchableOpacity
+                                    style={[styles.confirmBtn, styles.submitBtn]}
+                                    onPress={handleConfirmRequest}
+                                >
+                                    <Text style={styles.confirmBtnTextMain}>{t('confirmRequest')}</Text>
+                                </TouchableOpacity>
+                            </View>
+                        </View>
                     </View>
                 </View>
             </Modal>
@@ -733,7 +563,7 @@ const styles = StyleSheet.create({
         backgroundColor: '#fff',
         borderRadius: 24,
         padding: 20,
-        marginBottom: 30,
+        marginBottom: 20,
         borderWidth: 1,
         borderColor: '#f1f5f9',
         ...theme.shadows.sm,
@@ -751,12 +581,12 @@ const styles = StyleSheet.create({
         height: 70,
     },
     dateVal: {
-        fontSize: 26,
+        fontSize: 24,
         fontWeight: '900',
         color: '#2563eb',
     },
     dateMonth: {
-        fontSize: 14,
+        fontSize: 13,
         fontWeight: '700',
         color: '#60a5fa',
         textTransform: 'lowercase',
@@ -785,10 +615,10 @@ const styles = StyleSheet.create({
     statusBadge: {
         paddingHorizontal: 12,
         paddingVertical: 6,
-        borderRadius: 20,
+        borderRadius: 10,
     },
     statusBadgeText: {
-        fontSize: 12,
+        fontSize: 11,
         fontWeight: '800',
     },
     aptDetailsRow: {
@@ -832,10 +662,9 @@ const styles = StyleSheet.create({
         marginVertical: 12,
     },
     motifText: {
-        fontSize: 15,
+        fontSize: 14,
         color: '#64748b',
-        lineHeight: 22,
-        marginTop: 4,
+        lineHeight: 20,
     },
     modalOverlay: {
         flex: 1,
@@ -1066,37 +895,10 @@ const styles = StyleSheet.create({
     },
     newAptFooter: {
         flexDirection: 'row',
-        flexWrap: 'wrap',
         padding: 20,
         borderTopWidth: 1,
         borderTopColor: '#f1f5f9',
         gap: 15,
-    },
-    bookingFeedbackBox: {
-        width: '100%',
-        borderRadius: 12,
-        paddingHorizontal: 12,
-        paddingVertical: 10,
-        borderWidth: 1,
-    },
-    bookingFeedbackText: {
-        fontSize: 13,
-        fontWeight: '600',
-        textAlign: 'center',
-    },
-    bookingFeedbackError: {
-        backgroundColor: '#fff1f2',
-        borderColor: '#fecdd3',
-    },
-    bookingFeedbackErrorText: {
-        color: '#be123c',
-    },
-    bookingFeedbackSuccess: {
-        backgroundColor: '#ecfdf3',
-        borderColor: '#bbf7d0',
-    },
-    bookingFeedbackSuccessText: {
-        color: '#166534',
     },
     backBtn: {
         flex: 1,
@@ -1224,42 +1026,6 @@ const styles = StyleSheet.create({
         borderRadius: 10,
         padding: 4,
         zIndex: 1,
-    },
-    historyFilterBar: {
-        flexDirection: 'row',
-        paddingHorizontal: 20,
-        paddingBottom: 15,
-        backgroundColor: '#fff',
-    },
-    filterChip: {
-        flexDirection: 'row',
-        alignItems: 'center',
-        paddingHorizontal: 12,
-        paddingVertical: 6,
-        borderRadius: 20,
-        backgroundColor: '#f1f5f9',
-        marginRight: 8,
-        borderWidth: 1,
-        borderColor: 'transparent',
-    },
-    filterChipActive: {
-        backgroundColor: '#eff6ff',
-        borderColor: '#3b82f6',
-    },
-    filterChipText: {
-        fontSize: 13,
-        color: '#64748b',
-        fontWeight: '500',
-    },
-    filterChipTextActive: {
-        color: '#2563eb',
-        fontWeight: '600',
-    },
-    filterDot: {
-        width: 6,
-        height: 6,
-        borderRadius: 3,
-        marginRight: 6,
     },
     requestDetails: {
         marginTop: 10,

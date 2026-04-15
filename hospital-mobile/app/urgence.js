@@ -1,58 +1,28 @@
+import { Feather } from '@expo/vector-icons';
 import { Stack } from 'expo-router';
 import { useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { Alert, Dimensions, Linking, Modal, Platform, SafeAreaView, ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import { Dimensions, Linking, Modal, Platform, SafeAreaView, ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { theme } from '../theme';
 import { useApp } from './AppContext';
 import HeaderSidebar from './components/HeaderSidebar';
-import AsyncStorage from './utils/storage';
 
 const { width } = Dimensions.get('window');
 
 const Urgence = () => {
     const { t, i18n } = useTranslation();
-    const { patient, API_URL } = useApp();
+    const { patient } = useApp();
     const [showConfirm, setShowConfirm] = useState(null);
+    const [location, setLocation] = useState({ accuracy: 12, active: true });
     const isRTL = i18n.language === 'ar';
 
     const handleCall = (number) => {
         setShowConfirm(number);
     };
 
-    const confirmCall = async () => {
-        const number = showConfirm;
-        const typeUrgence = number === '190' ? 'SAMU' : 'Firefighters';
+    const confirmCall = () => {
+        Linking.openURL(`tel:${showConfirm}`);
         setShowConfirm(null);
-
-        Linking.openURL(`tel:${number}`);
-
-        try {
-            const token = await AsyncStorage.getItem('token');
-            if (token) {
-                const response = await fetch(`${API_URL}/api/urgence`, {
-                    method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/json',
-                        'Authorization': `Bearer ${token}`
-                    },
-                    body: JSON.stringify({ typeUrgence })
-                });
-
-                if (response.ok) {
-                    console.log('[URGENCE] Call logged to backend');
-                    Alert.alert(t('success'), "Appel d'urgence enregistré.");
-                } else {
-                    const errData = await response.json();
-                    console.warn('[URGENCE] Backend error:', errData);
-                    Alert.alert(t('error'), "Erreur serveur lors de l'enregistrement.");
-                }
-            } else {
-                Alert.alert(t('error'), "Session expirée. Veuillez vous reconnecter.");
-            }
-        } catch (error) {
-            console.warn('[URGENCE] Failed to log call:', error);
-            Alert.alert(t('error'), "Impossible de contacter le serveur.");
-        }
     };
 
     const infoList = [
@@ -75,6 +45,29 @@ const Urgence = () => {
                     <Text style={styles.emergencySubtitle}>{t('emergencyPageDesc')}</Text>
                 </View>
 
+                <View style={styles.card}>
+                    <View style={[styles.cardHeader, isRTL && { flexDirection: 'row-reverse' }]}>
+                        <Feather name="map-pin" size={18} color={theme.colors.dark} />
+                        <View style={[styles.headerText, isRTL && { paddingLeft: 0, paddingRight: 10, alignItems: 'flex-end' }]}>
+                            <Text style={styles.cardTitle}>{t('localization')}</Text>
+                        </View>
+                    </View>
+                    <Text style={[styles.cardSubtitle, { marginBottom: 15 }, isRTL && { textAlign: 'right' }]}>{t('locationShared')}</Text>
+
+                    <View style={styles.locationMainBlock}>
+                        <View style={styles.locationIconWrapper}>
+                            <Feather name="map-pin" size={32} color={theme.colors.primary} />
+                        </View>
+                        <Text style={styles.locationStatusTitle}>{location.active ? t('locationActive') : `${t('localization')}...`}</Text>
+                        <Text style={styles.locationCoords}>48.8566° N, 2.3522° E</Text>
+                        <Text style={styles.locationAccuracy}>Précision: ±{location.accuracy} mètres</Text>
+                    </View>
+
+                    <View style={styles.addressBlock}>
+                        <Text style={[styles.addressLabel, isRTL && { textAlign: 'right' }]}>Adresse estimée:</Text>
+                        <Text style={[styles.addressText, isRTL && { textAlign: 'right' }]}>123 Rue de la Santé, 75014 Paris, France</Text>
+                    </View>
+                </View>
 
                 <View style={styles.callGrid}>
                     <TouchableOpacity

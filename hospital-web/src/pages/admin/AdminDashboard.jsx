@@ -15,6 +15,8 @@ import {
     RefreshCw,
     Save,
     Server,
+    Shield,
+    ShieldCheck,
     Trash2,
     UserPlus,
     Users,
@@ -28,8 +30,8 @@ const mockStats = [
     {
         id: "mockdoctors",
         title: "Médecins actifs",
-        value: "6",
-        subtext: "sur 6 total",
+        value: "7",
+        subtext: "sur 7 total",
         icon: Users,
         color: "text-purple-600",
         bg: "bg-purple-100"
@@ -54,6 +56,15 @@ const mockStats = [
         bg: "bg-green-100"
     },
     {
+        id: "subadmins",
+        title: "Sous-administrateurs",
+        value: "4",
+        subtext: "actifs sur 4 total",
+        icon: Shield,
+        color: "text-indigo-600",
+        bg: "bg-indigo-100"
+    },
+    {
         id: "system",
         title: "Activité système",
         value: "98%",
@@ -73,6 +84,15 @@ const mockDoctors = [
     { id: 6, name: "Dr. Abir kraim", specialty: "Cardiologie", status: "actif", initials: "AK", color: "bg-green-100 text-green-700", patients: 33, consultations: 87, email: "a.kraim@hopital.com", phone: "+216 96 123 456", address: "22 Rue de France, Tunis", licenseNumber: "CN-12350" },
 ];
 
+// Mock sub-admin data
+const mockSubAdmins = [
+    { id: 1, name: "Admin Sophie", email: "sophie.admin@hopital.com", specialty: "Cardiologie", status: "actif", permissions: ["gestion_patients", "consultations", "rapports"], lastActive: "2026-04-15", phone: "+216 90 123 456" },
+    { id: 2, name: "Admin Jean", email: "jean.admin@hopital.com", specialty: "Dermatologie", status: "actif", permissions: ["gestion_patients", "consultations"], lastActive: "2026-04-14", phone: "+216 90 123 457" },
+    { id: 3, name: "Admin Claire", email: "claire.admin@hopital.com", specialty: "Médecine générale", status: "actif", permissions: ["gestion_patients", "consultations", "rapports", "facturation"], lastActive: "2026-04-15", phone: "+216 90 123 458" },
+    { id: 4, name: "Admin Pierre", email: "pierre.admin@hopital.com", specialty: "Chirurgie", status: "inactif", permissions: ["gestion_patients"], lastActive: "2026-04-10", phone: "+216 90 123 459" },
+    { id: 5, name: "Admin Karim", email: "karim.admin@hopital.com", specialty: "Cardiologie", status: "actif", permissions: ["gestion_patients", "consultations", "ordonnances"], lastActive: "2026-04-13", phone: "+216 90 123 460" },
+];
+
 const patients = [
     { id: 1, name: "Ali Ben Salah", age: 45 },
     { id: 2, name: "Sara Trabelsi", age: 32 },
@@ -87,6 +107,7 @@ const rdvs = [
 
 const mockActivity = [
     { text: "Dr. Anne Petit a été ajouté", time: "Il y a 2 heures", type: "add" },
+    { text: "Admin Sophie a été ajouté (Cardiologie)", time: "Il y a 3 jours", type: "add" },
     { text: "5 nouveaux patients inscrits", time: "Il y a 4 heures", type: "user" },
     { text: "Mise à jour système effectuée", time: "Il y a 1 jour", type: "system" },
 ];
@@ -135,13 +156,39 @@ const avatarColors = [
     "bg-orange-100 text-orange-700"
 ];
 
+const permissionOptions = [
+    { id: "gestion_patients", label: "Gestion des patients", icon: "👥" },
+    { id: "consultations", label: "Consultations", icon: "📋" },
+    { id: "rapports", label: "Rapports", icon: "📊" },
+    { id: "facturation", label: "Facturation", icon: "💰" },
+    { id: "ordonnances", label: "Ordonnances", icon: "💊" },
+    { id: "documents", label: "Documents médicaux", icon: "📄" },
+];
+
 export default function AdminDashboard() {
     const [activeSection, setActiveSection] = useState(null);
     const [showAllDoctors, setShowAllDoctors] = useState(false);
+    const [selectedSpecialty, setSelectedSpecialty] = useState(null);
     const [showDoctorsList, setShowDoctorsList] = useState(false);
     const [showReportsList, setShowReportsList] = useState(false);
     const [doctors, setDoctors] = useState(mockDoctors);
     const [showSystemSurveillance, setShowSystemSurveillance] = useState(false);
+
+    // Sub-admin states
+    const [subAdmins, setSubAdmins] = useState(mockSubAdmins);
+    const [showAddSubAdminForm, setShowAddSubAdminForm] = useState(false);
+    const [showEditSubAdminForm, setShowEditSubAdminForm] = useState(false);
+    const [subAdminToEdit, setSubAdminToEdit] = useState(null);
+    const [newSubAdmin, setNewSubAdmin] = useState({
+        name: "",
+        email: "",
+        specialty: "Cardiologie",
+        phone: "",
+        permissions: ["gestion_patients"],
+        status: "actif"
+    });
+    const [showAllSubAdmins, setShowAllSubAdmins] = useState(false);
+    const [selectedSubAdminSpecialty, setSelectedSubAdminSpecialty] = useState(null);
 
     const [showAddDoctorForm, setShowAddDoctorForm] = useState(false);
     const [showEditDoctorForm, setShowEditDoctorForm] = useState(false);
@@ -174,6 +221,7 @@ export default function AdminDashboard() {
         };
         setActivities(prev => [newActivity, ...prev]);
     };
+
     const [surveillanceData, setSurveillanceData] = useState({
         cpu: 45,
         memory: { used: 6.2, total: 16 },
@@ -190,7 +238,153 @@ export default function AdminDashboard() {
         }
     });
 
-    const displayedDoctors = showAllDoctors ? doctors : doctors.slice(0, 3);
+    // Get unique specialties from doctors
+    const uniqueSpecialties = [...new Set(doctors.map(doc => doc.specialty))];
+
+    // Filter doctors by specialty
+    const getDoctorsBySpecialty = (specialty) => {
+        return doctors.filter(doc => doc.specialty === specialty && doc.status === 'actif');
+    };
+
+    // Get all active doctors grouped by specialty
+    const getActiveDoctorsBySpecialty = () => {
+        const grouped = {};
+        doctors.forEach(doc => {
+            if (doc.status === 'actif') {
+                if (!grouped[doc.specialty]) {
+                    grouped[doc.specialty] = [];
+                }
+                grouped[doc.specialty].push(doc);
+            }
+        });
+        return grouped;
+    };
+
+    // Get sub-admins grouped by specialty
+    const getSubAdminsBySpecialty = () => {
+        const grouped = {};
+        subAdmins.forEach(admin => {
+            if (!grouped[admin.specialty]) {
+                grouped[admin.specialty] = [];
+            }
+            grouped[admin.specialty].push(admin);
+        });
+        return grouped;
+    };
+
+    const activeDoctorsBySpecialty = getActiveDoctorsBySpecialty();
+    const subAdminsBySpecialty = getSubAdminsBySpecialty();
+    const activeSubAdminCount = subAdmins.filter(a => a.status === 'actif').length;
+    const totalSubAdminCount = subAdmins.length;
+
+    const handleViewAllDoctors = () => {
+        setShowAllDoctors(!showAllDoctors);
+        if (!showAllDoctors) {
+            setSelectedSpecialty(null);
+        }
+    };
+
+    const handleSpecialtyClick = (specialty) => {
+        setSelectedSpecialty(selectedSpecialty === specialty ? null : specialty);
+    };
+
+    const displayedDoctors = showAllDoctors && !selectedSpecialty ? doctors : (selectedSpecialty ? doctors.filter(doc => doc.specialty === selectedSpecialty) : doctors.slice(0, 3));
+
+    // Sub-admin handlers
+    const handleAddSubAdmin = () => {
+        if (!newSubAdmin.name || !newSubAdmin.email || !newSubAdmin.phone) {
+            alert("Veuillez remplir tous les champs obligatoires");
+            return;
+        }
+
+        const newSubAdminObj = {
+            id: subAdmins.length + 1,
+            name: newSubAdmin.name,
+            email: newSubAdmin.email,
+            specialty: newSubAdmin.specialty,
+            phone: newSubAdmin.phone,
+            permissions: newSubAdmin.permissions,
+            status: newSubAdmin.status,
+            lastActive: new Date().toISOString().split('T')[0]
+        };
+
+        setSubAdmins([...subAdmins, newSubAdminObj]);
+        setNewSubAdmin({
+            name: "",
+            email: "",
+            specialty: "Cardiologie",
+            phone: "",
+            permissions: ["gestion_patients"],
+            status: "actif"
+        });
+        setShowAddSubAdminForm(false);
+        setSuccessMessage(`${newSubAdmin.name} a été ajouté comme sous-administrateur pour ${newSubAdmin.specialty}`);
+        setTimeout(() => setSuccessMessage(""), 3000);
+        addActivity(`${newSubAdmin.name} a été ajouté comme sous-admin (${newSubAdmin.specialty})`, "add");
+    };
+
+    const handleEditSubAdmin = (admin) => {
+        setSubAdminToEdit({ ...admin });
+        setShowEditSubAdminForm(true);
+    };
+
+    const handleUpdateSubAdmin = () => {
+        if (!subAdminToEdit.name || !subAdminToEdit.email || !subAdminToEdit.phone) {
+            alert("Veuillez remplir tous les champs obligatoires");
+            return;
+        }
+
+        const updatedSubAdmins = subAdmins.map(admin =>
+            admin.id === subAdminToEdit.id ? subAdminToEdit : admin
+        );
+
+        setSubAdmins(updatedSubAdmins);
+        setShowEditSubAdminForm(false);
+        setSubAdminToEdit(null);
+        setSuccessMessage(`${subAdminToEdit.name} a été modifié avec succès`);
+        setTimeout(() => setSuccessMessage(""), 3000);
+        addActivity(`${subAdminToEdit.name} a été modifié`, "edit");
+    };
+
+    const handleDeleteSubAdmin = (adminId) => {
+        const adminToDelete = subAdmins.find(a => a.id === adminId);
+        if (confirm(`Êtes-vous sûr de vouloir supprimer ${adminToDelete.name} ?`)) {
+            setSubAdmins(subAdmins.filter(a => a.id !== adminId));
+            setSuccessMessage(`${adminToDelete.name} a été supprimé`);
+            setTimeout(() => setSuccessMessage(""), 3000);
+            addActivity(`${adminToDelete.name} a été supprimé`, "delete");
+        }
+    };
+
+    const togglePermission = (permissionId, isEdit = false) => {
+        if (isEdit && subAdminToEdit) {
+            setSubAdminToEdit({
+                ...subAdminToEdit,
+                permissions: subAdminToEdit.permissions.includes(permissionId)
+                    ? subAdminToEdit.permissions.filter(p => p !== permissionId)
+                    : [...subAdminToEdit.permissions, permissionId]
+            });
+        } else {
+            setNewSubAdmin({
+                ...newSubAdmin,
+                permissions: newSubAdmin.permissions.includes(permissionId)
+                    ? newSubAdmin.permissions.filter(p => p !== permissionId)
+                    : [...newSubAdmin.permissions, permissionId]
+            });
+        }
+    };
+
+    // Update mockStats with real sub-admin count
+    const updatedStats = mockStats.map(stat => {
+        if (stat.id === "subadmins") {
+            return {
+                ...stat,
+                value: totalSubAdminCount.toString(),
+                subtext: `${activeSubAdminCount} actifs sur ${totalSubAdminCount} total`
+            };
+        }
+        return stat;
+    });
 
     const handleRefresh = () => {
         setIsRefreshing(true);
@@ -364,6 +558,17 @@ export default function AdminDashboard() {
         setDoctorToEdit(null);
     };
 
+    // Get title based on view state
+    const getDoctorsTitle = () => {
+        if (showAllDoctors) {
+            if (selectedSpecialty) {
+                return `Médecins actifs - ${selectedSpecialty}`;
+            }
+            return "Médecins actifs - Toutes spécialités";
+        }
+        return "Médecins actifs";
+    };
+
     return (
         <div className="space-y-8">
             {successMessage && (
@@ -380,8 +585,8 @@ export default function AdminDashboard() {
                 <p className="text-gray-500 mt-2">Vue d'ensemble de la plateforme hospitalière</p>
             </div>
 
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
-                {mockStats.map((stat) => (
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-6">
+                {updatedStats.map((stat) => (
                     <Card key={stat.id}
                         onClick={() =>
                             setActiveSection(
@@ -524,6 +729,75 @@ export default function AdminDashboard() {
                 </Card>
             )}
 
+            {activeSection === "subadmins" && (
+                <Card>
+                    <CardHeader className="flex flex-row items-center justify-between">
+                        <div>
+                            <CardTitle>Gestion des Sous-administrateurs</CardTitle>
+                            <CardDescription>Gérer les sous-administrateurs par spécialité</CardDescription>
+                        </div>
+                        <Button
+                            onClick={() => setShowAddSubAdminForm(true)}
+                            className="gap-2"
+                        >
+                            <Plus className="w-4 h-4" />
+                            Ajouter un sous-admin
+                        </Button>
+                    </CardHeader>
+                    <CardContent className="space-y-4">
+                        <div className="space-y-3">
+                            {subAdmins.map((admin) => (
+                                <div
+                                    key={admin.id}
+                                    className="p-4 border rounded-lg flex flex-col sm:flex-row justify-between items-start sm:items-center hover:bg-gray-50 transition-colors"
+                                >
+                                    <div className="flex items-center gap-4">
+                                        <div className="w-12 h-12 rounded-full bg-indigo-100 flex items-center justify-center">
+                                            <Shield className="w-6 h-6 text-indigo-600" />
+                                        </div>
+                                        <div>
+                                            <h4 className="font-semibold text-gray-900">{admin.name}</h4>
+                                            <p className="text-sm text-gray-500">{admin.specialty}</p>
+                                            <div className="flex gap-4 mt-1 text-xs text-gray-400">
+                                                <span>{admin.email}</span>
+                                                <span>{admin.phone}</span>
+                                            </div>
+                                        </div>
+                                    </div>
+                                    <div className="flex items-center gap-3 mt-2 sm:mt-0">
+                                        <span className={`px-3 py-1 text-xs font-medium rounded-full ${admin.status === 'actif' ? 'text-green-700 bg-green-100' : 'text-red-700 bg-red-100'}`}>
+                                            {admin.status}
+                                        </span>
+                                        <Button
+                                            variant="ghost"
+                                            size="sm"
+                                            className="text-blue-600 hover:text-blue-700 hover:bg-blue-50"
+                                            onClick={() => handleEditSubAdmin(admin)}
+                                        >
+                                            <Edit className="w-4 h-4" />
+                                        </Button>
+                                        <Button
+                                            variant="ghost"
+                                            size="sm"
+                                            className="text-red-600 hover:text-red-700 hover:bg-red-50"
+                                            onClick={() => handleDeleteSubAdmin(admin.id)}
+                                        >
+                                            <Trash2 className="w-4 h-4" />
+                                        </Button>
+                                    </div>
+                                </div>
+                            ))}
+                        </div>
+
+                        {subAdmins.length === 0 && (
+                            <div className="text-center py-8 text-gray-500">
+                                Aucun sous-administrateur trouvé. Cliquez sur "Ajouter un sous-admin" pour commencer.
+                            </div>
+                        )}
+                    </CardContent>
+                </Card>
+            )}
+
             {activeSection === "system" && (
                 <Card>
                     <CardHeader>
@@ -549,17 +823,22 @@ export default function AdminDashboard() {
 
             <div className="grid grid-cols-1 xl:grid-cols-3 gap-8">
                 <div className="xl:col-span-2 space-y-8">
+                    {/* Doctors Card */}
                     <Card>
                         <CardHeader className="flex flex-row items-center justify-between">
                             <div>
-                                <CardTitle>Médecins actifs</CardTitle>
-                                <CardDescription>Aperçu des praticiens de l'hôpital</CardDescription>
+                                <CardTitle>{getDoctorsTitle()}</CardTitle>
+                                <CardDescription>
+                                    {showAllDoctors
+                                        ? "Liste complète des praticiens par spécialité"
+                                        : "Aperçu des praticiens de l'hôpital"}
+                                </CardDescription>
                             </div>
                             <div className="flex gap-2">
                                 <Button
                                     variant="default"
                                     size="sm"
-                                    onClick={() => setShowAllDoctors(!showAllDoctors)}
+                                    onClick={handleViewAllDoctors}
                                 >
                                     {showAllDoctors ? "Réduire" : "Voir tout"}
                                 </Button>
@@ -575,43 +854,377 @@ export default function AdminDashboard() {
                             </div>
                         </CardHeader>
                         <CardContent className="space-y-4">
-                            {displayedDoctors.map((doc) => (
-                                <div key={doc.id} className="flex items-center justify-between p-4 bg-gray-50 rounded-lg border border-gray-100 hover:bg-gray-100 transition-colors">
-                                    <div className="flex items-center gap-4">
-                                        <div className={`w-10 h-10 rounded-full flex items-center justify-center font-bold text-sm ${doc.color}`}>
-                                            {doc.initials}
-                                        </div>
-                                        <div>
-                                            <h4 className="font-semibold text-gray-900">{doc.name}</h4>
-                                            <p className="text-sm text-gray-500">{doc.specialty}</p>
-                                        </div>
-                                    </div>
-                                    <div className="flex items-center gap-3">
-                                        <span className={`px-3 py-1 text-xs font-medium rounded-full ${doc.status === 'actif' ? 'text-green-700 bg-green-100' :
-                                            doc.status === 'inactif' ? 'text-red-700 bg-red-100' :
-                                                'text-orange-700 bg-orange-100'
-                                            }`}>
-                                            {doc.status}
-                                        </span>
+                            {/* Specialty Filter Buttons - Only show when "Voir tout" is active */}
+                            {showAllDoctors && (
+                                <div className="flex flex-wrap gap-2 mb-4 pb-4 border-b">
+                                    <Button
+                                        variant={selectedSpecialty === null ? "default" : "outline"}
+                                        size="sm"
+                                        onClick={() => setSelectedSpecialty(null)}
+                                        className="text-xs"
+                                    >
+                                        Toutes les spécialités
+                                    </Button>
+                                    {uniqueSpecialties.map(specialty => (
                                         <Button
-                                            variant="ghost"
+                                            key={specialty}
+                                            variant={selectedSpecialty === specialty ? "default" : "outline"}
                                             size="sm"
-                                            className="text-blue-600 hover:text-blue-700 hover:bg-blue-50"
-                                            onClick={() => handleEditDoctor(doc)}
+                                            onClick={() => handleSpecialtyClick(specialty)}
+                                            className="text-xs"
                                         >
-                                            <Edit className="w-4 h-4" />
+                                            {specialty} ({getDoctorsBySpecialty(specialty).length})
                                         </Button>
-                                        <Button
-                                            variant="ghost"
-                                            size="sm"
-                                            className="text-red-600 hover:text-red-700 hover:bg-red-50"
-                                            onClick={() => handleDeleteDoctor(doc.id)}
-                                        >
-                                            <Trash2 className="w-4 h-4" />
-                                        </Button>
+                                    ))}
+                                </div>
+                            )}
+
+                            {/* Grouped by specialty view when "Voir tout" is active and no specialty selected */}
+                            {showAllDoctors && !selectedSpecialty && (
+                                <div className="space-y-6">
+                                    {Object.entries(activeDoctorsBySpecialty).map(([specialty, specialtyDoctors]) => (
+                                        <div key={specialty} className="space-y-3">
+                                            <h3 className="text-lg font-semibold text-gray-800 border-l-4 border-blue-500 pl-3">
+                                                {specialty} ({specialtyDoctors.length})
+                                            </h3>
+                                            <div className="space-y-3 pl-4">
+                                                {specialtyDoctors.map((doc) => (
+                                                    <div key={doc.id} className="flex items-center justify-between p-4 bg-gray-50 rounded-lg border border-gray-100 hover:bg-gray-100 transition-colors">
+                                                        <div className="flex items-center gap-4">
+                                                            <div className={`w-10 h-10 rounded-full flex items-center justify-center font-bold text-sm ${doc.color}`}>
+                                                                {doc.initials}
+                                                            </div>
+                                                            <div>
+                                                                <h4 className="font-semibold text-gray-900">{doc.name}</h4>
+                                                                <p className="text-sm text-gray-500">{doc.specialty}</p>
+                                                            </div>
+                                                        </div>
+                                                        <div className="flex items-center gap-3">
+                                                            <span className={`px-3 py-1 text-xs font-medium rounded-full ${doc.status === 'actif' ? 'text-green-700 bg-green-100' :
+                                                                doc.status === 'inactif' ? 'text-red-700 bg-red-100' :
+                                                                    'text-orange-700 bg-orange-100'
+                                                                }`}>
+                                                                {doc.status}
+                                                            </span>
+                                                            <Button
+                                                                variant="ghost"
+                                                                size="sm"
+                                                                className="text-blue-600 hover:text-blue-700 hover:bg-blue-50"
+                                                                onClick={() => handleEditDoctor(doc)}
+                                                            >
+                                                                <Edit className="w-4 h-4" />
+                                                            </Button>
+                                                            <Button
+                                                                variant="ghost"
+                                                                size="sm"
+                                                                className="text-red-600 hover:text-red-700 hover:bg-red-50"
+                                                                onClick={() => handleDeleteDoctor(doc.id)}
+                                                            >
+                                                                <Trash2 className="w-4 h-4" />
+                                                            </Button>
+                                                        </div>
+                                                    </div>
+                                                ))}
+                                            </div>
+                                        </div>
+                                    ))}
+                                </div>
+                            )}
+
+                            {/* Filtered view when a specialty is selected */}
+                            {showAllDoctors && selectedSpecialty && (
+                                <div className="space-y-3">
+                                    <h3 className="text-lg font-semibold text-gray-800 border-l-4 border-blue-500 pl-3">
+                                        {selectedSpecialty} ({getDoctorsBySpecialty(selectedSpecialty).length})
+                                    </h3>
+                                    <div className="space-y-3">
+                                        {getDoctorsBySpecialty(selectedSpecialty).map((doc) => (
+                                            <div key={doc.id} className="flex items-center justify-between p-4 bg-gray-50 rounded-lg border border-gray-100 hover:bg-gray-100 transition-colors">
+                                                <div className="flex items-center gap-4">
+                                                    <div className={`w-10 h-10 rounded-full flex items-center justify-center font-bold text-sm ${doc.color}`}>
+                                                        {doc.initials}
+                                                    </div>
+                                                    <div>
+                                                        <h4 className="font-semibold text-gray-900">{doc.name}</h4>
+                                                        <p className="text-sm text-gray-500">{doc.specialty}</p>
+                                                    </div>
+                                                </div>
+                                                <div className="flex items-center gap-3">
+                                                    <span className={`px-3 py-1 text-xs font-medium rounded-full ${doc.status === 'actif' ? 'text-green-700 bg-green-100' :
+                                                        doc.status === 'inactif' ? 'text-red-700 bg-red-100' :
+                                                            'text-orange-700 bg-orange-100'
+                                                        }`}>
+                                                        {doc.status}
+                                                    </span>
+                                                    <Button
+                                                        variant="ghost"
+                                                        size="sm"
+                                                        className="text-blue-600 hover:text-blue-700 hover:bg-blue-50"
+                                                        onClick={() => handleEditDoctor(doc)}
+                                                    >
+                                                        <Edit className="w-4 h-4" />
+                                                    </Button>
+                                                    <Button
+                                                        variant="ghost"
+                                                        size="sm"
+                                                        className="text-red-600 hover:text-red-700 hover:bg-red-50"
+                                                        onClick={() => handleDeleteDoctor(doc.id)}
+                                                    >
+                                                        <Trash2 className="w-4 h-4" />
+                                                    </Button>
+                                                </div>
+                                            </div>
+                                        ))}
                                     </div>
                                 </div>
-                            ))}
+                            )}
+
+                            {/* Default view (3 doctors) */}
+                            {!showAllDoctors && (
+                                <div className="space-y-3">
+                                    {displayedDoctors.map((doc) => (
+                                        <div key={doc.id} className="flex items-center justify-between p-4 bg-gray-50 rounded-lg border border-gray-100 hover:bg-gray-100 transition-colors">
+                                            <div className="flex items-center gap-4">
+                                                <div className={`w-10 h-10 rounded-full flex items-center justify-center font-bold text-sm ${doc.color}`}>
+                                                    {doc.initials}
+                                                </div>
+                                                <div>
+                                                    <h4 className="font-semibold text-gray-900">{doc.name}</h4>
+                                                    <p className="text-sm text-gray-500">{doc.specialty}</p>
+                                                </div>
+                                            </div>
+                                            <div className="flex items-center gap-3">
+                                                <span className={`px-3 py-1 text-xs font-medium rounded-full ${doc.status === 'actif' ? 'text-green-700 bg-green-100' :
+                                                    doc.status === 'inactif' ? 'text-red-700 bg-red-100' :
+                                                        'text-orange-700 bg-orange-100'
+                                                    }`}>
+                                                    {doc.status}
+                                                </span>
+                                                <Button
+                                                    variant="ghost"
+                                                    size="sm"
+                                                    className="text-blue-600 hover:text-blue-700 hover:bg-blue-50"
+                                                    onClick={() => handleEditDoctor(doc)}
+                                                >
+                                                    <Edit className="w-4 h-4" />
+                                                </Button>
+                                                <Button
+                                                    variant="ghost"
+                                                    size="sm"
+                                                    className="text-red-600 hover:text-red-700 hover:bg-red-50"
+                                                    onClick={() => handleDeleteDoctor(doc.id)}
+                                                >
+                                                    <Trash2 className="w-4 h-4" />
+                                                </Button>
+                                            </div>
+                                        </div>
+                                    ))}
+                                </div>
+                            )}
+                        </CardContent>
+                    </Card>
+
+                    {/* Sub-Admin Card - Placed AFTER Doctors Card */}
+                    <Card>
+                        <CardHeader className="flex flex-row items-center justify-between">
+                            <div>
+                                <CardTitle className="flex items-center gap-2">
+                                    <Shield className="w-5 h-5 text-indigo-600" />
+                                    Sous-administrateurs par spécialité
+                                </CardTitle>
+                                <CardDescription>
+                                    Gestion des comptes sous-administrateurs pour chaque spécialité médicale
+                                </CardDescription>
+                            </div>
+                            <div className="flex gap-2">
+                                <Button
+                                    variant="default"
+                                    size="sm"
+                                    onClick={() => setShowAllSubAdmins(!showAllSubAdmins)}
+                                >
+                                    {showAllSubAdmins ? "Réduire" : "Voir tout"}
+                                </Button>
+                                <Button
+                                    variant="outline"
+                                    size="sm"
+                                    onClick={() => setShowAddSubAdminForm(true)}
+                                    className="gap-1"
+                                >
+                                    <Plus className="w-4 h-4" />
+                                    Ajouter
+                                </Button>
+                            </div>
+                        </CardHeader>
+                        <CardContent className="space-y-4">
+                            {/* Sub-admin specialty filter */}
+                            {showAllSubAdmins && (
+                                <div className="flex flex-wrap gap-2 mb-4 pb-4 border-b">
+                                    <Button
+                                        variant={selectedSubAdminSpecialty === null ? "default" : "outline"}
+                                        size="sm"
+                                        onClick={() => setSelectedSubAdminSpecialty(null)}
+                                        className="text-xs"
+                                    >
+                                        Toutes les spécialités
+                                    </Button>
+                                    {uniqueSpecialties.map(specialty => (
+                                        <Button
+                                            key={specialty}
+                                            variant={selectedSubAdminSpecialty === specialty ? "default" : "outline"}
+                                            size="sm"
+                                            onClick={() => setSelectedSubAdminSpecialty(specialty)}
+                                            className="text-xs"
+                                        >
+                                            {specialty} ({subAdmins.filter(a => a.specialty === specialty).length})
+                                        </Button>
+                                    ))}
+                                </div>
+                            )}
+
+                            {/* Sub-admin grouped by specialty */}
+                            {showAllSubAdmins && !selectedSubAdminSpecialty && (
+                                <div className="space-y-6">
+                                    {Object.entries(subAdminsBySpecialty).map(([specialty, admins]) => (
+                                        <div key={specialty} className="space-y-3">
+                                            <div className="flex items-center justify-between">
+                                                <h3 className="text-md font-semibold text-gray-800 border-l-4 border-indigo-500 pl-3">
+                                                    {specialty}
+                                                </h3>
+                                                <span className="text-xs text-gray-500">{admins.length} sous-admin(s)</span>
+                                            </div>
+                                            <div className="space-y-3 pl-4">
+                                                {admins.map((admin) => (
+                                                    <div key={admin.id} className="flex items-center justify-between p-4 bg-gradient-to-r from-indigo-50 to-purple-50 rounded-lg border border-indigo-100 hover:shadow-md transition-all">
+                                                        <div className="flex items-center gap-4">
+                                                            <div className="w-10 h-10 rounded-full bg-indigo-200 flex items-center justify-center">
+                                                                <ShieldCheck className="w-5 h-5 text-indigo-700" />
+                                                            </div>
+                                                            <div>
+                                                                <h4 className="font-semibold text-gray-900">{admin.name}</h4>
+                                                                <p className="text-sm text-gray-500">{admin.email}</p>
+                                                                <div className="flex flex-wrap gap-1 mt-1">
+                                                                    {admin.permissions.slice(0, 3).map(perm => {
+                                                                        const permOption = permissionOptions.find(p => p.id === perm);
+                                                                        return (
+                                                                            <span key={perm} className="text-xs bg-white px-2 py-0.5 rounded-full text-gray-600">
+                                                                                {permOption?.icon} {permOption?.label}
+                                                                            </span>
+                                                                        );
+                                                                    })}
+                                                                    {admin.permissions.length > 3 && (
+                                                                        <span className="text-xs text-gray-400">+{admin.permissions.length - 3}</span>
+                                                                    )}
+                                                                </div>
+                                                            </div>
+                                                        </div>
+                                                        <div className="flex items-center gap-3">
+                                                            <span className={`px-3 py-1 text-xs font-medium rounded-full ${admin.status === 'actif' ? 'text-green-700 bg-green-100' : 'text-red-700 bg-red-100'}`}>
+                                                                {admin.status}
+                                                            </span>
+                                                            <Button
+                                                                variant="ghost"
+                                                                size="sm"
+                                                                className="text-blue-600 hover:text-blue-700 hover:bg-blue-50"
+                                                                onClick={() => handleEditSubAdmin(admin)}
+                                                            >
+                                                                <Edit className="w-4 h-4" />
+                                                            </Button>
+                                                            <Button
+                                                                variant="ghost"
+                                                                size="sm"
+                                                                className="text-red-600 hover:text-red-700 hover:bg-red-50"
+                                                                onClick={() => handleDeleteSubAdmin(admin.id)}
+                                                            >
+                                                                <Trash2 className="w-4 h-4" />
+                                                            </Button>
+                                                        </div>
+                                                    </div>
+                                                ))}
+                                            </div>
+                                        </div>
+                                    ))}
+                                    {Object.keys(subAdminsBySpecialty).length === 0 && (
+                                        <div className="text-center py-8 text-gray-500">
+                                            Aucun sous-administrateur. Cliquez sur "Ajouter" pour commencer.
+                                        </div>
+                                    )}
+                                </div>
+                            )}
+
+                            {/* Filtered sub-admin view */}
+                            {showAllSubAdmins && selectedSubAdminSpecialty && (
+                                <div className="space-y-3">
+                                    <h3 className="text-md font-semibold text-gray-800 border-l-4 border-indigo-500 pl-3">
+                                        {selectedSubAdminSpecialty}
+                                    </h3>
+                                    <div className="space-y-3">
+                                        {subAdmins.filter(a => a.specialty === selectedSubAdminSpecialty).map((admin) => (
+                                            <div key={admin.id} className="flex items-center justify-between p-4 bg-gradient-to-r from-indigo-50 to-purple-50 rounded-lg border border-indigo-100">
+                                                <div className="flex items-center gap-4">
+                                                    <div className="w-10 h-10 rounded-full bg-indigo-200 flex items-center justify-center">
+                                                        <ShieldCheck className="w-5 h-5 text-indigo-700" />
+                                                    </div>
+                                                    <div>
+                                                        <h4 className="font-semibold text-gray-900">{admin.name}</h4>
+                                                        <p className="text-sm text-gray-500">{admin.email}</p>
+                                                        <div className="flex flex-wrap gap-1 mt-1">
+                                                            {admin.permissions.map(perm => {
+                                                                const permOption = permissionOptions.find(p => p.id === perm);
+                                                                return (
+                                                                    <span key={perm} className="text-xs bg-white px-2 py-0.5 rounded-full text-gray-600">
+                                                                        {permOption?.icon} {permOption?.label}
+                                                                    </span>
+                                                                );
+                                                            })}
+                                                        </div>
+                                                    </div>
+                                                </div>
+                                                <div className="flex items-center gap-3">
+                                                    <span className={`px-3 py-1 text-xs font-medium rounded-full ${admin.status === 'actif' ? 'text-green-700 bg-green-100' : 'text-red-700 bg-red-100'}`}>
+                                                        {admin.status}
+                                                    </span>
+                                                    <Button
+                                                        variant="ghost"
+                                                        size="sm"
+                                                        className="text-blue-600 hover:text-blue-700 hover:bg-blue-50"
+                                                        onClick={() => handleEditSubAdmin(admin)}
+                                                    >
+                                                        <Edit className="w-4 h-4" />
+                                                    </Button>
+                                                    <Button
+                                                        variant="ghost"
+                                                        size="sm"
+                                                        className="text-red-600 hover:text-red-700 hover:bg-red-50"
+                                                        onClick={() => handleDeleteSubAdmin(admin.id)}
+                                                    >
+                                                        <Trash2 className="w-4 h-4" />
+                                                    </Button>
+                                                </div>
+                                            </div>
+                                        ))}
+                                    </div>
+                                </div>
+                            )}
+
+                            {/* Summary view (when not expanded) */}
+                            {!showAllSubAdmins && (
+                                <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-3">
+                                    {uniqueSpecialties.map(specialty => {
+                                        const adminCount = subAdmins.filter(a => a.specialty === specialty && a.status === 'actif').length;
+                                        const totalForSpecialty = subAdmins.filter(a => a.specialty === specialty).length;
+                                        return (
+                                            <div key={specialty} className="p-3 bg-gray-50 rounded-lg border border-gray-200 text-center hover:bg-indigo-50 transition-colors cursor-pointer" onClick={() => {
+                                                setShowAllSubAdmins(true);
+                                                setSelectedSubAdminSpecialty(specialty);
+                                            }}>
+                                                <Shield className="w-8 h-8 text-indigo-500 mx-auto mb-2" />
+                                                <p className="text-sm font-medium text-gray-700">{specialty}</p>
+                                                <p className="text-xs text-gray-500">{adminCount}/{totalForSpecialty} actif(s)</p>
+                                            </div>
+                                        );
+                                    })}
+                                </div>
+                            )}
                         </CardContent>
                     </Card>
 
@@ -655,6 +1268,15 @@ export default function AdminDashboard() {
                             >
                                 <UserPlus className="w-4 h-4" />
                                 Ajouter un médecin
+                            </Button>
+
+                            <Button
+                                variant="outline"
+                                className="w-full justify-start gap-3 h-auto py-3"
+                                onClick={() => setShowAddSubAdminForm(true)}
+                            >
+                                <Shield className="w-4 h-4" />
+                                Ajouter un sous-admin
                             </Button>
 
                             <Button
@@ -1092,6 +1714,170 @@ export default function AdminDashboard() {
                     </Card>
                 </div>
             </div>
+
+            {/* Add Sub-Admin Form Modal */}
+            {showAddSubAdminForm && (
+                <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-[9999] flex items-center justify-center p-4 animate-in fade-in duration-300">
+                    <Card className="w-full max-w-2xl bg-white shadow-2xl rounded-2xl border-0 overflow-hidden animate-in zoom-in-95 duration-300">
+                        <CardHeader className="bg-gradient-to-r from-indigo-600 to-purple-600 text-white p-6">
+                            <div className="flex justify-between items-center">
+                                <div>
+                                    <CardTitle className="text-2xl font-bold flex items-center gap-2">
+                                        <Shield className="w-6 h-6" />
+                                        Nouveau sous-administrateur
+                                    </CardTitle>
+                                    <CardDescription className="text-indigo-100 mt-1">Ajouter un sous-admin par spécialité médicale</CardDescription>
+                                </div>
+                                <Button variant="ghost" size="sm" onClick={() => setShowAddSubAdminForm(false)} className="text-white hover:bg-white/20 rounded-full w-10 h-10 p-0">
+                                    <X className="w-6 h-6" />
+                                </Button>
+                            </div>
+                        </CardHeader>
+                        <CardContent className="p-8 max-h-[75vh] overflow-y-auto">
+                            <form onSubmit={(e) => { e.preventDefault(); handleAddSubAdmin(); }} className="space-y-6">
+                                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                                    <div className="space-y-2 md:col-span-2">
+                                        <label className="text-sm font-semibold text-gray-700">Spécialité *</label>
+                                        <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-5 gap-2 pt-1">
+                                            {specialties.map(specialty => (
+                                                <button key={specialty} type="button" onClick={() => setNewSubAdmin({ ...newSubAdmin, specialty })}
+                                                    className={`h-11 px-3 rounded-lg text-xs font-semibold border-2 transition-all flex items-center justify-center text-center leading-tight ${newSubAdmin.specialty === specialty ? 'bg-indigo-600 text-white border-indigo-600 shadow-md scale-105' : 'bg-gray-50 text-gray-600 border-gray-100 hover:border-indigo-200 hover:bg-indigo-50/50'}`}>
+                                                    {specialty}
+                                                </button>
+                                            ))}
+                                        </div>
+                                    </div>
+                                    <div className="space-y-2">
+                                        <label className="text-sm font-semibold text-gray-700">Nom complet *</label>
+                                        <input type="text" value={newSubAdmin.name} onChange={(e) => setNewSubAdmin({ ...newSubAdmin, name: e.target.value })} className="w-full px-4 py-2 bg-gray-50 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:bg-white transition-all" placeholder="Admin Jean Dupont" required />
+                                    </div>
+                                    <div className="space-y-2">
+                                        <label className="text-sm font-semibold text-gray-700">Email *</label>
+                                        <input type="email" value={newSubAdmin.email} onChange={(e) => setNewSubAdmin({ ...newSubAdmin, email: e.target.value })} className="w-full px-4 py-2 bg-gray-50 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:bg-white transition-all" placeholder="admin@hopital.com" required />
+                                    </div>
+                                    <div className="space-y-2">
+                                        <label className="text-sm font-semibold text-gray-700">Téléphone *</label>
+                                        <input type="tel" value={newSubAdmin.phone} onChange={(e) => setNewSubAdmin({ ...newSubAdmin, phone: e.target.value })} className="w-full px-4 py-2 bg-gray-50 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:bg-white transition-all" placeholder="+216 90 123 456" required />
+                                    </div>
+                                    <div className="space-y-2">
+                                        <label className="text-sm font-semibold text-gray-700">Statut</label>
+                                        <div className="flex gap-2 pt-1">
+                                            <button type="button" onClick={() => setNewSubAdmin({ ...newSubAdmin, status: "actif" })}
+                                                className={`flex-1 h-11 px-4 rounded-xl border-2 transition-all font-semibold text-sm ${newSubAdmin.status === 'actif' ? 'bg-green-600 text-white border-green-600 shadow-md' : 'bg-white text-gray-400 border-gray-100'}`}>
+                                                Actif
+                                            </button>
+                                            <button type="button" onClick={() => setNewSubAdmin({ ...newSubAdmin, status: "inactif" })}
+                                                className={`flex-1 h-11 px-4 rounded-xl border-2 transition-all font-semibold text-sm ${newSubAdmin.status === 'inactif' ? 'bg-red-600 text-white border-red-600 shadow-md' : 'bg-white text-gray-400 border-gray-100'}`}>
+                                                Inactif
+                                            </button>
+                                        </div>
+                                    </div>
+                                    <div className="space-y-2 md:col-span-2">
+                                        <label className="text-sm font-semibold text-gray-700">Permissions</label>
+                                        <div className="grid grid-cols-2 gap-2 pt-1">
+                                            {permissionOptions.map(perm => (
+                                                <button key={perm.id} type="button" onClick={() => togglePermission(perm.id, false)}
+                                                    className={`h-11 px-3 rounded-lg text-sm font-medium border-2 transition-all flex items-center justify-center gap-2 ${newSubAdmin.permissions.includes(perm.id) ? 'bg-green-600 text-white border-green-600 shadow-md' : 'bg-gray-50 text-gray-600 border-gray-100 hover:border-green-200'}`}>
+                                                    <span>{perm.icon}</span> {perm.label}
+                                                </button>
+                                            ))}
+                                        </div>
+                                    </div>
+                                </div>
+                                <div className="flex gap-3 pt-8 justify-end">
+                                    <Button type="button" variant="outline" onClick={() => setShowAddSubAdminForm(false)} className="px-6 h-11 rounded-xl">Annuler</Button>
+                                    <Button type="submit" className="px-8 h-11 rounded-xl bg-indigo-600 hover:bg-indigo-700 shadow-lg shadow-indigo-200 font-semibold flex items-center gap-2">
+                                        <Save className="w-4 h-4" />
+                                        Enregistrer le sous-admin
+                                    </Button>
+                                </div>
+                            </form>
+                        </CardContent>
+                    </Card>
+                </div>
+            )}
+
+            {/* Edit Sub-Admin Form Modal */}
+            {showEditSubAdminForm && subAdminToEdit && (
+                <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-[9999] flex items-center justify-center p-4 animate-in fade-in duration-300">
+                    <Card className="w-full max-w-2xl bg-white shadow-2xl rounded-2xl border-0 overflow-hidden animate-in zoom-in-95 duration-300">
+                        <CardHeader className="bg-gradient-to-r from-indigo-600 to-purple-600 text-white p-6">
+                            <div className="flex justify-between items-center">
+                                <div>
+                                    <CardTitle className="text-2xl font-bold flex items-center gap-2">
+                                        <ShieldCheck className="w-6 h-6" />
+                                        Modifier sous-administrateur
+                                    </CardTitle>
+                                    <CardDescription className="text-indigo-100 mt-1">Modifier les informations de {subAdminToEdit.name}</CardDescription>
+                                </div>
+                                <Button variant="ghost" size="sm" onClick={() => setShowEditSubAdminForm(false)} className="text-white hover:bg-white/20 rounded-full w-10 h-10 p-0">
+                                    <X className="w-6 h-6" />
+                                </Button>
+                            </div>
+                        </CardHeader>
+                        <CardContent className="p-8 max-h-[75vh] overflow-y-auto">
+                            <div className="space-y-6">
+                                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                                    <div className="space-y-2 md:col-span-2">
+                                        <label className="text-sm font-semibold text-gray-700">Spécialité *</label>
+                                        <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-5 gap-2 pt-1">
+                                            {specialties.map(specialty => (
+                                                <button key={specialty} type="button" onClick={() => setSubAdminToEdit({ ...subAdminToEdit, specialty })}
+                                                    className={`h-11 px-3 rounded-lg text-xs font-semibold border-2 transition-all flex items-center justify-center text-center leading-tight ${subAdminToEdit.specialty === specialty ? 'bg-indigo-600 text-white border-indigo-600 shadow-md scale-105' : 'bg-gray-50 text-gray-600 border-gray-100 hover:border-indigo-200'}`}>
+                                                    {specialty}
+                                                </button>
+                                            ))}
+                                        </div>
+                                    </div>
+                                    <div className="space-y-2">
+                                        <label className="text-sm font-semibold text-gray-700">Nom complet *</label>
+                                        <input type="text" value={subAdminToEdit.name} onChange={(e) => setSubAdminToEdit({ ...subAdminToEdit, name: e.target.value })} className="w-full px-4 py-2 bg-gray-50 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500" required />
+                                    </div>
+                                    <div className="space-y-2">
+                                        <label className="text-sm font-semibold text-gray-700">Email *</label>
+                                        <input type="email" value={subAdminToEdit.email} onChange={(e) => setSubAdminToEdit({ ...subAdminToEdit, email: e.target.value })} className="w-full px-4 py-2 bg-gray-50 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500" required />
+                                    </div>
+                                    <div className="space-y-2">
+                                        <label className="text-sm font-semibold text-gray-700">Téléphone *</label>
+                                        <input type="tel" value={subAdminToEdit.phone} onChange={(e) => setSubAdminToEdit({ ...subAdminToEdit, phone: e.target.value })} className="w-full px-4 py-2 bg-gray-50 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500" required />
+                                    </div>
+                                    <div className="space-y-2">
+                                        <label className="text-sm font-semibold text-gray-700">Statut</label>
+                                        <div className="flex gap-2 pt-1">
+                                            <button type="button" onClick={() => setSubAdminToEdit({ ...subAdminToEdit, status: "actif" })}
+                                                className={`flex-1 h-11 px-4 rounded-xl border-2 transition-all font-semibold text-sm ${subAdminToEdit.status === 'actif' ? 'bg-green-600 text-white border-green-600 shadow-md' : 'bg-white text-gray-400 border-gray-100'}`}>
+                                                Actif
+                                            </button>
+                                            <button type="button" onClick={() => setSubAdminToEdit({ ...subAdminToEdit, status: "inactif" })}
+                                                className={`flex-1 h-11 px-4 rounded-xl border-2 transition-all font-semibold text-sm ${subAdminToEdit.status === 'inactif' ? 'bg-red-600 text-white border-red-600 shadow-md' : 'bg-white text-gray-400 border-gray-100'}`}>
+                                                Inactif
+                                            </button>
+                                        </div>
+                                    </div>
+                                    <div className="space-y-2 md:col-span-2">
+                                        <label className="text-sm font-semibold text-gray-700">Permissions</label>
+                                        <div className="grid grid-cols-2 gap-2 pt-1">
+                                            {permissionOptions.map(perm => (
+                                                <button key={perm.id} type="button" onClick={() => togglePermission(perm.id, true)}
+                                                    className={`h-11 px-3 rounded-lg text-sm font-medium border-2 transition-all flex items-center justify-center gap-2 ${subAdminToEdit.permissions.includes(perm.id) ? 'bg-green-600 text-white border-green-600 shadow-md' : 'bg-gray-50 text-gray-600 border-gray-100 hover:border-green-200'}`}>
+                                                    <span>{perm.icon}</span> {perm.label}
+                                                </button>
+                                            ))}
+                                        </div>
+                                    </div>
+                                </div>
+                                <div className="flex gap-3 pt-8 justify-end">
+                                    <Button variant="outline" onClick={() => setShowEditSubAdminForm(false)} className="px-6 h-11 rounded-xl">Annuler</Button>
+                                    <Button onClick={handleUpdateSubAdmin} className="px-8 h-11 rounded-xl bg-indigo-600 hover:bg-indigo-700 shadow-lg shadow-indigo-200 font-semibold flex items-center gap-2">
+                                        <Save className="w-4 h-4" />
+                                        Enregistrer les modifications
+                                    </Button>
+                                </div>
+                            </div>
+                        </CardContent>
+                    </Card>
+                </div>
+            )}
 
             {showEditDoctorForm && doctorToEdit && (
                 <div className="fixed inset-0 bg-black/40 backdrop-blur-md flex items-center justify-center z-[9999] p-4 animate-in fade-in duration-300">

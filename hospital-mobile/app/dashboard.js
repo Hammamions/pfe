@@ -6,7 +6,6 @@ import { Dimensions, SafeAreaView, ScrollView, StyleSheet, Text, TouchableOpacit
 import { theme } from '../theme';
 import { useApp } from './AppContext';
 import HeaderSidebar from './components/HeaderSidebar';
-import AsyncStorage from './utils/storage';
 
 const { width } = Dimensions.get('window');
 
@@ -27,18 +26,18 @@ const PillIcon = ({ color, size }) => (
 const Dashboard = () => {
     const router = useRouter();
     const { t, i18n } = useTranslation();
-    const { appointments, notifications, setNotifications, patient, documents, API_URL } = useApp();
+    const { appointments, notifications, patient, prescriptions, documents } = useApp();
     const isRTL = i18n.language === 'ar';
-    const capitalize = (s) => s ? s.charAt(0).toUpperCase() + s.slice(1).toLowerCase() : "";
-    const firstName = capitalize(patient.firstName || patient.prenom || "");
-    const lastName = capitalize(patient.lastName || patient.nom || "");
-    const userName = (firstName || lastName) ? `${firstName} ${lastName}`.trim() : (patient.name || "");
+    const userName = patient.firstName && patient.lastName
+        ? `${patient.firstName} ${patient.lastName}`
+        : patient.name;
 
     const [notificationsY, setNotificationsY] = useState(0);
     const scrollViewRef = useRef(null);
 
     const stats = [
         { label: t('upcomingAppointments'), value: appointments.length.toString(), link: '/appointments', color: '#eff6ff', icon: <Feather name="calendar" size={24} color="#3b82f6" /> },
+        { label: t('activePrescriptions'), value: prescriptions.length.toString(), link: '/prescription', color: '#f0fdf4', icon: <PillIcon color="#22c55e" size={26} /> },
         { label: t('documents'), value: documents.length.toString(), link: '/documents', color: '#faf5ff', icon: <Ionicons name="document-text-outline" size={24} color="#a855f7" /> },
         { label: t('notifications'), value: notifications?.length?.toString() || '0', color: '#fff7ed', icon: <Feather name="bell" size={24} color="#f97316" />, isNotif: true },
     ];
@@ -49,27 +48,6 @@ const Dashboard = () => {
 
     const displayAppointments = appointments ? appointments.slice(0, 2) : [];
     const displayNotifications = notifications ? notifications.slice(0, 3) : [];
-    const handleDeleteNotification = async (notifId) => {
-        try {
-            const token = await AsyncStorage.getItem('token');
-            if (!token) return;
-
-            const res = await fetch(`${API_URL}/api/patients/notifications/${notifId}`, {
-                method: 'DELETE',
-                headers: { 'Authorization': `Bearer ${token}` }
-            });
-
-            if (!res.ok) {
-                const err = await res.json().catch(() => ({}));
-                console.warn('Failed to delete notification:', err?.error || res.status);
-                return;
-            }
-
-            setNotifications((prev) => (prev || []).filter((n) => String(n.id) !== String(notifId)));
-        } catch (e) {
-            console.warn('Delete notification error:', e);
-        }
-    };
 
     return (
         <SafeAreaView style={styles.container}>
@@ -84,7 +62,7 @@ const Dashboard = () => {
             >
 
                 <View style={[styles.welcomeSection, isRTL && { alignItems: 'flex-end' }]}>
-                    <Text style={styles.welcomeTitle}>{t('hello')}, {userName} </Text>
+                    <Text style={styles.welcomeTitle}>{t('hello')}, {t(patient.firstName)} {t(patient.lastName)} </Text>
                     <Text style={styles.welcomeSubtitle}>{t('welcomeSubtitle')}</Text>
                 </View>
 
@@ -159,6 +137,28 @@ const Dashboard = () => {
                     </TouchableOpacity>
                 </View>
 
+                <View style={styles.card}>
+                    <View style={[styles.sectionHeader, isRTL && { flexDirection: 'row-reverse' }]}>
+                        <Text style={[styles.sectionTitle, isRTL && { textAlign: 'right' }]}>{t('activePrescriptions')}</Text>
+                        <TouchableOpacity onPress={() => router.push('/prescription')}>
+                            <Text style={[styles.viewAllText, isRTL && { textAlign: 'left' }]}>{isRTL ? '← ' + t('viewAll') : t('viewAll') + ' →'}</Text>
+                        </TouchableOpacity>
+                    </View>
+
+                    {prescriptions.length > 0 ? (
+                        <View style={styles.prescriptionItem}>
+                            <Text style={[styles.presDoctor, isRTL && { textAlign: 'right', alignSelf: 'stretch' }]}>{t(prescriptions[0].doctor)}</Text>
+                            <Text style={[styles.presDate, isRTL && { textAlign: 'right', alignSelf: 'stretch' }]}>{prescriptions[0].date}</Text>
+                            {prescriptions[0].medications.map((med, idx) => (
+                                <Text key={idx} style={[styles.medItem, isRTL && { textAlign: 'right', alignSelf: 'stretch' }]}>
+                                    • {t(med.name)} - {med.dosage} {t(med.dosageUnit || '')}
+                                </Text>
+                            ))}
+                        </View>
+                    ) : (
+                        <Text style={[styles.emptyText, isRTL && { textAlign: 'right' }]}>{t('noPrescription')}</Text>
+                    )}
+                </View>
 
                 <View
                     style={styles.card}
@@ -190,12 +190,6 @@ const Dashboard = () => {
                                             {t(notif.time || 'timeAgoHours', notif.timeParams || { hours: 0 })}
                                         </Text>
                                     </View>
-                                    <TouchableOpacity
-                                        style={styles.deleteNotifBtn}
-                                        onPress={() => handleDeleteNotification(notif.id)}
-                                    >
-                                        <Feather name="trash-2" size={16} color="#ef4444" />
-                                    </TouchableOpacity>
                                 </View>
                             </TouchableOpacity>
                         );
@@ -527,13 +521,6 @@ const styles = StyleSheet.create({
         color: '#94a3b8',
         fontWeight: '600',
         marginTop: 4,
-    },
-    deleteNotifBtn: {
-        marginLeft: 10,
-        padding: 6,
-        borderRadius: 8,
-        backgroundColor: '#fff1f2',
-        alignSelf: 'flex-start',
     },
     actionsList: {
         marginTop: 5,

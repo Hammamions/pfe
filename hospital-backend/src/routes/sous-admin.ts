@@ -1,0 +1,1347 @@
+import { Response, Router } from 'express';
+import { prisma } from '../lib/prisma';
+import { authenticateSousAdmin, AuthRequest } from '../middleware/auth';
+import { ensureSalleAttenteForTodaysAppointments, isDateToday } from '../utils/salleAttenteSync';
+import { formatAppointmentCalendarDateKey, formatAppointmentTime } from '../utils/appointmentDisplay';
+import { maybeNotifySoonAfterConfirm } from '../utils/appointmentReminderRunner';
+import { normalizeSpecialty } from '../utils/specialty';
+
+const router = Router();
+
+const removeUrgentTag = (motif: string) => motif.replace(/\[URGENT:(?:0|1)\]/g, '').trim();
+const upsertUrgentTag = (motif: string | null | undefined, isUrgent: boolean) => {
+    const cleaned = removeUrgentTag(motif || '');
+    return isUrgent ? `${cleaned} [URGENT:1]`.trim() : cleaned || null;
+};
+const markDocumentsAsProcessed = (motif: string | null | undefined) => {
+    const source = motif || '';
+    if (!/\[DOC:1\]/.test(source)) return source || null;
+    if (/\[DOC_TRAITE:1\]/.test(source)) return source || null;
+    return `${source} [DOC_TRAITE:1]`.trim();
+};
+const upsertPresentTag = (motif: string | null | undefined, isPresent: boolean) => {
+    const cleaned = (motif || '').replace(/\[PRESENT:1\]/g, '').trim();
+    return isPresent ? `${cleaned} [PRESENT:1]`.trim() : cleaned || null;
+};
+const getAppointmentSpecialty = (apt: { specialite?: string | null; medecin?: { specialite?: string | null } | null }) =>
+    normalizeSpecialty(apt.specialite || apt.medecin?.specialite || '');
+function cleanMotifForDisplay(raw: string | null | undefined): string {
+    return (raw || '')
+        .replace(/\[SPEC:[^\]]+\]/g, '')
+        .replace(/\[ANNULER\]/g, '')
+        .replace(/\[REPORT\]/g, '')
+        .replace(/\[PRESENT:1\]/g, '')
+        .replace(/\[URGENT:(?:0|1)\]/g, '')
+        .replace(/\[DOC:1\]/g, '')
+        .replace(/\[DOC_NAME:[^\]]+\]/g, '')
+        .replace(/\[DOC_URL:[^\]]+\]/g, '')
+        .replace(/\[DOC_TRAITE:1\]/g, '')
+        .replace(/\[PREVISIT:ATTEND\]/g, '')
+        .replace(/\[PREVISIT:ASK_RESCHEDULE\]/g, '')
+        .replace(/\[PREVISIT:NOTIFIED\]/g, '')
+        .replace(/\s+/g, ' ')
+        .trim();
+}
+
+const getAppointmentQueueKey = (apt: {
+    specialite?: string | null;
+    medecinId?: number | null;
+    medecin?: { specialite?: string | null } | null;
+}) => {
+    const specialty = getAppointmentSpecialty(apt);
+    if (specialty) return `spec:${specialty}`;
+    if (apt.medecinId) return `doc:${apt.medecinId}`;
+    return 'fallback:unassigned';
+};
+
+const hasSchedulingConflict = async ({
+    date,
+    medecinId,
+    patientId,
+    lieu,
+    salle,
+    excludeAppointmentId
+}: {
+    date: Date;
+    medecinId?: number | null;
+    patientId?: number | null;
+    lieu?: string | null;
+    salle?: string | null;
+    excludeAppointmentId?: number;
+}) => {
+    const ONE_HOUR_MS = 60 * 60 * 1000;
+    const windowStart = new Date(date.getTime() - ONE_HOUR_MS);
+    const windowEnd = new Date(date.getTime() + ONE_HOUR_MS);
+    const baseWhere: any = {
+        statut: { in: ['CONFIRME', 'REPORTE'] },
+        date: { gte: windowStart, lte: windowEnd },
+        ...(excludeAppointmentId ? { id: { not: excludeAppointmentId } } : {})
+    };
+
+    if (medecinId) {
+        const doctorConflict = await prisma.rendezVous.findFirst({
+            where: { ...baseWhere, medecinId },
+            select: { id: true }
+        });
+        if (doctorConflict) {
+            return { type: 'doctor' as const, conflictId: doctorConflict.id };
+        }
+    }
+
+    if (patientId) {
+        const patientConflict = await prisma.rendezVous.findFirst({
+            where: {
+                ...baseWhere,
+                patientId,
+                statut: { not: 'ANNULE' }
+            },
+            select: { id: true }
+        });
+        if (patientConflict) {
+            return { type: 'patient' as const, conflictId: patientConflict.id };
+        }
+    }
+
+    const cleanLieu = (lieu || '').trim();
+    const cleanSalle = (salle || '').trim();
+    if (cleanSalle && cleanSalle !== 'À définir') {
+        const roomConflict = await prisma.rendezVous.findFirst({
+            where: {
+                ...baseWhere,
+                salle: cleanSalle,
+                ...(cleanLieu ? { lieu: cleanLieu } : {})
+            },
+            select: { id: true }
+        });
+        if (roomConflict) {
+            return { type: 'room' as const, conflictId: roomConflict.id };
+        }
+    }
+
+    return null;
+};
+
+
+router.get('/appointments', authenticateSousAdmin, async (req: AuthRequest, res: Response) => {
+    const { date, statut } = req.query;
+    const targetDate = date ? new Date(date as string) : new Date();
+    const startOfDay = new Date(targetDate); startOfDay.setHours(0, 0, 0, 0);
+    const endOfDay = new Date(targetDate); endOfDay.setHours(23, 59, 59, 999);
+
+    try {
+        const sousAdmin = await prisma.sousAdmin.findUnique({ where: { utilisateurId: req.userId } }) as any;
+        if (!sousAdmin) return res.status(404).json({ error: 'Sous-admin non trouvé' });
+
+        if (isDateToday(startOfDay)) {
+            await ensureSalleAttenteForTodaysAppointments(prisma, sousAdmin.id);
+        }
+
+        const appointments = await prisma.rendezVous.findMany({
+            where: {
+                date: { gte: startOfDay, lte: endOfDay },
+                ...(statut ? { statut: statut as any } : {}),
+                OR: [
+                    { sousAdminId: sousAdmin.id },
+                    { sousAdminId: null }
+                ]
+            },
+            include: {
+                patient: { include: { utilisateur: true } },
+                medecin: { include: { utilisateur: true } }
+            },
+            orderBy: { date: 'asc' }
+        });
+
+        const saSpecNormalized = normalizeSpecialty(sousAdmin.specialite);
+        const filtered = appointments.filter(apt => {
+            if (apt.sousAdminId === sousAdmin.id) return true;
+            const aptSpec = apt.specialite || apt.medecin?.specialite;
+            if (apt.sousAdminId === null && normalizeSpecialty(aptSpec) === saSpecNormalized) return true;
+            return false;
+        });
+
+        const formatted = filtered.map(apt => ({
+            id: apt.id,
+            date: formatAppointmentCalendarDateKey(apt.date),
+            time: formatAppointmentTime(apt.date),
+            patientName: `${apt.patient.utilisateur.prenom} ${apt.patient.utilisateur.nom}`,
+            patientId: apt.patientId,
+            doctor: apt.medecin
+                ? `Dr. ${apt.medecin.utilisateur.prenom} ${apt.medecin.utilisateur.nom}`
+                : 'À définir',
+            specialty: apt.medecin?.specialite || '',
+            medecinId: apt.medecinId,
+            motif: apt.motif || '',
+            statut: apt.statut,
+            lieu: apt.lieu,
+            salle: apt.salle,
+            sousAdminId: apt.sousAdminId
+        }));
+
+        return res.json(formatted);
+    } catch (error) {
+        console.error(error);
+        return res.status(500).json({ error: 'Erreur serveur' });
+    }
+});
+
+
+router.get('/appointments/pending', authenticateSousAdmin, async (req: AuthRequest, res: Response) => {
+    try {
+        const sousAdmin = await prisma.sousAdmin.findUnique({ where: { utilisateurId: req.userId } }) as any;
+        if (!sousAdmin) return res.status(404).json({ error: 'Sous-admin non trouvé' });
+
+        const appointments = await prisma.rendezVous.findMany({
+            where: {
+                statut: 'EN_ATTENTE',
+                OR: [
+                    { sousAdminId: sousAdmin.id },
+                    { sousAdminId: null }
+                ]
+            },
+            include: {
+                patient: { include: { utilisateur: true } },
+                medecin: { include: { utilisateur: true } }
+            },
+            orderBy: [{ createdAt: 'asc' }]
+        });
+
+        const saSpecNormalized = normalizeSpecialty(sousAdmin.specialite);
+        const filtered = appointments.filter(apt => {
+            if (apt.sousAdminId === sousAdmin.id) return true;
+            const aptSpec = apt.specialite || apt.medecin?.specialite;
+            if (apt.sousAdminId === null && normalizeSpecialty(aptSpec) === saSpecNormalized) return true;
+            return false;
+        });
+
+        return res.json(filtered.map((apt) => ({
+            id: apt.id,
+            patientName: `${apt.patient.utilisateur.prenom} ${apt.patient.utilisateur.nom}`,
+            patientId: apt.patientId,
+            motif: apt.motif || '',
+            motifDisplay: cleanMotifForDisplay(apt.motif),
+            specialite: apt.specialite || '',
+            status: apt.statut,
+            statut: apt.statut,
+            requestedAt: apt.createdAt
+        })));
+    } catch (error) {
+        console.error(error);
+        return res.status(500).json({ error: 'Erreur serveur' });
+    }
+});
+
+router.get('/doctor-consultation-requests', authenticateSousAdmin, async (req: AuthRequest, res: Response) => {
+    try {
+        const notifs = await prisma.notification.findMany({
+            where: {
+                utilisateurId: req.userId!,
+                titre: { contains: 'Demande de nouvelle consultation' }
+            },
+            orderBy: { createdAt: 'desc' },
+            take: 25
+        });
+        const rows = [];
+        for (const n of notifs) {
+            const msg = n.message || '';
+            const m = msg.match(/pour\s+([^\n.]+?)\.\s*Merci/i) || msg.match(/pour\s+([^.]+)\./i);
+            const patientName = m ? m[1].trim() : 'Patient';
+            let patientId: number | null = null;
+            const pidTag = msg.match(/\[PATIENT_ID:(\d+)\]/);
+            if (pidTag) {
+                patientId = parseInt(pidTag[1], 10);
+            } else if (m) {
+                const parts = m[1].trim().split(/\s+/).filter(Boolean);
+                if (parts.length >= 2) {
+                    const prenom = parts[0];
+                    const nom = parts.slice(1).join(' ');
+                    const u = await prisma.utilisateur.findFirst({
+                        where: {
+                            prenom: { equals: prenom, mode: 'insensitive' },
+                            nom: { equals: nom, mode: 'insensitive' },
+                            role: 'PATIENT'
+                        },
+                        include: { patient: true }
+                    });
+                    if (u?.patient) patientId = u.patient.id;
+                }
+            }
+            rows.push({
+                id: `dr-consult-${n.id}`,
+                notificationId: n.id,
+                patientName,
+                patientId,
+                motif: 'Demande de planification d’une nouvelle consultation (médecin)',
+                motifDisplay: 'Demande de planification d’une nouvelle consultation (médecin)',
+                requestType: 'CONSULTATION_DR',
+                createdAt: n.createdAt.toISOString(),
+                status: 'EN_ATTENTE',
+                hasDocuments: false,
+                documentsProcessed: false
+            });
+        }
+        return res.json(rows);
+    } catch (error) {
+        console.error(error);
+        return res.status(500).json({ error: 'Erreur serveur' });
+    }
+});
+
+router.delete('/doctor-consultation-requests/:notificationId', authenticateSousAdmin, async (req: AuthRequest, res: Response) => {
+    try {
+        const rawId = req.params.notificationId;
+        const notificationId = parseInt(Array.isArray(rawId) ? rawId[0] : String(rawId), 10);
+        if (Number.isNaN(notificationId)) {
+            return res.status(400).json({ error: 'Identifiant invalide' });
+        }
+        const deleted = await prisma.notification.deleteMany({
+            where: {
+                id: notificationId,
+                utilisateurId: req.userId!,
+                titre: { contains: 'Demande de nouvelle consultation' }
+            }
+        });
+        if (deleted.count === 0) {
+            return res.status(404).json({ error: 'Demande introuvable' });
+        }
+        return res.json({ ok: true });
+    } catch (error) {
+        console.error(error);
+        return res.status(500).json({ error: 'Erreur serveur' });
+    }
+});
+
+router.post('/appointments/create', authenticateSousAdmin, async (req: AuthRequest, res: Response) => {
+    const { patientId, medecinId, date, motif, lieu, salle } = req.body;
+    if (!patientId || !date) return res.status(400).json({ error: 'patientId et date sont requis' });
+
+    try {
+        const sousAdmin = await prisma.sousAdmin.findUnique({ where: { utilisateurId: req.userId } });
+        if (!sousAdmin) return res.status(404).json({ error: 'Sous-admin non trouvé' });
+        const finalDate = new Date(date);
+        const parsedMedecinId = medecinId ? parseInt(medecinId) : null;
+        const finalLieu = lieu || 'À définir';
+        const finalSalle = salle || 'À définir';
+
+        const conflict = await hasSchedulingConflict({
+            date: finalDate,
+            medecinId: parsedMedecinId,
+            patientId: parseInt(patientId),
+            lieu: finalLieu,
+            salle: finalSalle
+        });
+        if (conflict?.type === 'doctor') {
+            return res.status(409).json({ error: 'Conflit planning: ce médecin a déjà un rendez-vous à ce créneau.' });
+        }
+        if (conflict?.type === 'room') {
+            return res.status(409).json({ error: 'Conflit planning: cette salle est déjà occupée à ce créneau.' });
+        }
+        if (conflict?.type === 'patient') {
+            return res.status(409).json({ error: 'Conflit planning: ce patient a déjà un rendez-vous à moins de 1 heure ce jour.' });
+        }
+        const apt = await prisma.rendezVous.create({
+            data: {
+                patientId: parseInt(patientId),
+                medecinId: parsedMedecinId,
+                sousAdminId: sousAdmin.id,
+                date: finalDate,
+                motif: motif || null,
+                lieu: finalLieu,
+                salle: finalSalle,
+                statut: medecinId ? 'CONFIRME' : 'EN_ATTENTE',
+            },
+            include: { patient: { include: { utilisateur: true } } }
+        });
+
+        await prisma.notification.create({
+            data: {
+                utilisateurId: apt.patient.utilisateurId,
+                titre: '📅 Rendez-vous planifié',
+                message: `Un rendez-vous a été planifié pour vous le ${new Date(date).toLocaleDateString('fr-FR')}${salle ? ` — Salle ${salle}` : ''}.`
+            }
+        });
+
+        if (apt.statut === 'CONFIRME' && parsedMedecinId) {
+            await maybeNotifySoonAfterConfirm(prisma, {
+                patientUserId: apt.patient.utilisateurId,
+                appointmentId: apt.id,
+                appointmentAt: finalDate,
+                lieu: finalLieu,
+                salle: finalSalle
+            });
+        }
+
+        if (apt.statut === 'CONFIRME' && isDateToday(apt.date)) {
+            await ensureSalleAttenteForTodaysAppointments(prisma, sousAdmin.id);
+        }
+
+        return res.status(201).json({ message: 'Rendez-vous créé', appointment: apt });
+    } catch (error) {
+        console.error(error);
+        return res.status(500).json({ error: 'Erreur serveur' });
+    }
+});
+
+
+router.patch('/appointments/:id/reschedule', authenticateSousAdmin, async (req: AuthRequest, res: Response) => {
+    const { date, medecinId, lieu, salle } = req.body;
+    if (!date) return res.status(400).json({ error: 'Nouvelle date requise' });
+
+    try {
+        const sousAdmin = await prisma.sousAdmin.findUnique({ where: { utilisateurId: req.userId } });
+        if (!sousAdmin) return res.status(404).json({ error: 'Sous-admin non trouvé' });
+        const appointmentId = parseInt(req.params.id as string);
+        const current = await prisma.rendezVous.findUnique({ where: { id: appointmentId } });
+        if (!current) return res.status(404).json({ error: 'Rendez-vous non trouvé' });
+
+        const finalDate = new Date(date);
+        const finalMedecinId = medecinId ? parseInt(medecinId) : current.medecinId;
+        const finalLieu = lieu || current.lieu || 'À définir';
+        const finalSalle = salle || current.salle || 'À définir';
+
+        const conflict = await hasSchedulingConflict({
+            date: finalDate,
+            medecinId: finalMedecinId,
+            patientId: current.patientId,
+            lieu: finalLieu,
+            salle: finalSalle,
+            excludeAppointmentId: appointmentId
+        });
+        if (conflict?.type === 'doctor') {
+            return res.status(409).json({ error: 'Conflit planning: ce médecin a déjà un rendez-vous à ce créneau.' });
+        }
+        if (conflict?.type === 'room') {
+            return res.status(409).json({ error: 'Conflit planning: cette salle est déjà occupée à ce créneau.' });
+        }
+        if (conflict?.type === 'patient') {
+            return res.status(409).json({ error: 'Conflit planning: ce patient a déjà un rendez-vous à moins de 1 heure ce jour.' });
+        }
+        const updated = await prisma.rendezVous.update({
+            where: { id: appointmentId },
+            data: {
+                date: finalDate,
+                statut: 'CONFIRME',
+                sousAdminId: sousAdmin.id,
+                ...(finalMedecinId ? { medecinId: finalMedecinId } : {}),
+                lieu: finalLieu,
+                salle: finalSalle
+            },
+            include: { patient: { include: { utilisateur: true } } }
+        });
+
+        await prisma.notification.create({
+            data: {
+                utilisateurId: updated.patient.utilisateurId,
+                titre: '🔄 Rendez-vous reporté',
+                message: `Votre rendez-vous a été reporté au ${new Date(date).toLocaleDateString('fr-FR')}${salle ? ` — Salle ${salle}` : ''}.`
+            }
+        });
+
+        if (updated.medecinId) {
+            await maybeNotifySoonAfterConfirm(prisma, {
+                patientUserId: updated.patient.utilisateurId,
+                appointmentId: updated.id,
+                appointmentAt: finalDate,
+                lieu: updated.lieu,
+                salle: updated.salle
+            });
+        }
+
+        if (!isDateToday(finalDate)) {
+            await prisma.salleAttente.deleteMany({
+                where: { sousAdminId: sousAdmin.id, patientId: current.patientId }
+            });
+        } else {
+            await ensureSalleAttenteForTodaysAppointments(prisma, sousAdmin.id);
+        }
+
+        return res.json({ message: 'Rendez-vous reporté', appointment: updated });
+    } catch (error) {
+        console.error(error);
+        return res.status(500).json({ error: 'Erreur serveur' });
+    }
+});
+
+
+router.patch('/appointments/:id/assign', authenticateSousAdmin, async (req: AuthRequest, res: Response) => {
+    const { medecinId, date, lieu, salle } = req.body;
+    if (!medecinId || !date) return res.status(400).json({ error: 'medecinId et date sont requis' });
+
+    try {
+        const sousAdmin = await prisma.sousAdmin.findUnique({ where: { utilisateurId: req.userId } });
+        if (!sousAdmin) return res.status(404).json({ error: 'Sous-admin non trouvé' });
+        const current = await prisma.rendezVous.findUnique({ where: { id: parseInt(req.params.id as string) } });
+        if (!current) return res.status(404).json({ error: 'Rendez-vous non trouvé' });
+        const appointmentId = parseInt(req.params.id as string);
+        const finalDate = new Date(date);
+        const finalMedecinId = parseInt(medecinId);
+        const finalLieu = lieu || 'À définir';
+        const finalSalle = salle || 'À définir';
+
+        const conflict = await hasSchedulingConflict({
+            date: finalDate,
+            medecinId: finalMedecinId,
+            patientId: current.patientId,
+            lieu: finalLieu,
+            salle: finalSalle,
+            excludeAppointmentId: appointmentId
+        });
+        if (conflict?.type === 'doctor') {
+            return res.status(409).json({ error: 'Conflit planning: ce médecin a déjà un rendez-vous à ce créneau.' });
+        }
+        if (conflict?.type === 'room') {
+            return res.status(409).json({ error: 'Conflit planning: cette salle est déjà occupée à ce créneau.' });
+        }
+        if (conflict?.type === 'patient') {
+            return res.status(409).json({ error: 'Conflit planning: ce patient a déjà un rendez-vous à moins de 1 heure ce jour.' });
+        }
+        const cleanedMotif = (current.motif || '')
+            .replace(/\[ANNULER\]/g, '')
+            .replace(/\[REPORT\]/g, '')
+            .trim();
+
+        const updated = await prisma.rendezVous.update({
+            where: { id: appointmentId },
+            data: {
+                medecinId: finalMedecinId,
+                date: finalDate,
+                lieu: finalLieu,
+                salle: finalSalle,
+                statut: 'CONFIRME',
+                motif: markDocumentsAsProcessed(cleanedMotif || null),
+                sousAdminId: sousAdmin.id
+            },
+            include: { patient: { include: { utilisateur: true } } }
+        });
+
+        await prisma.notification.create({
+            data: {
+                utilisateurId: updated.patient.utilisateurId,
+                titre: '✅ Rendez-vous confirmé',
+                message: `Votre rendez-vous a été confirmé pour le ${new Date(date).toLocaleDateString('fr-FR')} — ${salle || 'salle à définir'}.`
+            }
+        });
+
+        await maybeNotifySoonAfterConfirm(prisma, {
+            patientUserId: updated.patient.utilisateurId,
+            appointmentId: updated.id,
+            appointmentAt: finalDate,
+            lieu: finalLieu,
+            salle: finalSalle
+        });
+
+        if (isDateToday(finalDate)) {
+            await ensureSalleAttenteForTodaysAppointments(prisma, sousAdmin.id);
+        }
+
+        return res.json({ message: 'Rendez-vous assigné et confirmé', appointment: updated });
+    } catch (error) {
+        console.error(error);
+        return res.status(500).json({ error: 'Erreur lors de la mise à jour' });
+    }
+});
+
+router.patch('/appointments/:id/reject-request', authenticateSousAdmin, async (req: AuthRequest, res: Response) => {
+    try {
+        const id = parseInt(req.params.id as string);
+        const sousAdmin = await prisma.sousAdmin.findUnique({ where: { utilisateurId: req.userId } });
+        if (!sousAdmin) return res.status(404).json({ error: 'Sous-admin non trouvé' });
+
+        const current = await prisma.rendezVous.findUnique({
+            where: { id },
+            include: { patient: { include: { utilisateur: true } } }
+        });
+        if (!current) return res.status(404).json({ error: 'Rendez-vous non trouvé' });
+
+        const cleanedMotif = (current.motif || '')
+            .replace(/\[ANNULER\]/g, '')
+            .replace(/\[REPORT\]/g, '')
+            .trim();
+
+        const updated = await prisma.rendezVous.update({
+            where: { id },
+            data: {
+                statut: 'CONFIRME',
+                motif: markDocumentsAsProcessed(cleanedMotif || null),
+                sousAdminId: sousAdmin.id
+            },
+            include: { patient: { include: { utilisateur: true } } }
+        });
+
+        await prisma.notification.create({
+            data: {
+                utilisateurId: updated.patient.utilisateurId,
+                titre: 'ℹ️ Demande traitée',
+                message: "Votre demande d'annulation/report a été refusée. Le rendez-vous reste confirmé."
+            }
+        });
+
+        return res.json({ message: 'Demande refusée, rendez-vous maintenu', appointment: updated });
+    } catch (error) {
+        console.error(error);
+        return res.status(500).json({ error: 'Erreur lors du traitement de la demande' });
+    }
+});
+
+
+router.patch('/appointments/:id/presence', authenticateSousAdmin, async (req: AuthRequest, res: Response) => {
+    const { presenceStatus } = req.body;
+    if (!presenceStatus) return res.status(400).json({ error: 'presenceStatus requis' });
+
+    try {
+        const appointmentId = parseInt(req.params.id as string);
+        const current = await prisma.rendezVous.findUnique({
+            where: { id: appointmentId },
+            include: { medecin: true }
+        });
+        if (!current) return res.status(404).json({ error: 'Rendez-vous non trouvé' });
+
+      
+        let statutToSet = current.statut;
+
+        if (presenceStatus === 'PRESENT') {
+            const day = new Date(current.date);
+            const startOfDay = new Date(day); startOfDay.setHours(0, 0, 0, 0);
+            const endOfDay = new Date(day); endOfDay.setHours(23, 59, 59, 999);
+            const currentQueueKey = getAppointmentQueueKey(current);
+
+            const inProgressToday = await prisma.rendezVous.findMany({
+                where: {
+                    id: { not: appointmentId },
+                    statut: 'EN_COURS' as any,
+                    date: { gte: startOfDay, lte: endOfDay },
+                    ...(current.sousAdminId ? { sousAdminId: current.sousAdminId } : {})
+                },
+                include: {
+                    medecin: true,
+                    patient: {
+                        include: {
+                            salleAttente: {
+                                where: { joinedAt: { gte: startOfDay, lte: endOfDay } }
+                            }
+                        }
+                    }
+                }
+            });
+            const existingInProgress = inProgressToday.find(
+                (apt) =>
+                    getAppointmentQueueKey(apt) === currentQueueKey &&
+                    apt.patient.salleAttente.some(sa => sa.presenceStatus === 'PRESENT')
+            );
+
+            statutToSet = (existingInProgress as any) ? 'CONFIRME' : 'EN_COURS' as any;
+        } else {
+            statutToSet = (current.statut as any) === 'TERMINE' ? 'TERMINE' as any : current.statut;
+        }
+        const updated = await prisma.rendezVous.update({
+            where: { id: appointmentId },
+            data: {
+                statut: statutToSet as any,
+                motif: upsertPresentTag(current.motif, presenceStatus === 'PRESENT')
+            },
+            include: {
+                patient: {
+                    include: {
+                        utilisateur: true,
+                        dossierMedical: true
+                    }
+                },
+                medecin: {
+                    include: { utilisateur: true }
+                }
+            }
+        });
+
+        const actingSa = await prisma.sousAdmin.findUnique({ where: { utilisateurId: req.userId } });
+        const queueSousAdminId = updated.sousAdminId ?? actingSa?.id ?? null;
+        if (presenceStatus === 'PRESENT') {
+            const queueStatus = (statutToSet as any) === 'EN_COURS' ? 'EN_CONSULTATION' : 'EN_ATTENTE';
+            const updatedRows = await prisma.salleAttente.updateMany({
+                where: { patientId: updated.patientId },
+                data: {
+                    status: queueStatus,
+                    presenceStatus: presenceStatus as any,
+                }
+            });
+            if (updatedRows.count === 0 && queueSousAdminId) {
+                await prisma.salleAttente.create({
+                    data: {
+                        sousAdminId: queueSousAdminId,
+                        patientId: updated.patientId,
+                        status: queueStatus,
+                        presenceStatus: presenceStatus as any,
+                    }
+                });
+            }
+        } else {
+            await prisma.salleAttente.deleteMany({
+                where: { patientId: updated.patientId }
+            });
+        }
+
+        if (presenceStatus === 'PRESENT' && updated.medecin?.utilisateurId) {
+            const dossier = updated.patient?.dossierMedical;
+            const allergies = (dossier?.allergies || []).filter(Boolean).join(', ') || 'Aucune';
+            const history = (dossier?.historiqueMedical || []).filter(Boolean).slice(0, 3).join(', ') || 'Aucun antécédent signalé';
+            const blood = dossier?.groupeSanguin || 'Non précisé';
+            const patientName = `${updated.patient.utilisateur.prenom} ${updated.patient.utilisateur.nom}`;
+
+            await prisma.notification.create({
+                data: {
+                    utilisateurId: updated.medecin.utilisateurId,
+                    titre: '🩺 Patient en salle d\'attente',
+                    message: `${patientName} est présent. Groupe sanguin: ${blood}. Allergies: ${allergies}. Antécédents: ${history}.`
+                }
+            });
+        }
+
+        return res.json({ message: 'Statut de présence mis à jour', appointment: updated });
+    } catch (error) {
+        console.error(error);
+        return res.status(500).json({ error: 'Erreur serveur' });
+    }
+});
+
+router.patch('/appointments/:id/urgent', authenticateSousAdmin, async (req: AuthRequest, res: Response) => {
+    const { isUrgent } = req.body;
+    if (typeof isUrgent !== 'boolean') {
+        return res.status(400).json({ error: 'isUrgent (booléen) requis' });
+    }
+    try {
+        const appointmentId = parseInt(req.params.id as string);
+        const sousAdmin = await prisma.sousAdmin.findUnique({ where: { utilisateurId: req.userId } });
+        if (!sousAdmin) return res.status(404).json({ error: 'Sous-admin non trouvé' });
+
+        const current = await prisma.rendezVous.findUnique({ where: { id: appointmentId } });
+        if (!current) return res.status(404).json({ error: 'Rendez-vous non trouvé' });
+        if (current.sousAdminId && current.sousAdminId !== sousAdmin.id) {
+            return res.status(403).json({ error: 'Accès refusé' });
+        }
+
+        const day = new Date(current.date);
+        const startOfDay = new Date(day); startOfDay.setHours(0, 0, 0, 0);
+        const endOfDay = new Date(day); endOfDay.setHours(23, 59, 59, 999);
+        const updatedAppointment = await prisma.rendezVous.update({
+            where: { id: appointmentId },
+            data: { motif: upsertUrgentTag(current.motif, isUrgent) }
+        });
+
+       
+        return res.json({ message: 'Priorité mise à jour', appointment: updatedAppointment });
+    } catch (error) {
+        console.error(error);
+        return res.status(500).json({ error: 'Erreur serveur' });
+    }
+});
+
+router.patch('/appointments/:id/checkout', authenticateSousAdmin, async (req: AuthRequest, res: Response) => {
+    try {
+        const appointmentId = parseInt(req.params.id as string);
+        const sousAdmin = await prisma.sousAdmin.findUnique({ where: { utilisateurId: req.userId } });
+        if (!sousAdmin) return res.status(404).json({ error: 'Sous-admin non trouvé' });
+
+        const current = await prisma.rendezVous.findUnique({
+            where: { id: appointmentId },
+            include: {
+                patient: { include: { utilisateur: true } },
+                medecin: true
+            }
+        });
+
+        if (!current) return res.status(404).json({ error: 'Rendez-vous non trouvé' });
+        if (current.sousAdminId && current.sousAdminId !== sousAdmin.id) {
+            return res.status(403).json({ error: 'Accès refusé' });
+        }
+
+        if ((current.statut as any) !== 'EN_COURS') {
+            return res.status(400).json({ error: 'Sortie impossible: la consultation doit être en cours (EN_COURS).' });
+        }
+
+        const todayKey = formatAppointmentCalendarDateKey(new Date());
+        const queueRows = await prisma.salleAttente.findMany({
+            where: { patientId: current.patientId }
+        });
+
+        const updated = await prisma.rendezVous.update({
+            where: { id: appointmentId },
+            data: {
+                statut: 'TERMINE' as any,
+                motif: upsertPresentTag(markDocumentsAsProcessed(current.motif), false)
+            },
+            include: { patient: { include: { utilisateur: true } } }
+        });
+
+        await prisma.notification.create({
+            data: {
+                utilisateurId: updated.patient.utilisateurId,
+                titre: '✅ Consultation terminée',
+                message: `Votre consultation du ${new Date(updated.date).toLocaleDateString('fr-FR')} est terminée.`
+            }
+        });
+
+        const idsToDelete = queueRows
+            .filter((e) => formatAppointmentCalendarDateKey(new Date(e.joinedAt)) === todayKey)
+            .map((e) => e.id);
+        if (idsToDelete.length > 0) {
+            await prisma.salleAttente.deleteMany({ where: { id: { in: idsToDelete } } });
+        }
+
+        const currentQueueKey = getAppointmentQueueKey(current);
+        if (currentQueueKey) {
+            const day = new Date(current.date);
+            const startOfDay = new Date(day); startOfDay.setHours(0, 0, 0, 0);
+            const endOfDay = new Date(day); endOfDay.setHours(23, 59, 59, 999);
+
+            const nextCandidates = await prisma.rendezVous.findMany({
+                where: {
+                    id: { not: current.id },
+                    statut: 'CONFIRME',
+                    date: { gte: startOfDay, lte: endOfDay },
+                    ...(current.sousAdminId ? { sousAdminId: current.sousAdminId } : {})
+                },
+                include: {
+                    medecin: true,
+                    patient: {
+                        include: {
+                            utilisateur: true,
+                            salleAttente: {
+                                where: { joinedAt: { gte: startOfDay, lte: endOfDay } }
+                            }
+                        }
+                    }
+                },
+                orderBy: { date: 'asc' }
+            });
+
+            const next = nextCandidates.find(apt =>
+                getAppointmentQueueKey(apt) === currentQueueKey &&
+                /\[PRESENT:1\]/.test(apt.motif || '')
+            );
+
+            if (next?.patient?.utilisateurId) {
+                await prisma.rendezVous.update({
+                    where: { id: next.id },
+                    data: { statut: 'EN_COURS' as any }
+                });
+
+                await prisma.notification.create({
+                    data: {
+                        utilisateurId: next.patient.utilisateurId,
+                        titre: '⏱️ Votre rendez-vous va débuter',
+                        message: 'Merci de vous préparer, le médecin va vous recevoir dans quelques instants.'
+                    }
+                });
+            }
+        }
+
+        return res.json({ message: 'Rendez-vous terminé', appointment: updated });
+    } catch (error) {
+        console.error(error);
+        return res.status(500).json({ error: 'Erreur serveur' });
+    }
+});
+
+
+router.patch('/appointments/:id/cancel', authenticateSousAdmin, async (req: AuthRequest, res: Response) => {
+    try {
+        const id = parseInt(req.params.id as string);
+        const current = await prisma.rendezVous.findUnique({ where: { id } });
+        if (!current) return res.status(404).json({ error: 'Rendez-vous non trouvé' });
+        const cleanedMotif = (current.motif || '')
+            .replace(/\[ANNULER\]/g, '')
+            .replace(/\[REPORT\]/g, '')
+            .trim();
+
+        const updated = await prisma.rendezVous.update({
+            where: { id },
+            data: {
+                statut: 'ANNULE',
+                motif: markDocumentsAsProcessed(cleanedMotif || null)
+            },
+            include: { patient: { include: { utilisateur: true } } }
+        });
+
+        await prisma.notification.create({
+            data: {
+                utilisateurId: updated.patient.utilisateurId,
+                titre: '❌ Rendez-vous annulé',
+                message: 'Votre rendez-vous a été annulé. Veuillez prendre contact avec le service hospitalier.'
+            }
+        });
+
+        if (current.sousAdminId) {
+            await prisma.salleAttente.deleteMany({
+                where: { sousAdminId: current.sousAdminId, patientId: current.patientId }
+            });
+        }
+
+        return res.json({ message: 'Rendez-vous annulé', appointment: updated });
+    } catch (error) {
+        console.error(error);
+        return res.status(500).json({ error: 'Erreur serveur' });
+    }
+});
+
+
+
+
+router.get('/waiting-room', authenticateSousAdmin, async (req: AuthRequest, res: Response) => {
+    try {
+        const sousAdmin = await prisma.sousAdmin.findUnique({ where: { utilisateurId: req.userId } });
+        if (!sousAdmin) return res.status(404).json({ error: 'Sous-admin non trouvé' });
+
+        await ensureSalleAttenteForTodaysAppointments(prisma, sousAdmin.id);
+
+        const entries = await prisma.salleAttente.findMany({
+            where: { sousAdminId: sousAdmin.id },
+            include: {
+                patient: { include: { utilisateur: true } }
+            },
+            orderBy: { joinedAt: 'asc' }
+        });
+
+        return res.json(entries.map(e => ({
+            id: e.id,
+            patientId: e.patientId,
+            patientName: `${e.patient.utilisateur.prenom} ${e.patient.utilisateur.nom}`,
+            joinedAt: e.joinedAt,
+            status: e.status,
+            isUrgent: e.isUrgent,
+            presenceStatus: e.presenceStatus
+        })));
+    } catch (error) {
+        console.error(error);
+        return res.status(500).json({ error: 'Erreur serveur' });
+    }
+});
+
+
+router.post('/waiting-room', authenticateSousAdmin, async (req: AuthRequest, res: Response) => {
+    const { patientId } = req.body;
+    if (!patientId) return res.status(400).json({ error: 'patientId requis' });
+
+    try {
+        const sousAdmin = await prisma.sousAdmin.findUnique({ where: { utilisateurId: req.userId } });
+        if (!sousAdmin) return res.status(404).json({ error: 'Sous-admin non trouvé' });
+
+        const entry = await prisma.salleAttente.create({
+            data: {
+                sousAdminId: sousAdmin.id,
+                patientId: parseInt(patientId),
+                status: 'EN_ATTENTE'
+            }
+        });
+
+        return res.status(201).json(entry);
+    } catch (error) {
+        console.error(error);
+        return res.status(500).json({ error: 'Erreur serveur' });
+    }
+});
+
+
+router.patch('/waiting-room/:id', authenticateSousAdmin, async (req: AuthRequest, res: Response) => {
+    const { status } = req.body;
+    try {
+        const updated = await prisma.salleAttente.update({
+            where: { id: parseInt(req.params.id as string) },
+            data: { status }
+        });
+        return res.json(updated);
+    } catch (error) {
+        console.error(error);
+        return res.status(500).json({ error: 'Erreur serveur' });
+    }
+});
+
+
+router.delete('/waiting-room/:id', authenticateSousAdmin, async (req: AuthRequest, res: Response) => {
+    try {
+        await prisma.salleAttente.delete({ where: { id: parseInt(req.params.id as string) } });
+        return res.json({ message: 'Patient retiré de la salle d\'attente' });
+    } catch (error) {
+        console.error(error);
+        return res.status(500).json({ error: 'Erreur serveur' });
+    }
+});
+
+
+router.post('/waiting-room/:id/checkin', authenticateSousAdmin, async (req: AuthRequest, res: Response) => {
+    try {
+        const entry = await prisma.salleAttente.update({
+            where: { id: parseInt(req.params.id as string) },
+            data: { status: 'EN_CONSULTATION', presenceStatus: 'PRESENT' },
+            include: { patient: { include: { utilisateur: true } } }
+        });
+
+        const today = new Date();
+        const startOfDay = new Date(today); startOfDay.setHours(0, 0, 0, 0);
+        const endOfDay = new Date(today); endOfDay.setHours(23, 59, 59, 999);
+
+        await prisma.rendezVous.updateMany({
+            where: {
+                patientId: entry.patientId,
+                statut: 'CONFIRME',
+                date: { gte: startOfDay, lte: endOfDay }
+            },
+            data: {
+                statut: 'EN_CONSULTATION' as any
+            }
+        });
+
+        return res.json({
+            message: `${entry.patient.utilisateur.prenom} ${entry.patient.utilisateur.nom} est en consultation`,
+            entry
+        });
+    } catch (error) {
+        console.error(error);
+        return res.status(500).json({ error: 'Erreur serveur' });
+    }
+});
+
+
+router.post('/waiting-room/next', authenticateSousAdmin, async (req: AuthRequest, res: Response) => {
+    const { medecinId } = req.body;
+    try {
+        const sousAdmin = await prisma.sousAdmin.findUnique({ where: { utilisateurId: req.userId } });
+        if (!sousAdmin) return res.status(404).json({ error: 'Sous-admin non trouvé' });
+
+
+        const next = await prisma.salleAttente.findFirst({
+            where: { sousAdminId: sousAdmin.id, status: 'EN_ATTENTE' },
+            include: { patient: { include: { utilisateur: true } } },
+            orderBy: { joinedAt: 'asc' }
+        });
+
+        if (!next) return res.status(404).json({ error: 'Aucun patient en attente' });
+
+
+        await prisma.salleAttente.update({
+            where: { id: next.id },
+            data: { status: 'EN_CONSULTATION', presenceStatus: 'PRESENT' }
+        });
+
+
+        if (medecinId) {
+            const medecin = await prisma.medecin.findUnique({ where: { id: parseInt(medecinId) } });
+            if (medecin) {
+                await prisma.notification.create({
+                    data: {
+                        utilisateurId: medecin.utilisateurId,
+                        titre: '🔔 Patient suivant',
+                        message: `Prochain patient : ${next.patient.utilisateur.prenom} ${next.patient.utilisateur.nom}.`
+                    }
+                });
+            }
+        }
+
+        return res.json({
+            message: 'Patient suivant appelé',
+            patient: {
+                id: next.patientId,
+                name: `${next.patient.utilisateur.prenom} ${next.patient.utilisateur.nom}`
+            }
+        });
+    } catch (error) {
+        console.error(error);
+        return res.status(500).json({ error: 'Erreur serveur' });
+    }
+});
+router.get('/doctors', authenticateSousAdmin, async (req: AuthRequest, res: Response) => {
+    const { date, specialite } = req.query;
+    const targetDate = date ? new Date(date as string) : new Date();
+    const startOfDay = new Date(targetDate); startOfDay.setHours(0, 0, 0, 0);
+    const endOfDay = new Date(targetDate); endOfDay.setHours(23, 59, 59, 999);
+
+    try {
+        const sousAdmin = await prisma.sousAdmin.findUnique({ where: { utilisateurId: req.userId } }) as any;
+        if (!sousAdmin) return res.status(404).json({ error: 'Sous-admin non trouvé' });
+
+        const doctors = await prisma.medecin.findMany({
+            where: {
+            },
+            include: {
+                utilisateur: true,
+                conges: {
+                    where: { startDate: { lte: endOfDay }, endDate: { gte: startOfDay } }
+                },
+                rendezVous: {
+                    where: { date: { gte: startOfDay, lte: endOfDay }, statut: { not: 'ANNULE' } }
+                }
+            }
+        });
+        const normalizedSA = normalizeSpecialty(sousAdmin.specialite);
+        const normalizedQuery = normalizeSpecialty(specialite as string | undefined);
+        const targetSpecialty = normalizedQuery || normalizedSA;
+        let filteredDoctors = targetSpecialty
+            ? doctors.filter((doc) => normalizeSpecialty(doc.specialite) === targetSpecialty)
+            : doctors;
+        if (filteredDoctors.length === 0 && doctors.length > 0) {
+            filteredDoctors = doctors;
+        }
+
+        const formatted = filteredDoctors.map(doc => {
+            const isOnLeave = doc.conges.length > 0;
+            const count = doc.rendezVous.length;
+            let status = 'Disponible';
+            if (isOnLeave) status = 'En congé';
+            else if (count >= 15) status = 'Complet';
+            else if (count >= 8) status = 'Chargé';
+
+            return {
+                id: doc.id,
+                utilisateurId: doc.utilisateurId,
+                nom: doc.utilisateur.nom,
+                prenom: doc.utilisateur.prenom,
+                fullName: `Dr. ${doc.utilisateur.prenom} ${doc.utilisateur.nom}`,
+                specialite: doc.specialite,
+                status,
+                statut: status,
+                workload: count,
+                maxCapacity: 15,
+                appointments: doc.rendezVous.map(a => ({
+                    id: a.id,
+                    time: a.date.toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' }),
+                }))
+            };
+        });
+
+        return res.json(formatted);
+    } catch (error) {
+        console.error(error);
+        return res.status(500).json({ error: 'Erreur serveur' });
+    }
+});
+
+
+router.get('/stats', authenticateSousAdmin, async (req: AuthRequest, res: Response) => {
+    const { date } = req.query;
+    const targetDate = date ? new Date(date as string) : new Date();
+    const startOfDay = new Date(targetDate); startOfDay.setHours(0, 0, 0, 0);
+    const endOfDay = new Date(targetDate); endOfDay.setHours(23, 59, 59, 999);
+
+    try {
+        const sousAdmin = await prisma.sousAdmin.findUnique({ where: { utilisateurId: req.userId } }) as any;
+        if (!sousAdmin) return res.status(404).json({ error: 'Sous-admin non trouvé' });
+
+        const [appointments, waitingRoom, totalPatients] = await Promise.all([
+            prisma.rendezVous.findMany({
+                where: {
+                    OR: [
+                        { sousAdminId: sousAdmin.id },
+                        { sousAdminId: null }
+                    ]
+                }
+            }),
+            prisma.salleAttente.count({
+                where: {
+                    sousAdminId: sousAdmin.id,
+                    joinedAt: { gte: startOfDay, lte: endOfDay }
+                }
+            }),
+            prisma.patient.count()
+        ]);
+
+        const saSpecNormalized = normalizeSpecialty(sousAdmin.specialite);
+
+        const filteredBySpec = appointments.filter(apt => {
+            if (apt.sousAdminId === sousAdmin.id) return true;
+            if (apt.sousAdminId === null && normalizeSpecialty(apt.specialite) === saSpecNormalized) return true;
+            return false;
+        });
+
+        const todayApts = filteredBySpec.filter(a => {
+            const d = new Date(a.date);
+            return d >= startOfDay && d <= endOfDay;
+        });
+
+        const queueEntries = await prisma.salleAttente.findMany({
+            where: {
+                sousAdminId: sousAdmin.id,
+                joinedAt: { gte: startOfDay, lte: endOfDay }
+            }
+        });
+
+        return res.json({
+            total: filteredBySpec.filter(a => a.statut === 'EN_ATTENTE').length,
+            todayCount: todayApts.length,
+            pending: filteredBySpec.filter(a => a.statut === 'EN_ATTENTE').length,
+            confirmed: todayApts.filter(a => a.statut === 'CONFIRME').length,
+            present: queueEntries.filter(a => a.presenceStatus === 'PRESENT').length,
+            urgent: queueEntries.filter(a => a.isUrgent).length,
+            late: queueEntries.filter(a => a.presenceStatus === 'EN_RETARD').length,
+            absent: queueEntries.filter(a => a.presenceStatus === 'ABSENT').length,
+            waitingRoomCount: waitingRoom,
+            totalPatients
+        });
+    } catch (error) {
+        console.error(error);
+        return res.status(500).json({ error: 'Erreur serveur' });
+    }
+});
+
+router.get('/patients', authenticateSousAdmin, async (req: AuthRequest, res: Response) => {
+    const { search } = req.query;
+    try {
+        const patients = await prisma.patient.findMany({
+            include: { utilisateur: true },
+            where: search ? {
+                OR: [
+                    { utilisateur: { nom: { contains: search as string, mode: 'insensitive' } } },
+                    { utilisateur: { prenom: { contains: search as string, mode: 'insensitive' } } },
+                    { utilisateur: { email: { contains: search as string, mode: 'insensitive' } } }
+                ]
+            } : undefined,
+            orderBy: { utilisateur: { nom: 'asc' } }
+        });
+
+        return res.json(patients.map(p => ({
+            id: p.id,
+            nom: p.utilisateur.nom,
+            prenom: p.utilisateur.prenom,
+            fullName: `${p.utilisateur.prenom} ${p.utilisateur.nom}`,
+            email: p.utilisateur.email,
+            telephone: p.telephone
+        })));
+    } catch (error) {
+        console.error(error);
+        return res.status(500).json({ error: 'Erreur serveur' });
+    }
+});
+
+router.get('/documents/patients', authenticateSousAdmin, async (req: AuthRequest, res: Response) => {
+    const { search } = req.query;
+    try {
+        const patients = await prisma.patient.findMany({
+            include: { utilisateur: true },
+            where: search ? {
+                OR: [
+                    { utilisateur: { nom: { contains: search as string, mode: 'insensitive' } } },
+                    { utilisateur: { prenom: { contains: search as string, mode: 'insensitive' } } },
+                    { utilisateur: { email: { contains: search as string, mode: 'insensitive' } } }
+                ]
+            } : undefined,
+            orderBy: { utilisateur: { nom: 'asc' } }
+        });
+
+        return res.json(patients.map((p) => ({
+            id: p.id,
+            utilisateurId: p.utilisateurId,
+            fullName: `${p.utilisateur.prenom} ${p.utilisateur.nom}`,
+            nom: p.utilisateur.nom,
+            prenom: p.utilisateur.prenom,
+            email: p.utilisateur.email
+        })));
+    } catch (error) {
+        console.error(error);
+        return res.status(500).json({ error: 'Erreur serveur' });
+    }
+});
+
+router.post('/documents/send', authenticateSousAdmin, async (req: AuthRequest, res: Response) => {
+    const { patientId, titre, urlFichier, type } = req.body;
+    if (!patientId || !titre || !urlFichier) {
+        return res.status(400).json({ error: 'patientId, titre et urlFichier sont requis' });
+    }
+
+    try {
+        const sousAdmin = await prisma.sousAdmin.findUnique({
+            where: { utilisateurId: req.userId },
+            include: { utilisateur: true }
+        });
+        if (!sousAdmin) return res.status(404).json({ error: 'Sous-admin non trouvé' });
+
+        const patient = await prisma.patient.findUnique({
+            where: { id: parseInt(patientId) },
+            include: { utilisateur: true }
+        });
+        if (!patient) return res.status(404).json({ error: 'Patient non trouvé' });
+
+        const dossier = await prisma.dossierMedical.upsert({
+            where: { patientId: patient.id },
+            create: { patientId: patient.id },
+            update: {}
+        });
+
+        const doc = await prisma.document.create({
+            data: {
+                titre: String(titre).trim(),
+                urlFichier: String(urlFichier).trim(),
+                type: type ? String(type).trim() : null,
+                praticien: `Sous-admin ${sousAdmin.utilisateur.prenom} ${sousAdmin.utilisateur.nom}`,
+                dossierMedicalId: dossier.id
+            }
+        });
+
+        await prisma.notification.create({
+            data: {
+                utilisateurId: patient.utilisateurId,
+                titre: '📄 Nouveau document médical',
+                message: `Un nouveau document "${doc.titre}" a été ajouté à votre dossier médical.`
+            }
+        });
+
+        return res.status(201).json({ message: 'Document envoyé au patient', document: doc });
+    } catch (error) {
+        console.error(error);
+        return res.status(500).json({ error: 'Erreur serveur' });
+    }
+});
+
+
+router.get('/activities', authenticateSousAdmin, async (req: AuthRequest, res: Response) => {
+    try {
+        const activities = await prisma.notification.findMany({
+            where: { utilisateurId: req.userId },
+            orderBy: { createdAt: 'desc' },
+            take: 10
+        });
+
+        const formatted = activities.map(act => ({
+            id: act.id,
+            action: act.message,
+            time: formatTimeAgo(act.createdAt),
+            createdAt: act.createdAt.toISOString(),
+            type: act.titre.includes('📅') ? 'appointment' : 'general'
+        }));
+
+        return res.json(formatted);
+    } catch (error) {
+        console.error(error);
+        return res.status(500).json({ error: 'Erreur serveur' });
+    }
+});
+
+
+function formatTimeAgo(date: Date) {
+    const diff = Math.floor((new Date().getTime() - date.getTime()) / 1000);
+    if (diff < 60) return "À l'instant";
+    if (diff < 3600) return `Il y a ${Math.floor(diff / 60)} min`;
+    if (diff < 86400) return `Il y a ${Math.floor(diff / 3600)} h`;
+    return `Le ${date.toLocaleDateString('fr-FR')}`;
+}
+
+router.post('/notify-doctor', authenticateSousAdmin, async (req: AuthRequest, res: Response) => {
+    const { medecinId, titre, message } = req.body;
+    if (!medecinId || !message) return res.status(400).json({ error: 'medecinId et message requis' });
+
+    try {
+        const medecin = await prisma.medecin.findUnique({ where: { id: parseInt(medecinId) } });
+        if (!medecin) return res.status(404).json({ error: 'Médecin non trouvé' });
+
+        const notif = await prisma.notification.create({
+            data: {
+                utilisateurId: medecin.utilisateurId,
+                titre: titre || '📢 Message du secrétariat',
+                message: message
+            }
+        });
+
+        return res.status(201).json({ message: 'Notification envoyée au médecin', notification: notif });
+    } catch (error) {
+        console.error(error);
+        return res.status(500).json({ error: 'Erreur serveur' });
+    }
+});
+
+export default router;

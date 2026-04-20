@@ -1,0 +1,9 @@
+Cadre général — aide à la décision (exemple pédagogique pour démonstration RAG)
+
+Ce document synthétise des principes généraux utilisés dans des projets de santé numérique en Tunisie : le médecin reste responsable du diagnostic et des prescriptions. Toute suggestion automatisée doit être vérifiée face au patient, aux examens complémentaires et aux référentiels institutionnels en vigueur.
+
+En consultation de médecine générale ou spécialisée, la anamnèse structurée (motif, histoire de la maladie, antécédents, traitements en cours, allergies) précède l'examen clinique et la proposition de suites (bilan, avis spécialisé, traitement symptomatique ou étiologique).
+
+Pour la douleur thoracique aiguë, la démarche type inclut : évaluation de la probabilité d'une origine cardiaque (caractères de la douleur, facteurs de risque cardiovasculaire, signes d'alarme), ECG et orientation vers les urgences ou la cardiologie selon le contexte clinique.
+
+Les recommandations de prévention (tabac, activité physique, équilibre glycémique et tensionnel) font partie intégrante du suivi en soins primaires.

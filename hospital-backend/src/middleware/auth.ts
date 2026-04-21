@@ -36,6 +36,13 @@ export const authenticatePatient = (req: AuthRequest, res: Response, next: NextF
     });
 };
 
+export const authenticateMedecin = (req: AuthRequest, res: Response, next: NextFunction) => {
+    authenticate(req, res, () => {
+        if (req.role !== 'MEDECIN') return res.status(403).json({ error: 'Accès réservé aux médecins' });
+        next();
+    });
+};
+
 
 export const authenticateProfessional = (req: AuthRequest, res: Response, next: NextFunction) => {
     authenticate(req, res, () => {

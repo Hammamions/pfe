@@ -4,6 +4,7 @@ import { useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Animated, Dimensions, Image, Modal, Platform, Pressable, ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { theme } from '../../theme';
+import { useApp } from '../AppContext';
 
 const { width } = Dimensions.get('window');
 const SIDEBAR_WIDTH = Platform.OS === 'web' ? Math.min(320, width * 0.8) : width * 0.8;
@@ -41,6 +42,7 @@ const SidebarItem = ({ label, icon, iconType = 'feather', onPress, active = fals
 
 export default function HeaderSidebar({ activeScreen = 'dashboard', title, subtitle, rightComponent }) {
     const { t, i18n } = useTranslation();
+    const { logout } = useApp();
     const router = useRouter();
     const isRTL = i18n.language === 'ar';
 
@@ -159,17 +161,17 @@ export default function HeaderSidebar({ activeScreen = 'dashboard', title, subti
                                 isRTL={isRTL}
                             />
                             <SidebarItem
-                                label={t('navPrescriptions')}
-                                icon="file-text"
-                                active={activeScreen === 'prescription'}
-                                onPress={() => navigateTo('/prescription')}
-                                isRTL={isRTL}
-                            />
-                            <SidebarItem
                                 label={t('navGuidage')}
                                 icon="map-pin"
                                 active={activeScreen === 'guidage'}
                                 onPress={() => navigateTo('/guidage')}
+                                isRTL={isRTL}
+                            />
+                            <SidebarItem
+                                label={t('navSatisfaction')}
+                                icon="star"
+                                active={activeScreen === 'satisfaction'}
+                                onPress={() => navigateTo('/satisfaction')}
                                 isRTL={isRTL}
                             />
 
@@ -188,7 +190,10 @@ export default function HeaderSidebar({ activeScreen = 'dashboard', title, subti
                             <SidebarItem
                                 label={t('navLogout')}
                                 icon="log-out"
-                                onPress={() => navigateTo('/login')}
+                                onPress={async () => {
+                                    await logout();
+                                    navigateTo('/login');
+                                }}
                                 isRTL={isRTL}
                             />
                         </ScrollView>

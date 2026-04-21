@@ -7,6 +7,18 @@ import { sendResetEmail } from '../utils/mail';
 const router = Router();
 const JWT_SECRET = process.env.JWT_SECRET || 'tunisante_secret_key_2026';
 
+function isConsultationReportHistoriqueEntry(entry: unknown): boolean {
+    if (typeof entry !== 'string') return false;
+    const raw = entry.trim();
+    if (!raw.startsWith('{') || !raw.endsWith('}')) return false;
+    try {
+        const o = JSON.parse(raw);
+        return o?.kind === 'consultation_report';
+    } catch {
+        return false;
+    }
+}
+
 router.post('/register', async (req: Request, res: Response) => {
     const { email, password, fullName, role } = req.body;
 
@@ -113,7 +125,7 @@ router.post('/login', async (req: Request, res: Response) => {
                 history: d?.historiqueMedical || [],
                 emergencyContact: {
                     name: d?.contactUrgenceNom || '',
-                    relation: '',
+                    relation: d?.contactUrgenceRelation || '',
                     phone: d?.contactUrgenceTelephone || '',
                     email: d?.contactUrgenceEmail || ''
                 }
@@ -121,6 +133,14 @@ router.post('/login', async (req: Request, res: Response) => {
         } else if (utilisateur.role === 'MEDECIN' && utilisateur.medecin) {
             extras = {
                 specialite: utilisateur.medecin.specialite
+            };
+        } else if (utilisateur.role === 'SOUS_ADMIN' && utilisateur.sousAdmin) {
+            const sousAdminData = utilisateur.sousAdmin as any;
+            extras = {
+                specialite: sousAdminData.specialite,
+                permissions: Array.isArray(sousAdminData.permissions)
+                    ? sousAdminData.permissions
+                    : []
             };
         }
 
@@ -182,6 +202,20 @@ router.put('/profile', async (req: Request, res: Response) => {
                 }
             });
 
+            let historiqueMerged: string[] | undefined;
+            if (history !== undefined) {
+                const dmExisting = await prisma.dossierMedical.findUnique({
+                    where: { patientId: utilisateur.patient.id },
+                    select: { historiqueMedical: true }
+                });
+                const preserved = (dmExisting?.historiqueMedical || []).filter((e) =>
+                    isConsultationReportHistoriqueEntry(e)
+                );
+                const incoming = Array.isArray(history) ? history : [];
+                const userTags = incoming.filter((e) => !isConsultationReportHistoriqueEntry(e));
+                historiqueMerged = [...preserved, ...userTags];
+            }
+
             await prisma.dossierMedical.upsert({
                 where: { patientId: utilisateur.patient.id },
                 create: {
@@ -190,7 +224,12 @@ router.put('/profile', async (req: Request, res: Response) => {
                     groupeSanguin: bloodGroup,
                     numSecuriteSociale: socialSecurity,
                     allergies: allergies || [],
-                    historiqueMedical: history || [],
+                    historiqueMedical:
+                        historiqueMerged !== undefined
+                            ? historiqueMerged
+                            : Array.isArray(history)
+                              ? history
+                              : [],
                     contactUrgenceNom: emergencyContact?.name,
                     contactUrgenceRelation: emergencyContact?.relation,
                     contactUrgenceTelephone: emergencyContact?.phone,
@@ -201,7 +240,7 @@ router.put('/profile', async (req: Request, res: Response) => {
                     groupeSanguin: bloodGroup || undefined,
                     numSecuriteSociale: socialSecurity || undefined,
                     allergies: allergies || undefined,
-                    historiqueMedical: history || undefined,
+                    ...(historiqueMerged !== undefined ? { historiqueMedical: historiqueMerged } : {}),
                     contactUrgenceNom: emergencyContact?.name || undefined,
                     contactUrgenceRelation: emergencyContact?.relation || undefined,
                     contactUrgenceTelephone: emergencyContact?.phone || undefined,
@@ -287,21 +326,42 @@ router.post('/register-full', async (req: Request, res: Response) => {
 });
 
 router.post('/forgot-password', async (req: Request, res: Response) => {
-    const { email } = req.body;
-    if (!email) return res.status(400).json({ error: 'L\'email est requis' });
+    const rawEmail = typeof req.body?.email === 'string' ? req.body.email : '';
+    const normalizedEmail = rawEmail.trim().toLowerCase();
+    if (!normalizedEmail) return res.status(400).json({ error: 'L\'email est requis' });
 
     try {
-        const user = await prisma.utilisateur.findUnique({ where: { email } });
+        const user = await prisma.utilisateur.findFirst({
+            where: {
+                email: { equals: normalizedEmail, mode: 'insensitive' }
+            }
+        });
         if (!user) return res.status(404).json({ error: 'Aucun compte associé à cet email' });
 
-        const resetToken = jwt.sign({ email }, JWT_SECRET, { expiresIn: '1h' });
-        const resetLink = `http://192.168.1.3:4000/reset-password?token=${resetToken}`;
-        await sendResetEmail(email, resetLink);
+        const resetToken = jwt.sign({ email: user.email }, JWT_SECRET, { expiresIn: '1h' });
+      
+        const resetBase = (
+            process.env.FRONTEND_PUBLIC_URL ||
+            process.env.BACKEND_PUBLIC_URL ||
+            process.env.API_PUBLIC_URL ||
+            'http://localhost:4000'
+        ).replace(/\/$/, '');
+        const resetLink = `${resetBase}/reset-password?token=${encodeURIComponent(resetToken)}`;
+        await sendResetEmail(user.email, resetLink);
 
         return res.json({ message: 'Un lien de récupération a été envoyé à votre adresse email.', success: true });
-    } catch (error) {
+    } catch (error: any) {
         console.error('Forgot password error:', error);
-        return res.status(500).json({ error: 'Erreur lors de la demande de récupération' });
+        const smtpAuthFailed =
+            error?.code === 'EAUTH' || String(error?.response || '').includes('535');
+        if (smtpAuthFailed) {
+            return res.status(502).json({
+                error: "L'envoi de l'email a échoué : authentification SMTP refusée (vérifiez SMTP_USER / mot de passe d'application Gmail)."
+            });
+        }
+        return res.status(502).json({
+            error: "L'envoi de l'email a échoué. Vérifiez la configuration SMTP sur le serveur."
+        });
     }
 });
 
@@ -310,15 +370,24 @@ router.post('/reset-password', async (req: Request, res: Response) => {
     if (!token || !newPassword) return res.status(400).json({ error: 'Données manquantes' });
 
     try {
-        const decoded = jwt.verify(token, JWT_SECRET) as { email: string };
-        const hashedPassword = await bcrypt.hash(newPassword, 10);
+        const decoded = jwt.verify(String(token), JWT_SECRET) as { email: string };
+        const hashedPassword = await bcrypt.hash(String(newPassword), 10);
+        const user = await prisma.utilisateur.findFirst({
+            where: { email: { equals: decoded.email.trim(), mode: 'insensitive' } }
+        });
+        if (!user) {
+            return res.status(404).json({ error: 'Compte introuvable pour ce lien' });
+        }
         await prisma.utilisateur.update({
-            where: { email: decoded.email },
+            where: { id: user.id },
             data: { motDePasse: hashedPassword }
         });
         return res.json({ message: 'Mot de passe mis à jour avec succès' });
-    } catch (error) {
+    } catch (error: any) {
         console.error('Reset password error:', error);
+        if (error?.name === 'JsonWebTokenError' || error?.name === 'TokenExpiredError') {
+            return res.status(401).json({ error: 'Lien invalide ou expiré. Demandez un nouveau lien.' });
+        }
         return res.status(500).json({ error: 'Erreur lors de la réinitialisation' });
     }
 });

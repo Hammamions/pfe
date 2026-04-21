@@ -1,9 +1,13 @@
+import { Ionicons } from '@expo/vector-icons';
+import AsyncStorage from './utils/storage';
+import Constants from 'expo-constants';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useRouter } from 'expo-router';
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { Alert, Dimensions, Image, SafeAreaView, ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
+import { ActivityIndicator, Alert, Dimensions, Image, SafeAreaView, ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
 import { theme } from '../theme';
+import { useApp } from './AppContext';
 
 const { width } = Dimensions.get('window');
 
@@ -16,8 +20,10 @@ const LANGUAGES = [
 const Login = () => {
     const router = useRouter();
     const { t, i18n } = useTranslation();
+    const { syncAllData } = useApp();
     const [activeTab, setActiveTab] = useState('connexion');
     const [langOpen, setLangOpen] = useState(false);
+    const [loading, setLoading] = useState(false);
     const [rememberMe, setRememberMe] = useState(false);
     const [formData, setFormData] = useState({
         email: '',
@@ -25,6 +31,8 @@ const Login = () => {
         fullName: '',
         confirmPassword: '',
     });
+    const [formErrors, setFormErrors] = useState({});
+    const [showPassword, setShowPassword] = useState(false);
 
     let emailInputRef = null;
     let passwordInputRef = null;
@@ -32,48 +40,124 @@ const Login = () => {
     const isRTL = i18n.language === 'ar';
     const currentLang = LANGUAGES.find(l => l.code === i18n.language) || LANGUAGES[0];
 
+    useEffect(() => {
+        const loadSavedEmail = async () => {
+            const savedEmail = await AsyncStorage.getItem('savedEmail');
+            if (savedEmail) {
+                setFormData(prev => ({ ...prev, email: savedEmail }));
+                setRememberMe(true);
+            }
+        };
+        loadSavedEmail();
+    }, []);
+
+    const API_URL = (() => {
+        const hostUri =
+            Constants.expoConfig?.hostUri ||
+            Constants.manifest2?.extra?.expoGo?.debuggerHost ||
+            '';
+        const host = hostUri.split(':')[0];
+        return host ? `http://${host}:4000` : 'http://localhost:4000';
+    })();
+
+    const validateEmail = (email) => {
+        return String(email)
+            .toLowerCase()
+            .match(/^(([^<>()[\]\\.,;:\s@"]+(\.[^<>()[\]\\.,;:\s@"]+)*)|(".+"))@((\[[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}\])|(([a-zA-Z\-0-9]+\.)+[a-zA-Z]{2,}))$/);
+    };
+
+    const validatePassword = (pass) => {
+        const hasLetter = /[a-zA-Z]/.test(pass);
+        const hasNumber = /[0-9]/.test(pass);
+        return pass.length >= 8 && hasLetter && hasNumber;
+    };
+
     const handleLogin = async () => {
-        // 1. Basic validation
-        if (!formData.email.trim() || !formData.password.trim()) {
-            Alert.alert(t('error'), t('fillAllFields'));
+        const errors = {};
+        if (!formData.email.trim()) errors.email = t('fillAllFields');
+        if (!formData.password.trim()) errors.password = t('fillAllFields');
+
+        if (Object.keys(errors).length > 0) {
+            setFormErrors(errors);
             return;
         }
-
+        setFormErrors({});
+        setLoading(true);
         try {
-            // 2. The API Call - Use your IP address 10.0.2.2
-            const response = await fetch('http://10.0.2.2:4000/api/auth/login', {
+            const res = await fetch(`${API_URL}/api/auth/login`, {
                 method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json',
-                },
-                body: JSON.stringify({
-                    email: formData.email,
-                    password: formData.password,
-                }),
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ email: formData.email, password: formData.password })
             });
-
-            const data = await response.json();
-
-            if (response.ok) {
-                // Success! Move to dashboard
-                router.replace('/dashboard');
-            } else {
-                // This is where "Compte non trouvé" or "Wrong Password" comes from
-                Alert.alert(t('error'), data.message || "Erreur de connexion");
+            const data = await res.json();
+            if (!res.ok) {
+                if (data.error === 'Email non trouvé') {
+                    setFormErrors({ email: data.error });
+                } else if (data.error === 'Mot de passe incorrect') {
+                    setFormErrors({ password: data.error });
+                } else if (data.error === 'Email ou mot de passe incorrect') {
+                    setFormErrors({ email: ' ', password: data.error });
+                } else {
+                    setFormErrors({ email: data.error || t('loginFailed'), password: ' ' });
+                }
+                return;
             }
-        } catch (error) {
-            // This happens if the IP is wrong or backend is off
-            Alert.alert(t('error'), "Impossible de contacter le serveur backend .");
-            console.error(error);
+
+            if (rememberMe) {
+                await AsyncStorage.setItem('savedEmail', formData.email);
+            } else {
+                await AsyncStorage.removeItem('savedEmail');
+            }
+            await AsyncStorage.setItem('token', data.token);
+            await AsyncStorage.setItem('user', JSON.stringify(data.user));
+            await AsyncStorage.setItem('patient', JSON.stringify(data.user));
+
+            if (data.token) await syncAllData(data.token);
+            router.replace('/dashboard');
+        } catch (e) {
+            Alert.alert(t('error'), 'Impossible de se connecter au serveur.');
+        } finally {
+            setLoading(false);
         }
     };
 
-    const handleRegister = () => {
-        if (!formData.fullName.trim() || !formData.email.trim() || !formData.password.trim()) {
-            Alert.alert(t('error'), t('fillAllFields'));
+    const handleRegister = async () => {
+        const errors = {};
+        if (!formData.fullName.trim()) errors.fullName = t('fillAllFields');
+        if (!formData.email.trim()) errors.email = t('fillAllFields');
+        if (!formData.password.trim()) errors.password = t('fillAllFields');
+
+        if (!errors.email && !validateEmail(formData.email)) {
+            errors.email = t('invalidEmail');
+        }
+
+        if (!errors.password && !validatePassword(formData.password)) {
+            errors.password = "Le mot de passe doit contenir au moins 8 caractères, incluant des lettres et des chiffres.";
+        }
+
+        if (Object.keys(errors).length > 0) {
+            setFormErrors(errors);
             return;
         }
-        router.replace('/complete-profile');
+        setFormErrors({});
+
+
+        try {
+            console.log('[DEBUG] Navigating to complete-profile...');
+            router.push({
+                pathname: '/complete-profile',
+                params: {
+                    registrationData: JSON.stringify({
+                        email: formData.email.trim(),
+                        password: formData.password,
+                        fullName: formData.fullName.trim()
+                    })
+                }
+            });
+        } catch (e) {
+            console.error('Navigation error:', e);
+            Alert.alert(t('error'), 'Erreur lors de la navigation.');
+        }
     };
 
     const toggleLanguage = (code) => {
@@ -136,7 +220,10 @@ const Login = () => {
                             <View style={[styles.tabsContainer, isRTL && { flexDirection: 'row-reverse' }]}>
                                 <TouchableOpacity
                                     style={[styles.tab, activeTab === 'connexion' && styles.tabActive]}
-                                    onPress={() => setActiveTab('connexion')}
+                                    onPress={() => {
+                                        setActiveTab('connexion');
+                                        setFormErrors({});
+                                    }}
                                 >
                                     <Text style={[styles.tabText, activeTab === 'connexion' && styles.tabTextActive]}>
                                         {t('tabLogin')}
@@ -144,7 +231,10 @@ const Login = () => {
                                 </TouchableOpacity>
                                 <TouchableOpacity
                                     style={[styles.tab, activeTab === 'inscription' && styles.tabActive]}
-                                    onPress={() => setActiveTab('inscription')}
+                                    onPress={() => {
+                                        setActiveTab('inscription');
+                                        setFormErrors({});
+                                    }}
                                 >
                                     <Text style={[styles.tabText, activeTab === 'inscription' && styles.tabTextActive]}>
                                         {t('tabRegister')}
@@ -163,23 +253,33 @@ const Login = () => {
 
                             {activeTab === 'inscription' && (
                                 <View style={styles.formGroup}>
-                                    <Text style={[styles.label, isRTL && { textAlign: 'right' }]}>{t('fullName')}</Text>
+                                    <View style={styles.labelRow}>
+                                        <Text style={[styles.label, isRTL && { textAlign: 'right' }]}>{t('fullName')}</Text>
+                                        <Text style={styles.asterisk}>*</Text>
+                                    </View>
                                     <TextInput
-                                        style={[styles.input, isRTL && { textAlign: 'right' }]}
+                                        style={[styles.input, isRTL && { textAlign: 'right' }, formErrors.fullName && styles.inputError]}
                                         placeholder={t('fullNamePlaceholder')}
                                         placeholderTextColor="#94a3b8"
                                         value={formData.fullName}
-                                        onChangeText={(v) => setFormData({ ...formData, fullName: v })}
+                                        onChangeText={(v) => {
+                                            setFormData({ ...formData, fullName: v });
+                                            if (formErrors.fullName) setFormErrors({ ...formErrors, fullName: null });
+                                        }}
                                         returnKeyType="next"
                                         onSubmitEditing={() => emailInputRef?.focus()}
                                     />
+                                    {formErrors.fullName && <Text style={styles.errorText}>{formErrors.fullName}</Text>}
                                 </View>
                             )}
 
                             <View style={[styles.formGroup, { zIndex: 2 }]}>
-                                <Text style={[styles.label, isRTL && { textAlign: 'right' }]}>{t('email')}</Text>
+                                <View style={styles.labelRow}>
+                                    <Text style={[styles.label, isRTL && { textAlign: 'right' }]}>{t('email')}</Text>
+                                    <Text style={styles.asterisk}>*</Text>
+                                </View>
                                 <TextInput
-                                    style={[styles.input, isRTL && { textAlign: 'right' }]}
+                                    style={[styles.input, isRTL && { textAlign: 'right' }, formErrors.email && styles.inputError]}
                                     placeholder={t('emailPlaceholder')}
                                     placeholderTextColor="#94a3b8"
                                     keyboardType="email-address"
@@ -187,26 +287,51 @@ const Login = () => {
                                     value={formData.email}
                                     onChangeText={(v) => {
                                         setFormData({ ...formData, email: v });
+                                        if (formErrors.email || formErrors.password) setFormErrors({});
                                     }}
+                                    autoComplete="off"
+                                    textContentType="none"
                                     returnKeyType="next"
                                     onSubmitEditing={() => passwordInputRef?.focus()}
                                     ref={(ref) => (emailInputRef = ref)}
                                 />
+                                {formErrors.email && <Text style={styles.errorText}>{formErrors.email}</Text>}
                             </View>
 
                             <View style={styles.formGroup}>
-                                <Text style={[styles.label, isRTL && { textAlign: 'right' }]}>{t('password')}</Text>
-                                <TextInput
-                                    style={[styles.input, isRTL && { textAlign: 'right' }]}
-                                    placeholder={t('passwordPlaceholder')}
-                                    placeholderTextColor="#94a3b8"
-                                    secureTextEntry
-                                    value={formData.password}
-                                    onChangeText={(v) => setFormData({ ...formData, password: v })}
-                                    returnKeyType="done"
-                                    onSubmitEditing={activeTab === 'connexion' ? handleLogin : handleRegister}
-                                    ref={(ref) => (passwordInputRef = ref)}
-                                />
+                                <View style={styles.labelRow}>
+                                    <Text style={[styles.label, isRTL && { textAlign: 'right' }]}>{t('password')}</Text>
+                                    <Text style={styles.asterisk}>*</Text>
+                                </View>
+                                <View style={[styles.passwordContainer, formErrors.password && styles.inputError]}>
+                                    <TextInput
+                                        style={[styles.input, { flex: 1, borderWidth: 0 }, isRTL && { textAlign: 'right' }]}
+                                        placeholder={t('passwordPlaceholder')}
+                                        placeholderTextColor="#94a3b8"
+                                        secureTextEntry={!showPassword}
+                                        value={formData.password}
+                                        onChangeText={(v) => {
+                                            setFormData({ ...formData, password: v });
+                                            if (formErrors.email || formErrors.password) setFormErrors({});
+                                        }}
+                                        autoComplete="off"
+                                        textContentType="none"
+                                        returnKeyType="done"
+                                        onSubmitEditing={activeTab === 'connexion' ? handleLogin : handleRegister}
+                                        ref={(ref) => (passwordInputRef = ref)}
+                                    />
+                                    <TouchableOpacity
+                                        style={styles.eyeButton}
+                                        onPress={() => setShowPassword(!showPassword)}
+                                    >
+                                        <Ionicons
+                                            name={showPassword ? "eye-outline" : "eye-off-outline"}
+                                            size={20}
+                                            color="#94a3b8"
+                                        />
+                                    </TouchableOpacity>
+                                </View>
+                                {formErrors.password && <Text style={styles.errorText}>{formErrors.password}</Text>}
                             </View>
 
                             {activeTab === 'connexion' && (
@@ -227,12 +352,17 @@ const Login = () => {
                             )}
 
                             <TouchableOpacity
-                                style={styles.primaryButton}
+                                style={[styles.primaryButton, loading && { opacity: 0.7 }]}
                                 onPress={activeTab === 'connexion' ? handleLogin : handleRegister}
+                                disabled={loading}
                             >
-                                <Text style={styles.primaryButtonText}>
-                                    {activeTab === 'connexion' ? t('loginButton') : t('registerButton')}
-                                </Text>
+                                {loading ? (
+                                    <ActivityIndicator color="#fff" />
+                                ) : (
+                                    <Text style={styles.primaryButtonText}>
+                                        {activeTab === 'connexion' ? t('loginButton') : t('registerButton')}
+                                    </Text>
+                                )}
                             </TouchableOpacity>
 
                             <View style={styles.footer}>
@@ -253,7 +383,6 @@ const Login = () => {
                                 )}
                             </View>
                         </View>
-
                     </View>
                 </ScrollView>
             </SafeAreaView>
@@ -274,7 +403,6 @@ const styles = StyleSheet.create({
         top: 15,
         right: 15,
         zIndex: 100,
-        overflow: 'visible',
     },
     langButton: {
         flexDirection: 'row',
@@ -410,7 +538,17 @@ const styles = StyleSheet.create({
         fontSize: 13,
         fontWeight: '600',
         color: theme.colors.dark,
+        marginBottom: 0,
+    },
+    labelRow: {
+        flexDirection: 'row',
+        alignItems: 'center',
         marginBottom: 8,
+        gap: 4,
+    },
+    asterisk: {
+        color: '#ef4444',
+        fontWeight: 'bold',
     },
     input: {
         backgroundColor: '#f8fafc',
@@ -421,6 +559,27 @@ const styles = StyleSheet.create({
         color: theme.colors.textMain,
         borderWidth: 1.5,
         borderColor: '#e2e8f0',
+    },
+    passwordContainer: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        backgroundColor: '#f8fafc',
+        borderRadius: 14,
+        borderWidth: 1.5,
+        borderColor: '#e2e8f0',
+        paddingRight: 10,
+    },
+    eyeButton: {
+        padding: 10,
+    },
+    inputError: {
+        borderColor: '#ef4444',
+    },
+    errorText: {
+        color: '#ef4444',
+        fontSize: 12,
+        marginTop: 4,
+        fontWeight: '500',
     },
     rowBetween: {
         flexDirection: 'row',

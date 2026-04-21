@@ -2,6 +2,8 @@ import { Response, Router } from 'express';
 import { prisma } from '../lib/prisma';
 import { authenticateSousAdmin, AuthRequest } from '../middleware/auth';
 import { ensureSalleAttenteForTodaysAppointments, isDateToday } from '../utils/salleAttenteSync';
+import { formatAppointmentCalendarDateKey, formatAppointmentTime } from '../utils/appointmentDisplay';
+import { maybeNotifySoonAfterConfirm } from '../utils/appointmentReminderRunner';
 import { normalizeSpecialty } from '../utils/specialty';
 
 const router = Router();
@@ -23,6 +25,24 @@ const upsertPresentTag = (motif: string | null | undefined, isPresent: boolean) 
 };
 const getAppointmentSpecialty = (apt: { specialite?: string | null; medecin?: { specialite?: string | null } | null }) =>
     normalizeSpecialty(apt.specialite || apt.medecin?.specialite || '');
+function cleanMotifForDisplay(raw: string | null | undefined): string {
+    return (raw || '')
+        .replace(/\[SPEC:[^\]]+\]/g, '')
+        .replace(/\[ANNULER\]/g, '')
+        .replace(/\[REPORT\]/g, '')
+        .replace(/\[PRESENT:1\]/g, '')
+        .replace(/\[URGENT:(?:0|1)\]/g, '')
+        .replace(/\[DOC:1\]/g, '')
+        .replace(/\[DOC_NAME:[^\]]+\]/g, '')
+        .replace(/\[DOC_URL:[^\]]+\]/g, '')
+        .replace(/\[DOC_TRAITE:1\]/g, '')
+        .replace(/\[PREVISIT:ATTEND\]/g, '')
+        .replace(/\[PREVISIT:ASK_RESCHEDULE\]/g, '')
+        .replace(/\[PREVISIT:NOTIFIED\]/g, '')
+        .replace(/\s+/g, ' ')
+        .trim();
+}
+
 const getAppointmentQueueKey = (apt: {
     specialite?: string | null;
     medecinId?: number | null;
@@ -142,8 +162,8 @@ router.get('/appointments', authenticateSousAdmin, async (req: AuthRequest, res:
 
         const formatted = filtered.map(apt => ({
             id: apt.id,
-            date: apt.date.toISOString().split('T')[0],
-            time: apt.date.toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' }),
+            date: formatAppointmentCalendarDateKey(apt.date),
+            time: formatAppointmentTime(apt.date),
             patientName: `${apt.patient.utilisateur.prenom} ${apt.patient.utilisateur.nom}`,
             patientId: apt.patientId,
             doctor: apt.medecin
@@ -194,11 +214,12 @@ router.get('/appointments/pending', authenticateSousAdmin, async (req: AuthReque
             return false;
         });
 
-        return res.json(filtered.map(apt => ({
+        return res.json(filtered.map((apt) => ({
             id: apt.id,
             patientName: `${apt.patient.utilisateur.prenom} ${apt.patient.utilisateur.nom}`,
             patientId: apt.patientId,
             motif: apt.motif || '',
+            motifDisplay: cleanMotifForDisplay(apt.motif),
             specialite: apt.specialite || '',
             status: apt.statut,
             statut: apt.statut,
@@ -210,6 +231,85 @@ router.get('/appointments/pending', authenticateSousAdmin, async (req: AuthReque
     }
 });
 
+router.get('/doctor-consultation-requests', authenticateSousAdmin, async (req: AuthRequest, res: Response) => {
+    try {
+        const notifs = await prisma.notification.findMany({
+            where: {
+                utilisateurId: req.userId!,
+                titre: { contains: 'Demande de nouvelle consultation' }
+            },
+            orderBy: { createdAt: 'desc' },
+            take: 25
+        });
+        const rows = [];
+        for (const n of notifs) {
+            const msg = n.message || '';
+            const m = msg.match(/pour\s+([^\n.]+?)\.\s*Merci/i) || msg.match(/pour\s+([^.]+)\./i);
+            const patientName = m ? m[1].trim() : 'Patient';
+            let patientId: number | null = null;
+            const pidTag = msg.match(/\[PATIENT_ID:(\d+)\]/);
+            if (pidTag) {
+                patientId = parseInt(pidTag[1], 10);
+            } else if (m) {
+                const parts = m[1].trim().split(/\s+/).filter(Boolean);
+                if (parts.length >= 2) {
+                    const prenom = parts[0];
+                    const nom = parts.slice(1).join(' ');
+                    const u = await prisma.utilisateur.findFirst({
+                        where: {
+                            prenom: { equals: prenom, mode: 'insensitive' },
+                            nom: { equals: nom, mode: 'insensitive' },
+                            role: 'PATIENT'
+                        },
+                        include: { patient: true }
+                    });
+                    if (u?.patient) patientId = u.patient.id;
+                }
+            }
+            rows.push({
+                id: `dr-consult-${n.id}`,
+                notificationId: n.id,
+                patientName,
+                patientId,
+                motif: 'Demande de planification d’une nouvelle consultation (médecin)',
+                motifDisplay: 'Demande de planification d’une nouvelle consultation (médecin)',
+                requestType: 'CONSULTATION_DR',
+                createdAt: n.createdAt.toISOString(),
+                status: 'EN_ATTENTE',
+                hasDocuments: false,
+                documentsProcessed: false
+            });
+        }
+        return res.json(rows);
+    } catch (error) {
+        console.error(error);
+        return res.status(500).json({ error: 'Erreur serveur' });
+    }
+});
+
+router.delete('/doctor-consultation-requests/:notificationId', authenticateSousAdmin, async (req: AuthRequest, res: Response) => {
+    try {
+        const rawId = req.params.notificationId;
+        const notificationId = parseInt(Array.isArray(rawId) ? rawId[0] : String(rawId), 10);
+        if (Number.isNaN(notificationId)) {
+            return res.status(400).json({ error: 'Identifiant invalide' });
+        }
+        const deleted = await prisma.notification.deleteMany({
+            where: {
+                id: notificationId,
+                utilisateurId: req.userId!,
+                titre: { contains: 'Demande de nouvelle consultation' }
+            }
+        });
+        if (deleted.count === 0) {
+            return res.status(404).json({ error: 'Demande introuvable' });
+        }
+        return res.json({ ok: true });
+    } catch (error) {
+        console.error(error);
+        return res.status(500).json({ error: 'Erreur serveur' });
+    }
+});
 
 router.post('/appointments/create', authenticateSousAdmin, async (req: AuthRequest, res: Response) => {
     const { patientId, medecinId, date, motif, lieu, salle } = req.body;
@@ -260,6 +360,16 @@ router.post('/appointments/create', authenticateSousAdmin, async (req: AuthReque
                 message: `Un rendez-vous a été planifié pour vous le ${new Date(date).toLocaleDateString('fr-FR')}${salle ? ` — Salle ${salle}` : ''}.`
             }
         });
+
+        if (apt.statut === 'CONFIRME' && parsedMedecinId) {
+            await maybeNotifySoonAfterConfirm(prisma, {
+                patientUserId: apt.patient.utilisateurId,
+                appointmentId: apt.id,
+                appointmentAt: finalDate,
+                lieu: finalLieu,
+                salle: finalSalle
+            });
+        }
 
         if (apt.statut === 'CONFIRME' && isDateToday(apt.date)) {
             await ensureSalleAttenteForTodaysAppointments(prisma, sousAdmin.id);
@@ -326,6 +436,16 @@ router.patch('/appointments/:id/reschedule', authenticateSousAdmin, async (req: 
                 message: `Votre rendez-vous a été reporté au ${new Date(date).toLocaleDateString('fr-FR')}${salle ? ` — Salle ${salle}` : ''}.`
             }
         });
+
+        if (updated.medecinId) {
+            await maybeNotifySoonAfterConfirm(prisma, {
+                patientUserId: updated.patient.utilisateurId,
+                appointmentId: updated.id,
+                appointmentAt: finalDate,
+                lieu: updated.lieu,
+                salle: updated.salle
+            });
+        }
 
         if (!isDateToday(finalDate)) {
             await prisma.salleAttente.deleteMany({
@@ -400,6 +520,14 @@ router.patch('/appointments/:id/assign', authenticateSousAdmin, async (req: Auth
                 titre: '✅ Rendez-vous confirmé',
                 message: `Votre rendez-vous a été confirmé pour le ${new Date(date).toLocaleDateString('fr-FR')} — ${salle || 'salle à définir'}.`
             }
+        });
+
+        await maybeNotifySoonAfterConfirm(prisma, {
+            patientUserId: updated.patient.utilisateurId,
+            appointmentId: updated.id,
+            appointmentAt: finalDate,
+            lieu: finalLieu,
+            salle: finalSalle
         });
 
         if (isDateToday(finalDate)) {
@@ -625,23 +753,14 @@ router.patch('/appointments/:id/checkout', authenticateSousAdmin, async (req: Au
             return res.status(403).json({ error: 'Accès refusé' });
         }
 
-        const today = new Date();
-        const startOfDay = new Date(today); startOfDay.setHours(0, 0, 0, 0);
-        const endOfDay = new Date(today); endOfDay.setHours(23, 59, 59, 999);
-
-        const currentEntry = await prisma.salleAttente.findFirst({
-            where: {
-                patientId: current.patientId,
-                joinedAt: { gte: startOfDay, lte: endOfDay }
-            }
-        });
-
-        if (!currentEntry || currentEntry.presenceStatus !== 'PRESENT') {
-            return res.status(400).json({ error: 'Le patient doit être marqué PRESENT avant la sortie.' });
-        }
         if ((current.statut as any) !== 'EN_COURS') {
-            return res.status(400).json({ error: 'Sortie impossible: ce patient attend encore son tour.' });
+            return res.status(400).json({ error: 'Sortie impossible: la consultation doit être en cours (EN_COURS).' });
         }
+
+        const todayKey = formatAppointmentCalendarDateKey(new Date());
+        const queueRows = await prisma.salleAttente.findMany({
+            where: { patientId: current.patientId }
+        });
 
         const updated = await prisma.rendezVous.update({
             where: { id: appointmentId },
@@ -660,10 +779,12 @@ router.patch('/appointments/:id/checkout', authenticateSousAdmin, async (req: Au
             }
         });
 
-        const queueSid = current.sousAdminId ?? sousAdmin.id;
-        await prisma.salleAttente.deleteMany({
-            where: { sousAdminId: queueSid, patientId: current.patientId }
-        });
+        const idsToDelete = queueRows
+            .filter((e) => formatAppointmentCalendarDateKey(new Date(e.joinedAt)) === todayKey)
+            .map((e) => e.id);
+        if (idsToDelete.length > 0) {
+            await prisma.salleAttente.deleteMany({ where: { id: { in: idsToDelete } } });
+        }
 
         const currentQueueKey = getAppointmentQueueKey(current);
         if (currentQueueKey) {
@@ -952,9 +1073,12 @@ router.get('/doctors', authenticateSousAdmin, async (req: AuthRequest, res: Resp
         const normalizedSA = normalizeSpecialty(sousAdmin.specialite);
         const normalizedQuery = normalizeSpecialty(specialite as string | undefined);
         const targetSpecialty = normalizedQuery || normalizedSA;
-        const filteredDoctors = targetSpecialty
+        let filteredDoctors = targetSpecialty
             ? doctors.filter((doc) => normalizeSpecialty(doc.specialite) === targetSpecialty)
             : doctors;
+        if (filteredDoctors.length === 0 && doctors.length > 0) {
+            filteredDoctors = doctors;
+        }
 
         const formatted = filteredDoctors.map(doc => {
             const isOnLeave = doc.conges.length > 0;
@@ -972,6 +1096,7 @@ router.get('/doctors', authenticateSousAdmin, async (req: AuthRequest, res: Resp
                 fullName: `Dr. ${doc.utilisateur.prenom} ${doc.utilisateur.nom}`,
                 specialite: doc.specialite,
                 status,
+                statut: status,
                 workload: count,
                 maxCapacity: 15,
                 appointments: doc.rendezVous.map(a => ({
@@ -1176,6 +1301,7 @@ router.get('/activities', authenticateSousAdmin, async (req: AuthRequest, res: R
             id: act.id,
             action: act.message,
             time: formatTimeAgo(act.createdAt),
+            createdAt: act.createdAt.toISOString(),
             type: act.titre.includes('📅') ? 'appointment' : 'general'
         }));
 

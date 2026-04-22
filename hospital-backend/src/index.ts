@@ -1,8 +1,10 @@
-import cors from 'cors';
 import dotenv from 'dotenv';
+import path from 'path';
+import cors from 'cors';
 import express, { Request, Response } from 'express';
 import fs from 'fs';
-import path from 'path';
+
+dotenv.config({ path: path.join(__dirname, '../.env') });
 import appointmentsRouter from './routes/appointments';
 import authRouter from './routes/auth';
 import feedbackRouter from './routes/feedback';
@@ -22,7 +24,6 @@ import {
     tickPreVisitPresenceAsk
 } from './utils/appointmentReminderRunner';
 
-dotenv.config();
 
 const app = express();
 const PORT = process.env.PORT || 4000;

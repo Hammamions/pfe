@@ -2,6 +2,8 @@
  * Client HTTP pour une API de chat compatible OpenAI (DeepSeek, OpenAI, Mistral, etc.).
  * La clé ne doit jamais être exposée au navigateur : appels uniquement côté serveur.
  */
+import dotenv from 'dotenv';
+dotenv.config();
 
 export type ChatMessage = { role: 'system' | 'user' | 'assistant'; content: string };
 
@@ -51,10 +53,16 @@ export function formatLlmHttpError(status: number, data: unknown, rawText: strin
 }
 
 export function getLlmConfig(): { apiKey: string; baseUrl: string; model: string } | null {
-    const apiKey = (process.env.LLM_API_KEY || '').trim();
-    if (!apiKey) return null;
-    const baseUrl = normalizeBaseUrl(process.env.LLM_BASE_URL || 'https://api.deepseek.com/v1');
-    const model = (process.env.LLM_MODEL || 'deepseek-chat').trim();
+    // On récupère les valeurs avec des replis (fallbacks) vers le gratuit
+    const apiKey = (process.env.LLM_API_KEY || 'no-key-required').trim();
+
+    // Par défaut, on peut viser Groq ou Ollama si rien n'est fourni
+    const baseUrl = normalizeBaseUrl(
+        process.env.LLM_BASE_URL || 'https://api.groq.com/openai/v1'
+    );
+
+    const model = (process.env.LLM_MODEL || 'llama-3.1-8b-instant').trim();
+
     return { apiKey, baseUrl, model };
 }
 

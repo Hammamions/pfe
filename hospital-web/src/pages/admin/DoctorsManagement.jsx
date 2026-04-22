@@ -24,93 +24,9 @@ import {
 } from 'lucide-react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '../../components/ui/card';
 import { Button } from '../../components/ui/button';
+;
 
-const mockStats = [
-    {
-        id: "mockdoctors",
-        title: "Médecins actifs",
-        value: "6",
-        subtext: "sur 6 total",
-        icon: Users,
-        color: "text-purple-600",
-        bg: "bg-purple-100"
-    },
-    {
-        id: "patients",
-        title: "Patients inscrits",
-        value: "247",
-        subtext: "+12 ce mois",
-        trend: "up",
-        icon: UserPlus,
-        color: "text-blue-600",
-        bg: "bg-blue-100"
-    },
-    {
-        id: "rdv",
-        title: "RDV aujourd'hui",
-        value: "34",
-        subtext: "Planifiés",
-        icon: Calendar,
-        color: "text-green-600",
-        bg: "bg-green-100"
-    },
-    {
-        id: "system",
-        title: "Activité système",
-        value: "98%",
-        subtext: "Opérationnel",
-        icon: Activity,
-        color: "text-orange-600",
-        bg: "bg-orange-100"
-    }
-];
 
-const mockDoctors = [
-    { id: 1, name: "Dr. Sophie Martin", specialty: "Cardiologie", status: "actif", initials: "SM", color: "bg-purple-100 text-purple-700", patients: 45, consultations: 120, email: "s.martin@hopital.com", phone: "+216 91 123 456", address: "15 Rue de la Paix, Tunis", licenseNumber: "CN-12345" },
-    { id: 2, name: "Dr. Jean Dubois", specialty: "Dermatologie", status: "actif", initials: "JD", color: "bg-blue-100 text-blue-700", patients: 38, consultations: 95, email: "j.dubois@hopital.com", phone: "+216 92 123 456", address: "8 Avenue Habib Bourguiba, Tunis", licenseNumber: "CN-12346" },
-    { id: 3, name: "Dr. Claire Rousseau", specialty: "Médecine générale", status: "actif", initials: "CR", color: "bg-pink-100 text-pink-700", patients: 52, consultations: 145, email: "c.rousseau@hopital.com", phone: "+216 93 123 456", address: "3 Rue de Marseille, Tunis", licenseNumber: "CN-12347" },
-    { id: 4, name: "Dr. Pierre Lefevre", specialty: "Chirurgie", status: "inactif", initials: "PL", color: "bg-indigo-100 text-indigo-700", patients: 27, consultations: 68, email: "p.lefevre@hopital.com", phone: "+216 94 123 456", address: "12 Rue de Carthage, Tunis", licenseNumber: "CN-12348" },
-    { id: 5, name: "Dr. Anne Petit", specialty: "Pédiatrie", status: "congé", initials: "AP", color: "bg-green-100 text-green-700", patients: 41, consultations: 112, email: "a.petit@hopital.com", phone: "+216 95 123 456", address: "7 Rue de Londres, Tunis", licenseNumber: "CN-12349" },
-    { id: 6, name: "Dr. Abir kraim", specialty: "Cardiologie", status: "actif", initials: "AK", color: "bg-green-100 text-green-700", patients: 33, consultations: 87, email: "a.kraim@hopital.com", phone: "+216 96 123 456", address: "22 Rue de France, Tunis", licenseNumber: "CN-12350" },
-];
-
-const patients = [
-    { id: 1, name: "Ali Ben Salah", age: 45 },
-    { id: 2, name: "Sara Trabelsi", age: 32 },
-    { id: 3, name: "Mohamed Gharbi", age: 60 }
-];
-
-const rdvs = [
-    { id: 1, patient: "Ali Ben Salah", doctor: "Dr. Sophie Martin", time: "09:00" },
-    { id: 2, patient: "Sara Trabelsi", doctor: "Dr. Jean Dubois", time: "11:30" },
-    { id: 3, patient: "Mohamed Gharbi", doctor: "Dr. Claire Rousseau", time: "15:00" }
-];
-
-const mockActivity = [
-    { text: "Dr. Anne Petit a été ajouté", time: "Il y a 2 heures", type: "add" },
-    { text: "5 nouveaux patients inscrits", time: "Il y a 4 heures", type: "user" },
-    { text: "Mise à jour système effectuée", time: "Il y a 1 jour", type: "system" },
-];
-
-const mockReports = [
-    { patient: "Alice Ben Salah", consultation: "Cardiologie", date: "15-02-2026", ordonnance: 2, documents: 1 },
-    { patient: "Mohamed Trabelsi", consultation: "Dermatologie", date: "14-02-2026", ordonnance: 1, documents: 0 },
-];
-
-const mockLogs = [
-    { timestamp: "2026-02-22 10:23:45", level: "info", message: "Connexion administrateur réussie", user: "admin@hopital.com" },
-    { timestamp: "2026-02-22 09:15:22", level: "info", message: "Sauvegarde automatique terminée", size: "2.3 GB" },
-    { timestamp: "2026-02-22 08:45:10", level: "warning", message: "Tentative de connexion échouée", ip: "192.168.1.45" },
-    { timestamp: "2026-02-22 07:30:05", level: "info", message: "Service de notifications redémarré" },
-    { timestamp: "2026-02-21 23:15:30", level: "error", message: "Timeout sur requête API", endpoint: "/api/patients" },
-];
-
-const mockAlerts = [
-    { id: 1, severity: "high", message: "Espace disque critique sur serveur DB", time: "Il y a 30min", acknowledged: false },
-    { id: 2, severity: "medium", message: "2 comptes médecins en attente de validation", time: "Il y a 2h", acknowledged: false },
-    { id: 3, severity: "low", message: "Maintenance programmée dans 3 jours", time: "Il y a 5h", acknowledged: true },
-    { id: 4, severity: "medium", message: "Pic de trafic anormal détecté", time: "Il y a 1h", acknowledged: false },
-];
 
 const specialties = [
     "Cardiologie",
@@ -144,7 +60,6 @@ export default function AdminDashboard() {
     const [doctors, setDoctors] = useState(mockDoctors);
     const [showSystemSurveillance, setShowSystemSurveillance] = useState(false);
 
-    // State for doctor management
     const [showAddDoctorForm, setShowAddDoctorForm] = useState(false);
     const [showEditDoctorForm, setShowEditDoctorForm] = useState(false);
     const [doctorToEdit, setDoctorToEdit] = useState(null);
@@ -160,13 +75,11 @@ export default function AdminDashboard() {
     const [deleteConfirmation, setDeleteConfirmation] = useState(null);
     const [successMessage, setSuccessMessage] = useState("");
 
-    // States for surveillance section
     const [showLogs, setShowLogs] = useState(false);
     const [showAlerts, setShowAlerts] = useState(false);
     const [isRefreshing, setIsRefreshing] = useState(false);
     const [lastRefreshTime, setLastRefreshTime] = useState(new Date());
 
-    // Surveillance data state
     const [surveillanceData, setSurveillanceData] = useState({
         cpu: 45,
         memory: { used: 6.2, total: 16 },
@@ -365,7 +278,6 @@ export default function AdminDashboard() {
 
     return (
         <div className="space-y-8">
-            {/* Success Message */}
             {successMessage && (
                 <div className="fixed top-4 right-4 bg-green-100 border border-green-400 text-green-700 px-4 py-3 rounded-lg shadow-lg z-50 animate-slide-in">
                     <div className="flex items-center gap-2">
@@ -380,7 +292,7 @@ export default function AdminDashboard() {
                 <p className="text-gray-500 mt-2">Vue d'ensemble de la plateforme hospitalière</p>
             </div>
 
-            {/* Stats Grid */}
+            
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
                 {mockStats.map((stat) => (
                     <Card key={stat.id}
@@ -425,7 +337,6 @@ export default function AdminDashboard() {
                         </Button>
                     </CardHeader>
                     <CardContent className="space-y-4">
-                        {/* Add Doctor Form */}
                         {showAddDoctorForm && (
                             <Card className="bg-gray-50 border-2 border-dashed border-gray-300">
                                 <CardHeader>
@@ -522,7 +433,7 @@ export default function AdminDashboard() {
                             </Card>
                         )}
 
-                        {/* Edit Doctor Form */}
+                        
                         {showEditDoctorForm && doctorToEdit && (
                             <Card className="bg-blue-50 border-2 border-blue-300">
                                 <CardHeader className="flex flex-row items-center justify-between">
@@ -619,7 +530,7 @@ export default function AdminDashboard() {
                             </Card>
                         )}
 
-                        {/* Delete Confirmation Modal */}
+                      
                         {deleteConfirmation && (
                             <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
                                 <Card className="w-full max-w-md">
@@ -653,7 +564,7 @@ export default function AdminDashboard() {
                             </div>
                         )}
 
-                        {/* Doctors List */}
+                       
                         <div className="space-y-3">
                             {doctors.map((doc) => (
                                 <div
@@ -778,9 +689,7 @@ export default function AdminDashboard() {
             )}
 
             <div className="grid grid-cols-1 xl:grid-cols-3 gap-8">
-                {/* Left Column */}
                 <div className="xl:col-span-2 space-y-8">
-                    {/* Active Doctors */}
                     <Card>
                         <CardHeader className="flex flex-row items-center justify-between">
                             <div>
@@ -850,7 +759,7 @@ export default function AdminDashboard() {
                         </CardContent>
                     </Card>
 
-                    {/* Recent Activity */}
+                    
                     <Card>
                         <CardHeader>
                             <CardTitle>Activités récentes</CardTitle>
@@ -878,9 +787,9 @@ export default function AdminDashboard() {
                     </Card>
                 </div>
 
-                {/* Right Column */}
+                
                 <div className="space-y-8">
-                    {/* Quick Actions */}
+                  
                     <Card>
                         <CardHeader>
                             <CardTitle>Actions rapides</CardTitle>
@@ -1027,7 +936,7 @@ export default function AdminDashboard() {
                                         </Button>
                                     </CardHeader>
                                     <CardContent className="space-y-4">
-                                        {/* CPU Usage */}
+                                        
                                         <div className="space-y-2">
                                             <div className="flex justify-between text-sm">
                                                 <span className="text-gray-600">Utilisation CPU</span>
@@ -1043,7 +952,6 @@ export default function AdminDashboard() {
                                             </div>
                                         </div>
 
-                                        {/* Memory Usage */}
                                         <div className="space-y-2">
                                             <div className="flex justify-between text-sm">
                                                 <span className="text-gray-600">Utilisation Mémoire</span>
@@ -1061,7 +969,7 @@ export default function AdminDashboard() {
                                             </div>
                                         </div>
 
-                                        {/* Disk Usage */}
+                                       
                                         <div className="space-y-2">
                                             <div className="flex justify-between text-sm">
                                                 <span className="text-gray-600">Espace Disque</span>
@@ -1079,7 +987,7 @@ export default function AdminDashboard() {
                                             </div>
                                         </div>
 
-                                        {/* Service Status */}
+                                    
                                         <div className="pt-4 border-t">
                                             <h4 className="font-medium text-gray-900 mb-3">État des services</h4>
                                             <div className="space-y-2">
@@ -1114,7 +1022,7 @@ export default function AdminDashboard() {
                                             </div>
                                         </div>
 
-                                        {/* Performance Metrics */}
+                                  
                                         <div className="pt-4 border-t">
                                             <h4 className="font-medium text-gray-900 mb-3">Métriques de performance</h4>
                                             <div className="grid grid-cols-2 gap-4">
@@ -1139,7 +1047,7 @@ export default function AdminDashboard() {
                                             </div>
                                         </div>
 
-                                        {/* Action Buttons */}
+                                    
                                         <div className="flex gap-2 pt-2">
                                             <Button
                                                 variant="outline"
@@ -1161,7 +1069,7 @@ export default function AdminDashboard() {
                                             </Button>
                                         </div>
 
-                                        {/* Logs Section */}
+                                      
                                         {showLogs && (
                                             <div className="mt-4 pt-4 border-t">
                                                 <h4 className="font-medium text-gray-900 mb-3">Logs système</h4>
@@ -1192,7 +1100,7 @@ export default function AdminDashboard() {
                                             </div>
                                         )}
 
-                                        {/* Alerts Section */}
+                                       
                                         {showAlerts && (
                                             <div className="mt-4 pt-4 border-t">
                                                 <h4 className="font-medium text-gray-900 mb-3">Alertes actives</h4>
@@ -1233,7 +1141,7 @@ export default function AdminDashboard() {
                                 </Card>
                             )}
 
-                            {/* System Status */}
+                         
                             <Card>
                                 <CardHeader>
                                     <CardTitle>État du système</CardTitle>
@@ -1270,7 +1178,7 @@ export default function AdminDashboard() {
                                 </CardContent>
                             </Card>
 
-                            {/* Alerts */}
+                          
                             <Card className="bg-orange-50 border-orange-100">
                                 <CardHeader>
                                     <CardTitle className="text-orange-800 flex items-center gap-2">
@@ -1288,7 +1196,7 @@ export default function AdminDashboard() {
                                 </CardContent>
                             </Card>
 
-                            {/* Monthly Stats */}
+                            {
                             <Card>
                                 <CardHeader>
                                     <CardTitle>Statistiques du mois</CardTitle>

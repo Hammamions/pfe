@@ -1,14 +1,16 @@
 import { Feather, MaterialCommunityIcons } from '@expo/vector-icons';
+import { LinearGradient } from 'expo-linear-gradient';
 import { Stack } from 'expo-router';
 import React, { useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { ActivityIndicator, Alert, Dimensions, Modal, Platform, RefreshControl, SafeAreaView, ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
-import { theme } from '../theme';
+import { ActivityIndicator, Alert, Modal, Platform, Pressable, RefreshControl, SafeAreaView, ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, useWindowDimensions, View } from 'react-native';
+import { dashboardVibe, patientPastel, theme } from '../theme';
 import { useApp } from './AppContext';
 import HeaderSidebar from './components/HeaderSidebar';
+import SwipeDeleteRow from './components/SwipeDeleteRow';
 import AsyncStorage from './utils/storage';
-
-const { width } = Dimensions.get('window');
+import { getDocumentAsync } from './utils/pickDocument';
+import { BOOKING_SPECIALTIES, specialtyToI18nKey } from '../constants/bookingSpecialties';
 
 const Appointments = () => {
     const { t, i18n } = useTranslation();
@@ -24,12 +26,32 @@ const Appointments = () => {
     const [selectedFile, setSelectedFile] = useState(null);
     const [refreshing, setRefreshing] = useState(false);
     const [isSubmitting, setIsSubmitting] = useState(false);
+    const [preVisitSubmitting, setPreVisitSubmitting] = useState(false);
+    const [preVisitFeedback, setPreVisitFeedback] = useState(null);
     const [bookingFeedback, setBookingFeedback] = useState(null);
     const [formData, setFormData] = useState({
         specialty: '',
         reason: '',
     });
     const isRTL = i18n.language === 'ar';
+    const { width: winWidth } = useWindowDimensions();
+    const narrow = winWidth < 400;
+    const veryNarrow = winWidth < 360;
+    const headerTitleFont = veryNarrow ? 22 : narrow ? 26 : 32;
+    const tabLabelSize = narrow ? 12 : 14;
+    const doctorNameFont = narrow ? 16 : 18;
+    const formatDoctorDisplayName = (rawName) => {
+        const s = String(rawName || '').trim();
+        if (!s || s === 'notSpecified') return t('notSpecified');
+        return s
+            .toLowerCase()
+            .replace(/\b\w/g, (c) => c.toUpperCase());
+    };
+    const sanitizeMotif = (rawMotif) =>
+        String(rawMotif || '')
+            .replace(/\[[^\]]+\]/g, ' ')
+            .replace(/\s{2,}/g, ' ')
+            .trim();
 
     const notifyUser = (title, message, kind = 'error') => {
         setBookingFeedback({ message, kind });
@@ -38,23 +60,59 @@ const Appointments = () => {
         }
     };
 
-    const specialties = [
-        { id: 'cardiology', name: t('cardiology'), icon: 'activity' },
-        { id: 'dermatology', name: t('dermatology'), icon: 'sun' },
-        { id: 'generalPractitioner', name: t('generalPractitioner'), icon: 'user' },
-        { id: 'gynecology', name: t('gynecology'), icon: 'baby-face-outline', iconType: 'MaterialCommunityIcons' },
-        { id: 'ophthalmology', name: t('ophthalmology'), icon: 'eye' },
-        { id: 'orthopedics', name: t('orthopedics'), icon: 'git-branch' },
-        { id: 'pediatrics', name: t('pediatrics'), icon: 'users' },
-        { id: 'rheumatology', name: t('rheumatology'), icon: 'anchor' },
-        { id: 'urology', name: t('urology'), icon: 'droplet' },
-    ];
+    const specialties = BOOKING_SPECIALTIES.map((spec) => ({
+        ...spec,
+        id: spec.value,
+        name: t(spec.nameKey),
+    }));
 
     const currentAppointments = activeTab === 'upcoming'
         ? appointments
         : activeTab === 'history'
             ? (historyFilter === 'all' ? history : history.filter(a => a.status === historyFilter))
             : requests;
+
+    const handlePreVisitIntent = async (intent) => {
+        if (!selectedAppointment) return;
+        try {
+            setPreVisitSubmitting(true);
+            setPreVisitFeedback(null);
+            const token = await AsyncStorage.getItem('token');
+            if (!token) {
+                if (Platform.OS !== 'web') Alert.alert(t('error'), 'Session expirée');
+                return;
+            }
+            const res = await fetch(`${API_URL}/api/appointments/${selectedAppointment.id}`, {
+                method: 'PUT',
+                headers: {
+                    'Content-Type': 'application/json',
+                    Authorization: `Bearer ${token}`,
+                },
+                body: JSON.stringify({ preVisitIntent: intent }),
+            });
+            const data = await res.json().catch(() => ({}));
+            if (!res.ok) {
+                const msg = data.error || 'Erreur';
+                notifyUser(t('error'), msg, 'error');
+                return;
+            }
+            await syncAllData(token);
+            notifyUser(
+                t('confirm'),
+                intent === 'WILL_ATTEND' ? t('preVisitThanks') : t('preVisitRescheduleHint'),
+                'success',
+            );
+            setPreVisitFeedback(intent === 'WILL_ATTEND' ? t('preVisitThanks') : t('preVisitRescheduleHint'));
+            setSelectedAppointment((prev) => (
+                prev ? { ...prev, needsPreVisitConfirmation: false } : prev
+            ));
+        } catch (e) {
+            console.warn(e);
+            notifyUser(t('error'), 'Impossible de contacter le serveur', 'error');
+        } finally {
+            setPreVisitSubmitting(false);
+        }
+    };
 
     const handleConfirmRequest = async (typeOverride = null) => {
         if (!selectedAppointment) return;
@@ -78,16 +136,39 @@ const Appointments = () => {
                     'Content-Type': 'application/json',
                     'Authorization': `Bearer ${token}`
                 },
-                body: JSON.stringify({ status: newStatus })
+                body: JSON.stringify({
+                    status: newStatus,
+                    requestType: effectiveRequestType === 'reschedule' ? 'reschedule' : 'cancel'
+                })
             });
+            const responseData = await res.json().catch(() => ({}));
 
             if (!res.ok) {
-                const errorData = await res.json();
-                const errorMsg = errorData.error || 'Erreur lors de la mise à jour';
+                const errorMsg = responseData.error || 'Erreur lors de la mise à jour';
                 if (Platform.OS === 'web') window.alert(errorMsg);
                 Alert.alert(t('error'), errorMsg);
                 return;
             }
+
+            const updated = responseData?.appointment
+                ? {
+                    ...selectedAppointment,
+                    ...responseData.appointment,
+                    status: 'en_attente',
+                    requestType: effectiveRequestType === 'reschedule' ? 'reschedule' : 'cancel'
+                }
+                : {
+                    ...selectedAppointment,
+                    status: 'en_attente',
+                    requestType: effectiveRequestType === 'reschedule' ? 'reschedule' : 'cancel'
+                };
+
+            setAppointments((prev) => (prev || []).filter((a) => a.id !== updated.id));
+            setHistory((prev) => (prev || []).filter((a) => a.id !== updated.id));
+            setRequests((prev) => {
+                const next = (prev || []).filter((a) => a.id !== updated.id);
+                return [updated, ...next];
+            });
 
             await syncAllData(token);
 
@@ -99,7 +180,7 @@ const Appointments = () => {
         }
     };
 
-    const handleDeleteHistory = async (id) => {
+    const executeDeleteHistory = async (id) => {
         try {
             const token = await AsyncStorage.getItem('token');
             if (!token) return;
@@ -107,7 +188,7 @@ const Appointments = () => {
             const res = await fetch(`${API_URL}/api/appointments/${id}`, {
                 method: 'DELETE',
                 headers: {
-                    'Authorization': `Bearer ${token}`
+                    Authorization: `Bearer ${token}`
                 }
             });
 
@@ -121,6 +202,20 @@ const Appointments = () => {
         } catch (error) {
             console.error('Error deleting appointment:', error);
         }
+    };
+
+    const handleDeleteHistory = (id) => {
+        const title = t('deleteQuestion');
+        const message = t('deleteConfirmAppointment');
+        const run = () => void executeDeleteHistory(id);
+        if (Platform.OS === 'web' && typeof window !== 'undefined') {
+            if (window.confirm(`${title}\n\n${message}`)) run();
+            return;
+        }
+        Alert.alert(title, message, [
+            { text: t('cancel'), style: 'cancel' },
+            { text: t('delete'), style: 'destructive', onPress: run }
+        ]);
     };
 
     const onRefresh = React.useCallback(async () => {
@@ -137,29 +232,49 @@ const Appointments = () => {
         }
     }, [syncAllData]);
 
-    const initiateRequest = (type) => {
+    const initiateRequest = async (type) => {
         setRequestType(type);
-        handleConfirmRequest(type);
+        await handleConfirmRequest(type);
     };
 
-    const handleFileSelect = () => {
+    const handleFileSelect = async () => {
         if (Platform.OS === 'web') {
             const input = document.createElement('input');
             input.type = 'file';
+            input.accept = '.pdf,image/*,application/pdf';
             input.onchange = (e) => {
                 const file = e.target.files[0];
                 if (file) {
                     setSelectedFile({
                         name: file.name,
-                        size: (file.size / (1024 * 1024)).toFixed(1) + ' MB'
+                        size: (file.size / (1024 * 1024)).toFixed(1) + ' MB',
+                        file
                     });
                 }
             };
             input.click();
-        } else {
-
-            const mockFile = { name: `document_${Date.now()}.pdf`, size: '1.2 MB' };
-            setSelectedFile(mockFile);
+            return;
+        }
+        try {
+            const result = await getDocumentAsync({
+                copyToCacheDirectory: true,
+                type: ['application/pdf', 'image/*']
+            });
+            if (result.canceled) return;
+            const asset = result.assets?.[0];
+            if (!asset) return;
+            setSelectedFile({
+                name: asset.name || 'document.pdf',
+                uri: asset.uri,
+                mimeType: asset.mimeType || 'application/pdf',
+                size:
+                    asset.size != null
+                        ? `${(asset.size / (1024 * 1024)).toFixed(1)} MB`
+                        : ''
+            });
+        } catch (err) {
+            console.error(err);
+            notifyUser(t('error'), 'Impossible de sélectionner le fichier.', 'error');
         }
     };
 
@@ -175,6 +290,39 @@ const Appointments = () => {
                 return;
             }
 
+            let documentUrl = null;
+            if (selectedFile && (selectedFile.file || selectedFile.uri)) {
+                const fd = new FormData();
+                if (selectedFile.file) {
+                    fd.append('file', selectedFile.file);
+                } else {
+                    fd.append('file', {
+                        uri: selectedFile.uri,
+                        name: selectedFile.name || 'document.pdf',
+                        type: selectedFile.mimeType || 'application/pdf'
+                    });
+                }
+                const up = await fetch(`${API_URL}/api/appointments/upload-attachment`, {
+                    method: 'POST',
+                    headers: {
+                        Authorization: `Bearer ${token}`
+                    },
+                    body: fd
+                });
+                if (!up.ok) {
+                    let uploadErr = 'Impossible d’envoyer le fichier.';
+                    try {
+                        const errData = await up.json();
+                        uploadErr = errData.error || uploadErr;
+                    } catch (_e) {
+                    }
+                    notifyUser(t('error'), uploadErr, 'error');
+                    return;
+                }
+                const upData = await up.json();
+                documentUrl = upData.documentUrl || null;
+            }
+
             console.log(`[DEBUG] Sending POST to ${API_URL}/api/appointments`);
             const res = await fetch(`${API_URL}/api/appointments`, {
                 method: 'POST',
@@ -187,6 +335,7 @@ const Appointments = () => {
                     reason: formData.reason,
                     hasDocuments: !!selectedFile,
                     documentName: selectedFile?.name || null,
+                    documentUrl: documentUrl || undefined,
                     date: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString(),
                     isUrgent: false
                 })
@@ -199,14 +348,13 @@ const Appointments = () => {
                     const errorData = await res.json();
                     errorMsg = errorData.error || errorMsg;
                 } catch (_e) {
-                    // Keep fallback message when backend response is not JSON
                 }
                 notifyUser(t('error'), errorMsg, 'error');
                 return;
             }
 
             notifyUser('Succès', 'Votre demande de rendez-vous a été envoyée.', 'success');
-            await syncAllData(token);
+            void syncAllData(token).catch((e) => console.warn('[appointments] sync après réservation', e));
 
             setView('list');
             setActiveTab('requests');
@@ -262,16 +410,16 @@ const Appointments = () => {
                                     >
                                         <View style={[styles.specIconCircle, formData.specialty === spec.id && styles.specIconCircleActive]}>
                                             {spec.iconType === 'MaterialCommunityIcons' ? (
-                                                <MaterialCommunityIcons name={spec.icon} size={20} color={formData.specialty === spec.id ? "#fff" : "#2563eb"} />
+                                                <MaterialCommunityIcons name={spec.icon} size={20} color={formData.specialty === spec.id ? '#fff' : patientPastel.primary} />
                                             ) : (
-                                                <Feather name={spec.icon} size={20} color={formData.specialty === spec.id ? "#fff" : "#2563eb"} />
+                                                <Feather name={spec.icon} size={20} color={formData.specialty === spec.id ? '#fff' : patientPastel.primary} />
                                             )}
                                         </View>
                                         <Text style={[styles.specCardText, formData.specialty === spec.id && styles.specCardTextActive]}>
                                             {spec.name}
                                         </Text>
                                         {formData.specialty === spec.id && (
-                                            <Feather name="check-circle" size={18} color="#2563eb" style={styles.specCheckIcon} />
+                                            <Feather name="check-circle" size={18} color={patientPastel.primary} style={styles.specCheckIcon} />
                                         )}
                                     </TouchableOpacity>
                                 ))}
@@ -301,7 +449,7 @@ const Appointments = () => {
                                     onPress={handleFileSelect}
                                 >
                                     <View style={[styles.fileIconCircleLarge, selectedFile && styles.fileIconCircleLargeActive]}>
-                                        <Feather name={selectedFile ? "check" : "upload-cloud"} size={32} color={selectedFile ? "#fff" : "#2563eb"} />
+                                        <Feather name={selectedFile ? 'check' : 'upload-cloud'} size={32} color={selectedFile ? '#fff' : patientPastel.primary} />
                                     </View>
                                     <Text style={styles.fileUploadTitle}>{selectedFile ? t('fileChosen') : t('selectFile')}</Text>
                                     <Text style={styles.fileUploadSubtitle}>{selectedFile ? selectedFile.name : t('optionalFiles')}</Text>
@@ -310,7 +458,7 @@ const Appointments = () => {
                                 {selectedFile && (
                                     <View style={styles.fileInfoCard}>
                                         <View style={styles.fileInfoMain}>
-                                            <Feather name="file-text" size={24} color="#2563eb" />
+                                            <Feather name="file-text" size={24} color={patientPastel.primary} />
                                             <View style={styles.fileMeta}>
                                                 <Text style={styles.fileNameInternal}>{selectedFile.name}</Text>
                                                 <Text style={styles.fileSizeInternal}>{selectedFile.size}</Text>
@@ -350,7 +498,11 @@ const Appointments = () => {
                             <Text style={styles.backBtnText}>{t('back')}</Text>
                         </TouchableOpacity>
                         <TouchableOpacity
-                            style={[styles.nextBtn, (isSubmitting || (step === 1 && !formData.specialty || step === 2 && !formData.reason)) && styles.btnDisabled]}
+                            style={[
+                                styles.nextBtn,
+                                step === 3 && styles.nextBtnConfirmStrong,
+                                (isSubmitting || (step === 1 && !formData.specialty || step === 2 && !formData.reason)) && styles.btnDisabled
+                            ]}
                             onPress={() => step === 3 ? handleConfirmBooking() : setStep(step + 1)}
                             disabled={isSubmitting || (step === 1 && !formData.specialty || step === 2 && !formData.reason)}
                         >
@@ -373,40 +525,92 @@ const Appointments = () => {
             }} />
             <HeaderSidebar activeScreen="appointments" />
 
-            <View style={[styles.mainHeader, isRTL && { flexDirection: 'row-reverse' }]}>
-                <View style={{ flex: 1 }}>
-                    <Text style={[styles.headerMainTitle, isRTL && { textAlign: 'right' }]}>{t('navAppointments')}</Text>
+            <View style={[styles.mainHeader, narrow && styles.mainHeaderCompact, isRTL && { flexDirection: 'row-reverse' }]}>
+                <View style={[styles.mainHeaderTitleBlock, isRTL && { alignItems: 'flex-end' }]}>
+                    <Text
+                        style={[
+                            styles.headerMainTitle,
+                            { fontSize: headerTitleFont },
+                            isRTL && { textAlign: 'right' }
+                        ]}
+                        numberOfLines={2}
+                    >
+                        {t('navAppointments')}
+                    </Text>
                     <Text style={[styles.headerMainSubtitle, isRTL && { textAlign: 'right' }]}>{t('appointmentsDesc')}</Text>
                 </View>
-                <TouchableOpacity onPress={() => setView('new')} style={[styles.addAptBtn, isRTL && { flexDirection: 'row-reverse' }]}>
-                    <Text style={{ color: '#fff', fontSize: 18, fontWeight: 'bold', marginHorizontal: 8 }}>+</Text>
-                    <Text style={styles.addAptBtnText}>{t('newAppointment')}</Text>
+                <TouchableOpacity
+                    onPress={() => setView('new')}
+                    activeOpacity={0.9}
+                    style={[styles.addAptBtnWrap, { borderRadius: 14, overflow: 'hidden', ...theme.shadows.sm }]}
+                    accessibilityRole="button"
+                    accessibilityLabel={t('newAppointment')}
+                >
+                    <LinearGradient
+                        colors={dashboardVibe.primaryCtaGradient}
+                        start={{ x: 0, y: 0 }}
+                        end={{ x: 1, y: 0 }}
+                        style={[styles.addAptBtn, veryNarrow && styles.addAptBtnIconOnly, isRTL && { flexDirection: 'row-reverse' }]}
+                    >
+                        <Text style={[styles.addAptBtnPlus, veryNarrow && { marginHorizontal: 0 }]}>+</Text>
+                        {!veryNarrow && (
+                            <Text
+                                style={[styles.addAptBtnText, narrow && styles.addAptBtnTextCompact]}
+                                numberOfLines={1}
+                                adjustsFontSizeToFit
+                                minimumFontScale={0.65}
+                            >
+                                {t('newAppointment')}
+                            </Text>
+                        )}
+                    </LinearGradient>
                 </TouchableOpacity>
             </View>
 
-            <View style={[styles.tabsWrapper, isRTL && { flexDirection: 'row-reverse' }]}>
-                <View style={[styles.tabsBackground, isRTL && { flexDirection: 'row-reverse' }]}>
+            <View style={[styles.tabsWrapper, narrow && styles.tabsWrapperCompact, isRTL && { flexDirection: 'row-reverse' }]}>
+                <View style={[styles.tabsBackground, narrow && styles.tabsBackgroundCompact, isRTL && { flexDirection: 'row-reverse' }]}>
                     <TouchableOpacity
-                        style={[styles.tabPill, activeTab === 'upcoming' && styles.tabPillActive]}
+                        style={[styles.tabPill, narrow && styles.tabPillCompact, activeTab === 'upcoming' && styles.tabPillActive]}
                         onPress={() => setActiveTab('upcoming')}
                     >
-                        <Text style={[styles.tabPillText, activeTab === 'upcoming' && styles.tabPillTextActive]}>
+                        <Text
+                            style={[
+                                styles.tabPillText,
+                                { fontSize: tabLabelSize },
+                                activeTab === 'upcoming' && styles.tabPillTextActive
+                            ]}
+                            numberOfLines={2}
+                        >
                             {t('upcoming')} ({appointments?.length || 0})
                         </Text>
                     </TouchableOpacity>
                     <TouchableOpacity
-                        style={[styles.tabPill, activeTab === 'requests' && styles.tabPillActive]}
+                        style={[styles.tabPill, narrow && styles.tabPillCompact, activeTab === 'requests' && styles.tabPillActive]}
                         onPress={() => setActiveTab('requests')}
                     >
-                        <Text style={[styles.tabPillText, activeTab === 'requests' && styles.tabPillTextActive]}>
+                        <Text
+                            style={[
+                                styles.tabPillText,
+                                { fontSize: tabLabelSize },
+                                activeTab === 'requests' && styles.tabPillTextActive
+                            ]}
+                            numberOfLines={2}
+                        >
                             {t('myRequests')} ({requests?.length || 0})
                         </Text>
                     </TouchableOpacity>
                     <TouchableOpacity
-                        style={[styles.tabPill, activeTab === 'history' && styles.tabPillActive]}
+                        style={[styles.tabPill, narrow && styles.tabPillCompact, activeTab === 'history' && styles.tabPillActive]}
                         onPress={() => setActiveTab('history')}
                     >
-                        <Text style={[styles.tabPillText, activeTab === 'history' && styles.tabPillTextActive]}>
+                        <Text
+                            style={[
+                                styles.tabPillText,
+                                { fontSize: tabLabelSize },
+                                activeTab === 'history' && styles.tabPillTextActive
+                            ]}
+                            numberOfLines={2}
+                        >
                             {t('history')} ({history?.length || 0})
                         </Text>
                     </TouchableOpacity>
@@ -438,16 +642,30 @@ const Appointments = () => {
                 </View>
             )}
 
+            {activeTab === 'history' && currentAppointments.length > 0 ? (
+                <Text style={[styles.swipeDeleteHint, isRTL && { textAlign: 'right', paddingHorizontal: 20 }]}>
+                    {t('swipeToDelete')}
+                </Text>
+            ) : null}
+
             <ScrollView
                 contentContainerStyle={styles.scrollContent}
                 showsVerticalScrollIndicator={false}
                 refreshControl={
-                    <RefreshControl refreshing={refreshing} onRefresh={onRefresh} colors={["#2563eb"]} />
+                    <RefreshControl refreshing={refreshing} onRefresh={onRefresh} colors={[patientPastel.primary]} />
                 }
             >
                 {currentAppointments.map((apt) => (
-                    <TouchableOpacity
+                    <SwipeDeleteRow
                         key={apt.id}
+                        rowKey={String(apt.id)}
+                        enabled={activeTab === 'history'}
+                        style={{ marginBottom: 30 }}
+                        cornerRadius={24}
+                        accessibilityLabel={t('deleteFromHistory')}
+                        onDelete={() => handleDeleteHistory(apt.id)}
+                    >
+                    <Pressable
                         style={styles.aptCard}
                         onPress={() => { setSelectedAppointment(apt); setShowDetailModal(true); }}
                     >
@@ -464,25 +682,45 @@ const Appointments = () => {
                             )}
                             <View style={[styles.aptMain, isRTL && { paddingLeft: 0, paddingRight: 18, alignItems: 'flex-end' }]}>
                                 <View style={[styles.aptHeaderRow, isRTL && { flexDirection: 'row-reverse', width: '100%' }]}>
-                                    <View style={[{ flex: 1, paddingRight: 10 }, isRTL && { alignItems: 'flex-end', paddingRight: 0, paddingLeft: 10 }]}>
-                                        <Text style={styles.doctorName}>{(apt.status === 'en_attente' || apt.status === 'reporte' || apt.status === 'annule' || apt.status === 'demande_annulation') ? (apt.doctor === 'Médecin à définir' ? t('notSpecified') : apt.doctor) : t(apt.doctor)}</Text>
-                                        <Text style={styles.specTextSmall}>{t(apt.specialty)}</Text>
+                                    <View
+                                        style={[
+                                            styles.aptNameColumn,
+                                            isRTL && { alignItems: 'flex-end', paddingRight: 0, paddingLeft: 10 }
+                                        ]}
+                                    >
+                                        <Text
+                                            style={[styles.doctorName, { fontSize: doctorNameFont }]}
+                                            numberOfLines={2}
+                                        >
+                                            {(apt.status === 'en_attente' || apt.status === 'reporte' || apt.status === 'annule' || apt.status === 'demande_annulation') ? (apt.doctor === 'Médecin à définir' ? t('notSpecified') : apt.doctor) : t(apt.doctor)}
+                                        </Text>
+                                        <Text style={styles.specTextSmall}>{t(specialtyToI18nKey(apt.specialty))}</Text>
                                     </View>
                                     {(() => {
                                         const config = {
-                                            en_attente: { bg: '#e0f2fe', color: '#0369a1', label: 'Nouvelle demande' },
-                                            reporte: { bg: '#fef3c7', color: '#b45309', label: 'Demande de report' },
-                                            demande_annulation: { bg: '#fee2e2', color: '#b91c1c', label: 'Demande annulation' },
-                                            annule: { bg: '#fee2e2', color: '#b91c1c', label: 'Annulé' },
-                                            termine: { bg: '#f1f5f9', color: '#475569', label: 'Terminé' },
-                                            en_cours: { bg: '#ffedd5', color: '#c2410c', label: 'En cours' },
-                                            confirme: { bg: '#dcfce7', color: '#15803d', label: 'Confirmé' }
+                                            en_attente: { bg: '#e0f2fe', color: '#0369a1', labelKey: 'aptStatusEnAttente' },
+                                            reporte: { bg: '#fef3c7', color: '#b45309', labelKey: 'aptStatusReporte' },
+                                            demande_annulation: { bg: '#fee2e2', color: '#b91c1c', labelKey: 'aptStatusDemandeAnnulation' },
+                                            annule: { bg: '#fee2e2', color: '#b91c1c', labelKey: 'aptStatusAnnule' },
+                                            termine: { bg: '#f1f5f9', color: '#475569', labelKey: 'aptStatusTermine' },
+                                            en_cours: { bg: '#ffedd5', color: '#c2410c', labelKey: 'aptStatusEnCours' },
+                                            confirme: { bg: '#dcfce7', color: '#15803d', labelKey: 'aptStatusConfirme' }
                                         };
                                         const stat = (apt.status || '').toLowerCase().replace('é', 'e').replace('confirmed', 'confirme');
-                                        const c = config[stat] || { bg: '#f1f5f9', color: '#64748b', label: t(apt.status) };
+                                        const c = config[stat] || { bg: '#f1f5f9', color: '#64748b', labelKey: null };
+                                        const statusLabel = c.labelKey ? t(c.labelKey) : t(apt.status);
                                         return (
                                             <View style={[styles.statusBadge, { backgroundColor: c.bg }]}>
-                                                <Text style={[styles.statusBadgeText, { color: c.color }]}>{c.label}</Text>
+                                                <Text
+                                                    style={[
+                                                        styles.statusBadgeText,
+                                                        { color: c.color },
+                                                        narrow && styles.statusBadgeTextCompact
+                                                    ]}
+                                                    numberOfLines={2}
+                                                >
+                                                    {statusLabel}
+                                                </Text>
                                             </View>
                                         );
                                     })()}
@@ -524,15 +762,18 @@ const Appointments = () => {
                                 <View style={[styles.aptDivider, { marginVertical: 15 }]} />
                                 <View style={{ gap: 8 }}>
                                     <Text style={[styles.motifText, isRTL && { textAlign: 'right' }, { marginTop: 0 }]}>
-                                        <Text style={{ fontWeight: '700' }}>{t('reason')}: </Text>{apt.motif}
+                                        <Text style={{ fontWeight: '700' }}>{t('reason')}: </Text>
+                                        {sanitizeMotif(apt.motif) || t('notSpecified')}
                                     </Text>
                                     <Text style={[styles.motifText, isRTL && { textAlign: 'right' }, { marginTop: 0 }]}>
-                                        <Text style={{ fontWeight: '700' }}>Documents joints: </Text>{apt.hasDocuments ? "Oui 📎" : "Non"}
+                                        <Text style={{ fontWeight: '700' }}>{t('attachedDocuments')}</Text>
+                                        {apt.hasDocuments ? t('attachedDocumentsYes') : t('attachedDocumentsNo')}
                                     </Text>
                                 </View>
                             </View>
                         </View>
-                    </TouchableOpacity>
+                    </Pressable>
+                    </SwipeDeleteRow>
                 ))}
             </ScrollView>
 
@@ -553,76 +794,143 @@ const Appointments = () => {
 
                         {selectedAppointment && (
                             <ScrollView style={styles.modalBody}>
-                                <View style={styles.heroCard}>
-                                    <Text style={styles.heroLabel}>{t('dateAndTime')}</Text>
-                                    {selectedAppointment.status === 'en_attente' || selectedAppointment.status === 'reporte' || selectedAppointment.status === 'annule' || selectedAppointment.status === 'demande_annulation' ? (
-                                        <Text style={styles.heroValue}>{t('dateNotDefined')}</Text>
-                                    ) : (
-                                        <>
-                                            <Text style={styles.heroValue}>
-                                                {selectedAppointment.date ? `${selectedAppointment.date} ${t(selectedAppointment.month)}` : t('dateNotDefined')} {selectedAppointment.year || '2026'}
+                                <View style={styles.detailCardPaper}>
+                                    <View style={[styles.detailDateCapsule, isRTL && { alignSelf: 'flex-end' }]}>
+                                        <Text style={styles.detailDateMonth}>
+                                            {selectedAppointment.isPlanned ? t(selectedAppointment.month) : t('dateNotDefined')}
+                                        </Text>
+                                        <Text style={styles.detailDateDay}>
+                                            {selectedAppointment.isPlanned ? selectedAppointment.date : '--'}
+                                        </Text>
+                                        <Text style={styles.detailDateYear}>{selectedAppointment.year || '2026'}</Text>
+                                    </View>
+
+                                    <Text style={[styles.detailDoctorName, isRTL && { textAlign: 'right' }]}>
+                                        {selectedAppointment.isPlanned
+                                            ? formatDoctorDisplayName(selectedAppointment.doctor)
+                                            : t('notSpecified')}
+                                    </Text>
+                                    <View style={[styles.detailSpecialtyPill, isRTL && { alignSelf: 'flex-end' }]}>
+                                        <Text style={styles.detailSpecialtyPillText}>
+                                            {selectedAppointment.isPlanned ? t(specialtyToI18nKey(selectedAppointment.specialty)) : t('notSpecified')}
+                                        </Text>
+                                    </View>
+
+                                    <View style={[styles.detailInfoRow, isRTL && { flexDirection: 'row-reverse' }]}>
+                                        <Feather name="clock" size={15} color="#4f46e5" />
+                                        <Text style={[styles.detailInfoTitle, isRTL && { marginRight: 8, marginLeft: 0 }]}>
+                                            {selectedAppointment.isPlanned ? selectedAppointment.time : t('dateNotDefined')}
+                                        </Text>
+                                    </View>
+
+                                    <View style={styles.detailInfoBlock}>
+                                        <Text style={[styles.detailInfoLabelCaps, isRTL && { textAlign: 'right' }]}>{t('location')}</Text>
+                                        <Text style={[styles.detailInfoText, isRTL && { textAlign: 'right' }]}>
+                                            {selectedAppointment.isPlanned ? t(selectedAppointment.location) : t('locationNotDefined')}
+                                        </Text>
+                                        <Text style={[styles.detailInfoSubtext, isRTL && { textAlign: 'right' }]}>
+                                            {selectedAppointment.isPlanned ? `${t('room')} ${t(selectedAppointment.room) || 'A301'}` : '—'}
+                                        </Text>
+                                    </View>
+
+                                    <View style={styles.detailInfoBlock}>
+                                        <Text style={[styles.detailInfoLabelCaps, isRTL && { textAlign: 'right' }]}>
+                                            {t('reason')}
+                                        </Text>
+                                        <Text style={[styles.detailInfoText, isRTL && { textAlign: 'right' }]}>
+                                            {sanitizeMotif(selectedAppointment.motif) || t('notSpecified')}
+                                        </Text>
+                                        <Text style={[styles.detailInfoSubtext, isRTL && { textAlign: 'right' }]}>
+                                            {t('attachedDocuments')}
+                                            {selectedAppointment.hasDocuments ? t('attachedDocumentsYes') : t('attachedDocumentsNo')}
+                                        </Text>
+                                    </View>
+
+                                    {selectedAppointment.needsPreVisitConfirmation && (
+                                        <View style={styles.preVisitCard}>
+                                            <Text style={[styles.preVisitText, isRTL && { textAlign: 'right' }]}>
+                                                {t('preVisitBanner')}
                                             </Text>
-                                            <Text style={styles.heroTime}>{selectedAppointment.time}</Text>
-                                        </>
+                                            {!!preVisitFeedback && (
+                                                <Text style={[styles.preVisitSuccessText, isRTL && { textAlign: 'right' }]}>
+                                                    {preVisitFeedback}
+                                                </Text>
+                                            )}
+                                            <View style={[styles.preVisitStack, isRTL && { alignItems: 'flex-end' }]}>
+                                                <TouchableOpacity
+                                                    style={[styles.preVisitAction, styles.preVisitActionPrimary]}
+                                                    disabled={preVisitSubmitting}
+                                                    onPress={() => handlePreVisitIntent('WILL_ATTEND')}
+                                                >
+                                                    <View style={[styles.preVisitActionInner, isRTL && { flexDirection: 'row-reverse' }]}>
+                                                        <Feather name="check-circle" size={16} color="#fff" />
+                                                        <Text style={styles.preVisitActionPrimaryText}>{t('preVisitWillAttend')}</Text>
+                                                    </View>
+                                                </TouchableOpacity>
+                                                <TouchableOpacity
+                                                    style={[styles.preVisitAction, styles.preVisitActionSecondary]}
+                                                    disabled={preVisitSubmitting}
+                                                    onPress={() => handlePreVisitIntent('WANT_RESCHEDULE')}
+                                                >
+                                                    <View style={[styles.preVisitActionInner, isRTL && { flexDirection: 'row-reverse' }]}>
+                                                        <Feather name="calendar" size={16} color="#1d4ed8" />
+                                                        <Text style={styles.preVisitActionSecondaryText}>{t('preVisitWantReschedule')}</Text>
+                                                    </View>
+                                                </TouchableOpacity>
+                                                <TouchableOpacity
+                                                    style={[styles.preVisitAction, styles.preVisitActionDanger]}
+                                                    disabled={preVisitSubmitting}
+                                                    onPress={() => initiateRequest('cancel')}
+                                                >
+                                                    <View style={[styles.preVisitActionInner, isRTL && { flexDirection: 'row-reverse' }]}>
+                                                        <Feather name="x-circle" size={16} color="#be123c" />
+                                                        <Text style={styles.preVisitActionDangerText}>{t('cancelAppointment')}</Text>
+                                                    </View>
+                                                </TouchableOpacity>
+                                            </View>
+                                        </View>
+                                    )}
+
+                                    {(selectedAppointment.status === 'confirmed' || selectedAppointment.status === 'confirmé' || selectedAppointment.status === 'confirme' || selectedAppointment.status === 'en_cours') && selectedAppointment.status !== 'en_attente' && !selectedAppointment.needsPreVisitConfirmation && (
+                                        <View style={[styles.detailActionRow, isRTL && { flexDirection: 'row-reverse' }]}>
+                                            <TouchableOpacity
+                                                style={[styles.detailSmallBtn, styles.detailEditBtn]}
+                                                onPress={() => initiateRequest('reschedule')}
+                                            >
+                                                <Text style={styles.detailSmallBtnText}>{t('modify')}</Text>
+                                            </TouchableOpacity>
+                                            <TouchableOpacity
+                                                style={[styles.detailSmallBtn, styles.detailCancelBtn]}
+                                                onPress={() => initiateRequest('cancel')}
+                                            >
+                                                <Text style={styles.detailSmallBtnDanger}>{t('cancelRequest')}</Text>
+                                            </TouchableOpacity>
+                                        </View>
+                                    )}
+
+                                    {selectedAppointment.status === 'en_attente' && (
+                                        <View style={[styles.detailActionRow, isRTL && { flexDirection: 'row-reverse' }]}>
+                                            <TouchableOpacity
+                                                style={[styles.detailSmallBtn, styles.detailCancelBtn, { flex: 1 }]}
+                                                onPress={() => initiateRequest('cancel')}
+                                            >
+                                                <Text style={styles.detailSmallBtnDanger}>{t('cancelRequest')}</Text>
+                                            </TouchableOpacity>
+                                        </View>
+                                    )}
+
+                                    {(selectedAppointment.status === 'termine' ||
+                                        selectedAppointment.status === 'annule') && (
+                                        <TouchableOpacity
+                                            style={[styles.detailDeleteHistoryBtn, isRTL && { flexDirection: 'row-reverse' }]}
+                                            onPress={() => handleDeleteHistory(selectedAppointment.id)}
+                                            activeOpacity={0.88}
+                                        >
+                                            <Feather name="trash-2" size={18} color="#b91c1c" />
+                                            <Text style={styles.detailDeleteHistoryBtnText}>{t('deleteFromHistory')}</Text>
+                                        </TouchableOpacity>
                                     )}
                                 </View>
-
-                                <View style={styles.detailItemModal}>
-                                    <Text style={styles.detailLabel}>{t('practitioner')}</Text>
-                                    <Text style={styles.detailValue}>{selectedAppointment.isPlanned ? t(selectedAppointment.doctor) : t('notSpecified')}</Text>
-                                    <Text style={styles.detailSub}>{selectedAppointment.isPlanned ? t(selectedAppointment.specialty) : ''}</Text>
-                                </View>
-
-                                <View style={styles.detailItemModal}>
-                                    <Text style={styles.detailLabel}>{t('location')}</Text>
-                                    <Text style={styles.detailValue}>
-                                        {selectedAppointment.isPlanned ? t(selectedAppointment.location) : t('locationNotDefined')}
-                                    </Text>
-                                </View>
-
-                                <View style={styles.detailItemModal}>
-                                    <Text style={styles.detailLabel}>{t('reason')}</Text>
-                                    <Text style={styles.detailValue}>{selectedAppointment.motif || t('notSpecified')}</Text>
-                                </View>
-
-                                {(selectedAppointment.status === 'confirmed' || selectedAppointment.status === 'confirmé' || selectedAppointment.status === 'confirme' || selectedAppointment.status === 'en_cours') && selectedAppointment.status !== 'en_attente' && (
-                                    <View style={styles.modalActions}>
-                                        <TouchableOpacity
-                                            style={[styles.actionBtn, styles.rescheduleBtn]}
-                                            onPress={() => initiateRequest('reschedule')}
-                                        >
-                                            <Text style={styles.actionBtnText}>{t('reportRequest')}</Text>
-                                        </TouchableOpacity>
-                                        <TouchableOpacity
-                                            style={[styles.actionBtn, styles.cancelBtnModal]}
-                                            onPress={() => initiateRequest('cancel')}
-                                        >
-                                            <Text style={styles.actionBtnTextDanger}>{t('cancelRequest')}</Text>
-                                        </TouchableOpacity>
-                                    </View>
-                                )}
-
-                                {selectedAppointment.status === 'en_attente' && (
-                                    <View style={styles.modalActions}>
-                                        <TouchableOpacity
-                                            style={[styles.actionBtn, styles.cancelBtnModal]}
-                                            onPress={() => initiateRequest('cancel')}
-                                        >
-                                            <Text style={styles.actionBtnTextDanger}>{t('cancelRequest')}</Text>
-                                        </TouchableOpacity>
-                                    </View>
-                                )}
-
-                                {activeTab === 'history' && (
-                                    <View style={styles.modalActions}>
-                                        <TouchableOpacity
-                                            style={[styles.actionBtn, styles.cancelBtnModal]}
-                                            onPress={() => handleDeleteHistory(selectedAppointment.id)}
-                                        >
-                                            <Text style={styles.actionBtnTextDanger}>{t('delete')}</Text>
-                                        </TouchableOpacity>
-                                    </View>
-                                )}
                             </ScrollView>
                         )}
                     </View>
@@ -661,20 +969,31 @@ const Appointments = () => {
 const styles = StyleSheet.create({
     container: {
         flex: 1,
-        backgroundColor: '#f8fafc',
+        backgroundColor: patientPastel.pageBg,
     },
     mainHeader: {
         paddingHorizontal: 20,
         paddingTop: 20,
         paddingBottom: 25,
-        backgroundColor: '#f8fafc',
+        backgroundColor: patientPastel.pageBg,
         flexDirection: 'row',
         alignItems: 'center',
+    },
+    mainHeaderCompact: {
+        paddingHorizontal: 14,
+    },
+    mainHeaderTitleBlock: {
+        flex: 1,
+        minWidth: 0,
+        paddingRight: 10,
+    },
+    addAptBtnWrap: {
+        flexShrink: 0,
     },
     headerMainTitle: {
         fontSize: 32,
         fontWeight: '900',
-        color: '#0f172a',
+        color: patientPastel.textHeading,
     },
     headerMainSubtitle: {
         fontSize: 14,
@@ -684,20 +1003,38 @@ const styles = StyleSheet.create({
     addAptBtn: {
         flexDirection: 'row',
         alignItems: 'center',
-        backgroundColor: '#0f172a',
-        paddingHorizontal: 16,
+        paddingHorizontal: 14,
         paddingVertical: 12,
-        borderRadius: 14,
-        ...theme.shadows.sm,
+        maxWidth: 200,
+    },
+    addAptBtnIconOnly: {
+        paddingHorizontal: 12,
+        maxWidth: 56,
+        minWidth: 48,
+        justifyContent: 'center',
+    },
+    addAptBtnPlus: {
+        color: '#fff',
+        fontSize: 22,
+        fontWeight: 'bold',
+        marginHorizontal: 6,
     },
     addAptBtnText: {
         color: '#fff',
         fontWeight: '700',
         fontSize: 14,
+        flexShrink: 1,
+        minWidth: 0,
+    },
+    addAptBtnTextCompact: {
+        fontSize: 12,
     },
     tabsWrapper: {
         paddingHorizontal: 20,
         marginBottom: 20,
+    },
+    tabsWrapperCompact: {
+        paddingHorizontal: 12,
     },
     tabsBackground: {
         backgroundColor: '#f1f5f9',
@@ -705,13 +1042,23 @@ const styles = StyleSheet.create({
         padding: 8,
         flexDirection: 'row',
     },
+    tabsBackgroundCompact: {
+        padding: 6,
+    },
     tabPill: {
         flex: 1,
+        minWidth: 0,
         paddingVertical: 10,
-        paddingHorizontal: 8,
-        marginHorizontal: 4,
+        paddingHorizontal: 6,
+        marginHorizontal: 2,
         alignItems: 'center',
+        justifyContent: 'center',
         borderRadius: 12,
+    },
+    tabPillCompact: {
+        paddingVertical: 8,
+        paddingHorizontal: 4,
+        marginHorizontal: 1,
     },
     tabPillActive: {
         backgroundColor: '#fff',
@@ -721,19 +1068,29 @@ const styles = StyleSheet.create({
         fontSize: 14,
         fontWeight: '700',
         color: '#64748b',
+        textAlign: 'center',
     },
     tabPillTextActive: {
-        color: '#0f172a',
+        color: patientPastel.textHeading,
+    },
+    swipeDeleteHint: {
+        fontSize: 12,
+        fontWeight: '600',
+        color: '#64748b',
+        textAlign: 'center',
+        paddingHorizontal: 24,
+        marginBottom: 10,
+        lineHeight: 17,
     },
     scrollContent: {
         padding: 20,
         paddingTop: 0,
+        paddingBottom: 110,
     },
     aptCard: {
         backgroundColor: '#fff',
         borderRadius: 24,
         padding: 20,
-        marginBottom: 30,
         borderWidth: 1,
         borderColor: '#f1f5f9',
         ...theme.shadows.sm,
@@ -753,7 +1110,7 @@ const styles = StyleSheet.create({
     dateVal: {
         fontSize: 26,
         fontWeight: '900',
-        color: '#2563eb',
+        color: patientPastel.primary,
     },
     dateMonth: {
         fontSize: 14,
@@ -770,11 +1127,17 @@ const styles = StyleSheet.create({
         justifyContent: 'space-between',
         alignItems: 'flex-start',
         marginBottom: 12,
+        gap: 8,
+    },
+    aptNameColumn: {
+        flex: 1,
+        minWidth: 0,
+        paddingRight: 8,
     },
     doctorName: {
         fontSize: 18,
         fontWeight: '800',
-        color: '#0f172a',
+        color: patientPastel.textHeading,
         marginBottom: 2,
     },
     specTextSmall: {
@@ -783,13 +1146,21 @@ const styles = StyleSheet.create({
         fontWeight: '600',
     },
     statusBadge: {
-        paddingHorizontal: 12,
+        flexShrink: 0,
+        alignSelf: 'flex-start',
+        maxWidth: '46%',
+        paddingHorizontal: 10,
         paddingVertical: 6,
         borderRadius: 20,
     },
     statusBadgeText: {
         fontSize: 12,
         fontWeight: '800',
+        textAlign: 'center',
+    },
+    statusBadgeTextCompact: {
+        fontSize: 10,
+        paddingHorizontal: 0,
     },
     aptDetailsRow: {
         flexDirection: 'row',
@@ -809,7 +1180,7 @@ const styles = StyleSheet.create({
         flexDirection: 'row',
         alignItems: 'center',
         marginLeft: 15,
-        backgroundColor: '#f8fafc',
+        backgroundColor: patientPastel.pageBg,
         paddingHorizontal: 10,
         paddingVertical: 4,
         borderRadius: 8,
@@ -860,7 +1231,7 @@ const styles = StyleSheet.create({
     modalTitle: {
         fontSize: 19,
         fontWeight: '800',
-        color: '#0f172a',
+        color: patientPastel.textHeading,
     },
     closeBtn: {
         fontSize: 28,
@@ -869,8 +1240,147 @@ const styles = StyleSheet.create({
     modalBody: {
         padding: 25,
     },
+    detailCardPaper: {
+        backgroundColor: '#ffffff',
+        borderRadius: 28,
+        padding: 18,
+        borderWidth: 1,
+        borderColor: '#eef2ff',
+        ...theme.shadows.sm,
+    },
+    detailDateCapsule: {
+        alignSelf: 'flex-start',
+        minWidth: 112,
+        borderRadius: 18,
+        backgroundColor: '#818cf8',
+        paddingVertical: 10,
+        paddingHorizontal: 14,
+        marginBottom: 14,
+        alignItems: 'center',
+    },
+    detailDateMonth: {
+        color: 'rgba(255,255,255,0.9)',
+        fontSize: 10,
+        fontWeight: '800',
+        textTransform: 'uppercase',
+        letterSpacing: 0.6,
+    },
+    detailDateDay: {
+        color: '#ffffff',
+        fontSize: 30,
+        fontWeight: '900',
+        lineHeight: 34,
+    },
+    detailDateYear: {
+        color: 'rgba(255,255,255,0.9)',
+        fontSize: 11,
+        fontWeight: '700',
+    },
+    detailDoctorName: {
+        fontSize: 26,
+        fontWeight: '900',
+        color: '#1f2937',
+        marginBottom: 8,
+    },
+    detailSpecialtyPill: {
+        alignSelf: 'flex-start',
+        paddingHorizontal: 10,
+        paddingVertical: 5,
+        borderRadius: 999,
+        backgroundColor: '#f1f5f9',
+        marginBottom: 14,
+    },
+    detailSpecialtyPillText: {
+        fontSize: 11,
+        fontWeight: '700',
+        color: '#475569',
+        textTransform: 'uppercase',
+    },
+    detailInfoRow: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        marginBottom: 12,
+    },
+    detailInfoTitle: {
+        marginLeft: 8,
+        fontSize: 15,
+        fontWeight: '800',
+        color: '#312e81',
+    },
+    detailInfoBlock: {
+        borderTopWidth: 1,
+        borderTopColor: '#eef2ff',
+        paddingTop: 10,
+        marginTop: 6,
+    },
+    detailInfoLabelCaps: {
+        fontSize: 10,
+        fontWeight: '800',
+        color: '#94a3b8',
+        letterSpacing: 0.5,
+        textTransform: 'uppercase',
+        marginBottom: 4,
+    },
+    detailInfoText: {
+        fontSize: 15,
+        fontWeight: '700',
+        color: '#1f2937',
+    },
+    detailInfoSubtext: {
+        marginTop: 4,
+        fontSize: 13,
+        color: '#64748b',
+        fontWeight: '600',
+    },
+    detailActionRow: {
+        flexDirection: 'row',
+        gap: 10,
+        marginTop: 16,
+        marginBottom: 4,
+    },
+    detailSmallBtn: {
+        flex: 1,
+        borderRadius: 14,
+        height: 42,
+        alignItems: 'center',
+        justifyContent: 'center',
+    },
+    detailEditBtn: {
+        backgroundColor: '#f1f5f9',
+    },
+    detailCancelBtn: {
+        backgroundColor: '#fdf2f8',
+    },
+    detailSmallBtnText: {
+        fontSize: 14,
+        fontWeight: '800',
+        color: '#475569',
+    },
+    detailSmallBtnDanger: {
+        fontSize: 14,
+        fontWeight: '800',
+        color: '#be123c',
+    },
+    detailDeleteHistoryBtn: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        justifyContent: 'center',
+        gap: 10,
+        marginTop: 20,
+        paddingVertical: 14,
+        paddingHorizontal: 16,
+        borderRadius: 14,
+        borderWidth: 1.5,
+        borderColor: '#fecaca',
+        backgroundColor: '#fff',
+    },
+    detailDeleteHistoryBtnText: {
+        fontSize: 14,
+        fontWeight: '800',
+        color: '#b91c1c',
+    },
     heroCard: {
-        backgroundColor: '#0f172a',
+        backgroundColor: patientPastel.primaryDeep,
         borderRadius: 20,
         padding: 20,
         marginBottom: 25,
@@ -888,9 +1398,83 @@ const styles = StyleSheet.create({
         marginBottom: 2,
     },
     heroTime: {
-        color: '#2563eb',
+        color: patientPastel.primary,
         fontSize: 16,
         fontWeight: '700',
+    },
+    preVisitCard: {
+        backgroundColor: '#eff6ff',
+        borderRadius: 16,
+        padding: 14,
+        marginTop: 10,
+        marginBottom: 18,
+        borderWidth: 1,
+        borderColor: '#bfdbfe',
+    },
+    preVisitText: {
+        fontSize: 13,
+        color: '#1e3a8a',
+        lineHeight: 19,
+        marginBottom: 12,
+        fontWeight: '600',
+    },
+    preVisitSuccessText: {
+        fontSize: 12,
+        color: '#166534',
+        fontWeight: '700',
+        marginBottom: 10,
+        lineHeight: 18,
+    },
+    preVisitStack: {
+        gap: 10,
+    },
+    preVisitAction: {
+        width: '100%',
+        minHeight: 48,
+        paddingVertical: 11,
+        paddingHorizontal: 12,
+        borderRadius: 12,
+        alignItems: 'center',
+        justifyContent: 'center',
+    },
+    preVisitActionInner: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        gap: 8,
+    },
+    preVisitActionPrimary: {
+        backgroundColor: patientPastel.primaryDeep,
+    },
+    preVisitActionPrimaryText: {
+        color: '#fff',
+        fontWeight: '800',
+        fontSize: 13,
+        lineHeight: 16,
+        textAlign: 'center',
+    },
+    preVisitActionSecondary: {
+        backgroundColor: '#fff',
+        borderWidth: 1,
+        borderColor: '#93c5fd',
+    },
+    preVisitActionSecondaryText: {
+        color: '#1d4ed8',
+        fontWeight: '800',
+        fontSize: 13,
+        lineHeight: 16,
+        textAlign: 'center',
+    },
+    preVisitActionDanger: {
+        backgroundColor: '#fff1f2',
+        borderWidth: 1,
+        borderColor: '#fecdd3',
+    },
+    preVisitActionDangerText: {
+        color: '#be123c',
+        fontWeight: '800',
+        fontSize: 13,
+        lineHeight: 16,
+        textAlign: 'center',
     },
     detailItemModal: {
         marginBottom: 20,
@@ -904,7 +1488,7 @@ const styles = StyleSheet.create({
     detailValue: {
         fontSize: 16,
         fontWeight: '700',
-        color: '#0f172a',
+        color: patientPastel.textHeading,
     },
     detailSub: {
         fontSize: 14,
@@ -931,7 +1515,7 @@ const styles = StyleSheet.create({
     actionBtnText: {
         fontSize: 15,
         fontWeight: '700',
-        color: '#0f172a',
+        color: patientPastel.textHeading,
     },
     actionBtnTextDanger: {
         fontSize: 15,
@@ -939,7 +1523,7 @@ const styles = StyleSheet.create({
         color: '#ef4444',
     },
     newAptContainer: {
-        backgroundColor: '#f8fafc',
+        backgroundColor: patientPastel.pageBg,
         flex: 1,
     },
     stepper: {
@@ -962,8 +1546,8 @@ const styles = StyleSheet.create({
         borderColor: '#e2e8f0',
     },
     stepCircleActive: {
-        backgroundColor: '#2563eb',
-        borderColor: '#2563eb',
+        backgroundColor: patientPastel.primary,
+        borderColor: patientPastel.primary,
     },
     stepNum: {
         fontSize: 14,
@@ -980,12 +1564,12 @@ const styles = StyleSheet.create({
         marginHorizontal: 8,
     },
     stepLineActive: {
-        backgroundColor: '#2563eb',
+        backgroundColor: patientPastel.primary,
     },
     cardTitle: {
         fontSize: 22,
         fontWeight: '900',
-        color: '#0f172a',
+        color: patientPastel.textHeading,
         marginBottom: 8,
     },
     cardSubtitle: {
@@ -1008,7 +1592,7 @@ const styles = StyleSheet.create({
         ...theme.shadows.sm,
     },
     specCardActive: {
-        borderColor: '#2563eb',
+        borderColor: patientPastel.primary,
         backgroundColor: '#eff6ff',
     },
     specIconCircle: {
@@ -1021,16 +1605,16 @@ const styles = StyleSheet.create({
         marginRight: 15,
     },
     specIconCircleActive: {
-        backgroundColor: '#2563eb',
+        backgroundColor: patientPastel.primary,
     },
     specCardText: {
         fontSize: 16,
         fontWeight: '700',
-        color: '#0f172a',
+        color: patientPastel.textHeading,
         flex: 1,
     },
     specCardTextActive: {
-        color: '#2563eb',
+        color: patientPastel.primary,
     },
     specCheckIcon: {
         marginLeft: 10,
@@ -1052,12 +1636,12 @@ const styles = StyleSheet.create({
         borderRadius: 20,
         padding: 40,
         alignItems: 'center',
-        backgroundColor: '#f8fafc',
+        backgroundColor: patientPastel.pageBg,
     },
     uploadText: {
         fontSize: 15,
         fontWeight: '700',
-        color: '#0f172a',
+        color: patientPastel.textHeading,
         marginBottom: 5,
     },
     uploadSubtext: {
@@ -1068,6 +1652,7 @@ const styles = StyleSheet.create({
         flexDirection: 'row',
         flexWrap: 'wrap',
         padding: 20,
+        paddingBottom: Platform.OS === 'ios' ? 90 : 80,
         borderTopWidth: 1,
         borderTopColor: '#f1f5f9',
         gap: 15,
@@ -1113,10 +1698,16 @@ const styles = StyleSheet.create({
     },
     nextBtn: {
         flex: 2,
-        backgroundColor: '#0f172a',
+        backgroundColor: patientPastel.primaryDeep,
         paddingVertical: 15,
         borderRadius: 15,
         alignItems: 'center',
+    },
+    nextBtnConfirmStrong: {
+        backgroundColor: '#4338ca',
+        borderWidth: 1,
+        borderColor: '#312e81',
+        ...theme.shadows.md,
     },
     nextBtnText: {
         fontSize: 16,
@@ -1152,7 +1743,7 @@ const styles = StyleSheet.create({
         justifyContent: 'center',
     },
     submitBtn: {
-        backgroundColor: '#2563eb',
+        backgroundColor: patientPastel.primary,
         order: -1,
     },
     confirmBtnText: {
@@ -1200,7 +1791,7 @@ const styles = StyleSheet.create({
     fileNameInternal: {
         fontSize: 15,
         fontWeight: '700',
-        color: '#0f172a',
+        color: patientPastel.textHeading,
     },
     fileSizeInternal: {
         fontSize: 13,
@@ -1229,7 +1820,7 @@ const styles = StyleSheet.create({
         flexDirection: 'row',
         paddingHorizontal: 20,
         paddingBottom: 15,
-        backgroundColor: '#fff',
+        backgroundColor: patientPastel.pageBg,
     },
     filterChip: {
         flexDirection: 'row',
@@ -1252,7 +1843,7 @@ const styles = StyleSheet.create({
         fontWeight: '500',
     },
     filterChipTextActive: {
-        color: '#2563eb',
+        color: patientPastel.primary,
         fontWeight: '600',
     },
     filterDot: {
@@ -1263,7 +1854,7 @@ const styles = StyleSheet.create({
     },
     requestDetails: {
         marginTop: 10,
-        backgroundColor: '#f8fafc',
+        backgroundColor: patientPastel.pageBg,
         padding: 8,
         borderRadius: 8,
         borderWidth: 1,
@@ -1277,11 +1868,11 @@ const styles = StyleSheet.create({
         padding: 40,
         alignItems: 'center',
         justifyContent: 'center',
-        backgroundColor: '#f8fafc',
+        backgroundColor: patientPastel.pageBg,
         marginTop: 20,
     },
     fileUploadActive: {
-        borderColor: '#2563eb',
+        borderColor: patientPastel.primary,
         backgroundColor: '#eff6ff',
     },
     fileIconContainer: {
@@ -1340,7 +1931,7 @@ const styles = StyleSheet.create({
     successTitle: {
         fontSize: 22,
         fontWeight: '900',
-        color: '#0f172a',
+        color: patientPastel.textHeading,
         marginBottom: 10,
         textAlign: 'center',
     },
@@ -1352,7 +1943,7 @@ const styles = StyleSheet.create({
         marginBottom: 25,
     },
     successDoneBtn: {
-        backgroundColor: '#0f172a',
+        backgroundColor: patientPastel.primaryDeep,
         paddingVertical: 14,
         paddingHorizontal: 40,
         borderRadius: 14,

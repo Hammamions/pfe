@@ -7,25 +7,33 @@ export function cn(...inputs) {
     return twMerge(clsx(inputs))
 }
 
-const Tabs = React.forwardRef(({ className, defaultValue, children, ...props }, ref) => {
-    const [activeTab, setActiveTab] = React.useState(defaultValue)
+const Tabs = React.forwardRef(
+    ({ className, defaultValue, value, onValueChange, children, ...props }, ref) => {
+        const [internalTab, setInternalTab] = React.useState(defaultValue)
+        const controlled = value !== undefined && value !== null
+        const activeTab = controlled ? value : internalTab
+        const setActiveTab = (next) => {
+            if (!controlled) setInternalTab(next)
+            if (typeof onValueChange === 'function') onValueChange(next)
+        }
 
-    return (
-        <div
-            ref={ref}
-            className={cn("", className)}
-            data-active-tab={activeTab}
-            {...props}
-        >
-            {React.Children.map(children, child => {
-                if (React.isValidElement(child)) {
-                    return React.cloneElement(child, { activeTab, setActiveTab })
-                }
-                return child
-            })}
-        </div>
-    )
-})
+        return (
+            <div
+                ref={ref}
+                className={cn('', className)}
+                data-active-tab={activeTab}
+                {...props}
+            >
+                {React.Children.map(children, (child) => {
+                    if (React.isValidElement(child)) {
+                        return React.cloneElement(child, { activeTab, setActiveTab })
+                    }
+                    return child
+                })}
+            </div>
+        )
+    }
+)
 Tabs.displayName = "Tabs"
 
 const TabsList = React.forwardRef(({ className, activeTab, setActiveTab, ...props }, ref) => (

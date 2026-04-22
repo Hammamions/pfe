@@ -8,12 +8,12 @@ export function cn(...inputs) {
 
 const Button = React.forwardRef(({ className, variant = "default", size = "default", ...props }, ref) => {
     const variants = {
-        default: "bg-blue-600 text-white hover:bg-blue-700",
+        default: "bg-gradient-to-r from-sky-400 via-indigo-500 to-violet-400 text-white shadow-md shadow-indigo-500/25 hover:brightness-105 hover:shadow-lg hover:shadow-indigo-500/30",
         destructive: "bg-red-500 text-white hover:bg-red-600",
-        outline: "border border-gray-200 bg-white hover:bg-gray-100 text-gray-900",
-        secondary: "bg-gray-100 text-gray-900 hover:bg-gray-200",
-        ghost: "hover:bg-gray-100 hover:text-gray-900",
-        link: "text-blue-600 underline-offset-4 hover:underline",
+        outline: "border border-indigo-200/80 bg-white/90 hover:bg-indigo-50/80 text-indigo-950",
+        secondary: "bg-indigo-50 text-indigo-900 hover:bg-indigo-100/90",
+        ghost: "hover:bg-indigo-50/80 hover:text-indigo-900",
+        link: "text-indigo-600 underline-offset-4 hover:text-indigo-700 hover:underline",
     }
 
     const sizes = {

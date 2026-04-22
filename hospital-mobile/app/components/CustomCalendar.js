@@ -1,13 +1,14 @@
 import { Feather } from '@expo/vector-icons';
 import React, { useState } from 'react';
 import { Dimensions, Modal, Platform, ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import { patientPastel } from '../../theme';
 
 const { width } = Dimensions.get('window');
 
 const CustomCalendar = ({ visible, onClose, onSelect, initialDate, isRTL, t }) => {
     const today = new Date();
     const [currentDate, setCurrentDate] = useState(initialDate ? new Date(initialDate) : today);
-    const [viewMode, setViewMode] = useState('days'); // 'days', 'months', 'years'
+    const [viewMode, setViewMode] = useState('days'); 
 
     const months = [
         'january', 'february', 'march', 'april', 'may', 'june',
@@ -51,7 +52,6 @@ const CustomCalendar = ({ visible, onClose, onSelect, initialDate, isRTL, t }) =
         const firstDay = getFirstDayOfMonth(year, month);
         const days = [];
 
-        // Padding for the first week
         for (let i = 0; i < firstDay; i++) {
             days.push(<View key={`empty-${i}`} style={styles.dayCell} />);
         }
@@ -249,7 +249,7 @@ const styles = StyleSheet.create({
     headerTitle: {
         fontSize: 16,
         fontWeight: '800',
-        color: '#0f172a',
+        color: patientPastel.textHeading,
     },
     navBtn: {
         marginLeft: 8,
@@ -258,11 +258,11 @@ const styles = StyleSheet.create({
         width: 36,
         height: 36,
         borderRadius: 18,
-        backgroundColor: '#f8fafc',
+        backgroundColor: patientPastel.pageBg,
         justifyContent: 'center',
         alignItems: 'center',
         borderWidth: 1,
-        borderColor: '#e2e8f0',
+        borderColor: patientPastel.borderInput,
     },
     contentArea: {
         minHeight: 280,
@@ -287,7 +287,7 @@ const styles = StyleSheet.create({
         width: '100%',
     },
     dayCell: {
-        width: '14.28%', // 100 / 7
+        width: '14.28%', 
         aspectRatio: 1,
         justifyContent: 'center',
         alignItems: 'center',
@@ -299,7 +299,7 @@ const styles = StyleSheet.create({
         fontWeight: '600',
     },
     selectedDay: {
-        backgroundColor: '#2563eb',
+        backgroundColor: patientPastel.primary,
         borderRadius: 14,
     },
     selectedDayText: {
@@ -307,12 +307,12 @@ const styles = StyleSheet.create({
         fontWeight: '700',
     },
     todayCell: {
-        borderColor: '#2563eb',
+        borderColor: patientPastel.primary,
         borderWidth: 1.5,
         borderRadius: 14,
     },
     todayText: {
-        color: '#2563eb',
+        color: patientPastel.primary,
         fontWeight: '700',
     },
     selectionGrid: {
@@ -323,17 +323,17 @@ const styles = StyleSheet.create({
         justifyContent: 'center',
     },
     monthYearItem: {
-        width: '30%', // roughly 3 per row
+        width: '30%', 
         paddingVertical: 14,
-        backgroundColor: '#f8fafc',
+        backgroundColor: patientPastel.pageBg,
         borderRadius: 14,
         alignItems: 'center',
         borderWidth: 1,
         borderColor: '#f1f5f9',
     },
     selectedItem: {
-        backgroundColor: '#2563eb',
-        borderColor: '#2563eb',
+        backgroundColor: patientPastel.primary,
+        borderColor: patientPastel.primary,
     },
     monthYearText: {
         fontSize: 14,
@@ -359,7 +359,7 @@ const styles = StyleSheet.create({
         borderRadius: 10,
     },
     todayBtnText: {
-        color: '#2563eb',
+        color: patientPastel.primary,
         fontWeight: '700',
         fontSize: 14,
     },

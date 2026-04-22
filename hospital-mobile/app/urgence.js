@@ -2,7 +2,7 @@ import { Stack } from 'expo-router';
 import { useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Alert, Dimensions, Linking, Modal, Platform, SafeAreaView, ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
-import { theme } from '../theme';
+import { patientPastel, theme } from '../theme';
 import { useApp } from './AppContext';
 import HeaderSidebar from './components/HeaderSidebar';
 import AsyncStorage from './utils/storage';
@@ -240,7 +240,7 @@ const styles = StyleSheet.create({
         color: theme.colors.textMuted,
     },
     addressBlock: {
-        backgroundColor: '#f8fafc',
+        backgroundColor: patientPastel.pageBg,
         borderRadius: 16,
         padding: 15,
     },
@@ -311,7 +311,7 @@ const styles = StyleSheet.create({
     },
     instrItem: {
         flexDirection: 'row',
-        backgroundColor: '#f8fafc',
+        backgroundColor: patientPastel.pageBg,
         padding: 10,
         borderRadius: 10,
         alignItems: 'center',

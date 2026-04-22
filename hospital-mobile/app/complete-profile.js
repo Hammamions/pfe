@@ -1,16 +1,16 @@
-import { Feather, Ionicons } from '@expo/vector-icons';
+import { Ionicons } from '@expo/vector-icons';
 import AsyncStorage from './utils/storage';
-import Constants from 'expo-constants';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Stack, useLocalSearchParams, useRouter } from 'expo-router';
 import { useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { ActivityIndicator, Alert, Modal, SafeAreaView, ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
-import { theme } from '../theme';
+import { dashboardVibe, patientPastel, screenPastelGradient, theme } from '../theme';
 import { useApp } from './AppContext';
+import { getApiBaseUrl } from './utils/apiBase';
 import CustomCalendar from './components/CustomCalendar';
 
-const InfoField = ({ label, value, icon, iconType = 'feather', isRTL, t, keyboardType, onChangeText, required = false, error = false, editable = true }) => (
+const InfoField = ({ label, value, isRTL, t, keyboardType, onChangeText, required = false, error = false, editable = true }) => (
     <View style={styles.infoField}>
         <View style={styles.labelRow}>
             <Text style={[styles.infoLabel, isRTL && { textAlign: 'right' }]}>{label}</Text>
@@ -21,11 +21,6 @@ const InfoField = ({ label, value, icon, iconType = 'feather', isRTL, t, keyboar
             isRTL && { flexDirection: 'row-reverse' },
             error && { borderColor: '#ef4444', borderBottomWidth: 2 }
         ]}>
-            {icon && (
-                iconType === 'feather' ?
-                    <Feather name={icon} size={18} color={error ? "#ef4444" : "#94a3b8"} style={isRTL ? { marginLeft: 10 } : { marginRight: 10 }} /> :
-                    <Ionicons name={icon} size={18} color={error ? "#ef4444" : "#94a3b8"} style={isRTL ? { marginLeft: 10 } : { marginRight: 10 }} />
-            )}
             <TextInput
                 style={[styles.input, isRTL && { textAlign: 'right' }, { flex: 1 }]}
                 value={value}
@@ -49,14 +44,6 @@ const CompleteProfile = () => {
     const { t, i18n } = useTranslation();
     const { patient, setPatient, syncAllData } = useApp();
     const isRTL = i18n.language === 'ar';
-    const API_URL = (() => {
-        const hostUri =
-            Constants.expoConfig?.hostUri ||
-            Constants.manifest2?.extra?.expoGo?.debuggerHost ||
-            '';
-        const host = hostUri.split(':')[0];
-        return host ? `http://${host}:4000` : 'http://localhost:4000';
-    })();
     const [errors, setErrors] = useState({});
     const [loading, setLoading] = useState(false);
 
@@ -232,7 +219,7 @@ const CompleteProfile = () => {
 
             if (parsedRegistrationData) {
                 console.log('[DEBUG] Calling API: POST /api/auth/register-full');
-                const res = await fetch(`${API_URL}/api/auth/register-full`, {
+                const res = await fetch(`${getApiBaseUrl()}/api/auth/register-full`, {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({
@@ -276,7 +263,7 @@ const CompleteProfile = () => {
                 }
 
                 console.log('[DEBUG] Calling API: PUT /api/auth/profile');
-                const res = await fetch(`${API_URL}/api/auth/profile`, {
+                const res = await fetch(`${getApiBaseUrl()}/api/auth/profile`, {
                     method: 'PUT',
                     headers: {
                         'Content-Type': 'application/json',
@@ -306,10 +293,7 @@ const CompleteProfile = () => {
 
 
     return (
-        <LinearGradient
-            colors={['#eff6ff', '#dbeafe', '#eff6ff']}
-            style={styles.container}
-        >
+        <LinearGradient colors={screenPastelGradient} style={styles.container}>
             <SafeAreaView style={{ flex: 1 }}>
                 <Stack.Screen options={{ headerShown: false }} />
 
@@ -330,25 +314,22 @@ const CompleteProfile = () => {
                             <InfoField label={t('lastName')} value={formData.lastName} isRTL={isRTL} t={t} onChangeText={(text) => handleInputChange('lastName', text)} required error={errors.lastName} />
                             <InfoField label={t('firstName')} value={formData.firstName} isRTL={isRTL} t={t} onChangeText={(text) => handleInputChange('firstName', text)} required error={errors.firstName} />
                             <TouchableOpacity onPress={() => setShowDateModal(true)}>
-                                <InfoField label={t('birthDate')} value={formData.birthDate} isRTL={isRTL} t={t} icon="calendar" required error={errors.birthDate} editable={false} />
+                                <InfoField label={t('birthDate')} value={formData.birthDate} isRTL={isRTL} t={t} required error={errors.birthDate} editable={false} />
                             </TouchableOpacity>
-                            <InfoField label={t('email')} value={formData.email} isRTL={isRTL} t={t} onChangeText={(text) => handleInputChange('email', text)} icon="mail" keyboardType="email-address" required error={errors.email} />
-                            <InfoField label={t('phone')} value={formData.phone} isRTL={isRTL} t={t} onChangeText={(text) => handleInputChange('phone', text)} icon="phone" keyboardType="phone-pad" required error={errors.phone} />
+                            <InfoField label={t('email')} value={formData.email} isRTL={isRTL} t={t} onChangeText={(text) => handleInputChange('email', text)} keyboardType="email-address" required error={errors.email} />
+                            <InfoField label={t('phone')} value={formData.phone} isRTL={isRTL} t={t} onChangeText={(text) => handleInputChange('phone', text)} keyboardType="phone-pad" required error={errors.phone} />
                         </View>
 
                         <View style={styles.card}>
                             <Text style={[styles.sectionTitle, isRTL && { textAlign: 'right' }]}>{t('medicalInfo')}</Text>
 
                             <TouchableOpacity onPress={() => setShowBloodModal(true)}>
-                                <InfoField label={t('bloodGroup')} value={formData.bloodGroup} isRTL={isRTL} t={t} icon="water-outline" iconType="ionicons" required error={errors.bloodGroup} editable={false} />
+                                <InfoField label={t('bloodGroup')} value={formData.bloodGroup} isRTL={isRTL} t={t} required error={errors.bloodGroup} editable={false} />
                             </TouchableOpacity>
-                            <InfoField label={t('socialSecurity')} value={formData.socialSecurity} isRTL={isRTL} t={t} onChangeText={(text) => handleInputChange('socialSecurity', text)} icon="shield" keyboardType="numeric" required error={errors.socialSecurity} />
+                            <InfoField label={t('socialSecurity')} value={formData.socialSecurity} isRTL={isRTL} t={t} onChangeText={(text) => handleInputChange('socialSecurity', text)} keyboardType="numeric" required error={errors.socialSecurity} />
 
                             <View style={styles.infoField}>
-                                <View style={[styles.rowWithIcon, isRTL && { flexDirection: 'row-reverse' }]}>
-                                    <Feather name="alert-triangle" size={16} color="#ef4444" style={isRTL ? { marginLeft: 8 } : { marginRight: 8 }} />
-                                    <Text style={[styles.infoLabel, { marginBottom: 0 }]}>{t('allergies')}</Text>
-                                </View>
+                                <Text style={[styles.infoLabel, { marginBottom: 10 }, isRTL && { textAlign: 'right' }]}>{t('allergies')}</Text>
                                 <View style={[styles.tagContainer, isRTL && { flexDirection: 'row-reverse' }, { marginTop: 10 }]}>
                                     {formData.allergies.map((tag, i) => (
                                         <View key={i} style={styles.tagAllergy}>
@@ -359,16 +340,13 @@ const CompleteProfile = () => {
                                         </View>
                                     ))}
                                     <TouchableOpacity onPress={() => setActiveModal('allergies')} style={styles.addTagBtn}>
-                                        <Feather name="plus" size={16} color="#0f172a" />
+                                        <Text style={styles.addTagBtnText}>+</Text>
                                     </TouchableOpacity>
                                 </View>
                             </View>
 
                             <View style={styles.infoField}>
-                                <View style={[styles.rowWithIcon, isRTL && { flexDirection: 'row-reverse' }]}>
-                                    <Feather name="file-text" size={16} color="#3b82f6" style={isRTL ? { marginLeft: 8 } : { marginRight: 8 }} />
-                                    <Text style={[styles.infoLabel, { marginBottom: 0 }]}>{t('medicalHistory')}</Text>
-                                </View>
+                                <Text style={[styles.infoLabel, { marginBottom: 10 }, isRTL && { textAlign: 'right' }]}>{t('medicalHistory')}</Text>
                                 <View style={[styles.tagContainer, isRTL && { flexDirection: 'row-reverse' }, { marginTop: 10 }]}>
                                     {formData.history.map((tag, i) => (
                                         <View key={i} style={styles.tagHistory}>
@@ -379,7 +357,7 @@ const CompleteProfile = () => {
                                         </View>
                                     ))}
                                     <TouchableOpacity onPress={() => setActiveModal('history')} style={styles.addTagBtn}>
-                                        <Feather name="plus" size={16} color="#0f172a" />
+                                        <Text style={styles.addTagBtnText}>+</Text>
                                     </TouchableOpacity>
                                 </View>
                             </View>
@@ -390,20 +368,28 @@ const CompleteProfile = () => {
 
                             <InfoField label={t('fullName')} value={formData.emergencyContact.name} isRTL={isRTL} t={t} onChangeText={(text) => handleInputChange('name', text, 'emergencyContact')} required error={errors.emergencyName} />
                             <InfoField label={t('relation')} value={formData.emergencyContact.relation} isRTL={isRTL} t={t} onChangeText={(text) => handleInputChange('relation', text, 'emergencyContact')} required error={errors.emergencyRelation} />
-                            <InfoField label={t('phone')} value={formData.emergencyContact.phone} isRTL={isRTL} t={t} onChangeText={(text) => handleInputChange('phone', text, 'emergencyContact')} icon="phone" keyboardType="phone-pad" required error={errors.emergencyPhone} />
-                            <InfoField label={t('email')} value={formData.emergencyContact.email} isRTL={isRTL} t={t} onChangeText={(text) => handleInputChange('email', text, 'emergencyContact')} icon="mail" keyboardType="email-address" required error={errors.emergencyEmail} />
+                            <InfoField label={t('phone')} value={formData.emergencyContact.phone} isRTL={isRTL} t={t} onChangeText={(text) => handleInputChange('phone', text, 'emergencyContact')} keyboardType="phone-pad" required error={errors.emergencyPhone} />
+                            <InfoField label={t('email')} value={formData.emergencyContact.email} isRTL={isRTL} t={t} onChangeText={(text) => handleInputChange('email', text, 'emergencyContact')} keyboardType="email-address" required error={errors.emergencyEmail} />
                         </View>
 
                         <TouchableOpacity
-                            style={[styles.saveBtn, loading && { opacity: 0.7 }]}
                             onPress={handleComplete}
                             disabled={loading}
+                            activeOpacity={0.9}
+                            style={{ borderRadius: 100, overflow: 'hidden', marginTop: 10, marginBottom: 20 }}
                         >
-                            {loading ? (
-                                <ActivityIndicator color="#fff" />
-                            ) : (
-                                <Text style={styles.saveBtnText}>{t('finishRegistration')}</Text>
-                            )}
+                            <LinearGradient
+                                colors={dashboardVibe.primaryCtaGradient}
+                                start={{ x: 0, y: 0 }}
+                                end={{ x: 1, y: 0 }}
+                                style={[styles.saveBtnGradient, loading && { opacity: 0.7 }]}
+                            >
+                                {loading ? (
+                                    <ActivityIndicator color="#fff" />
+                                ) : (
+                                    <Text style={styles.saveBtnText}>{t('finishRegistration')}</Text>
+                                )}
+                            </LinearGradient>
                         </TouchableOpacity>
 
                     </View>
@@ -526,7 +512,7 @@ const styles = StyleSheet.create({
     title: {
         fontSize: 28,
         fontWeight: '900',
-        color: theme.colors.dark,
+        color: patientPastel.textHeading,
         marginBottom: 8,
         letterSpacing: -0.5,
     },
@@ -568,12 +554,12 @@ const styles = StyleSheet.create({
     inputWrapper: {
         flexDirection: 'row',
         alignItems: 'center',
-        backgroundColor: '#f8fafc',
+        backgroundColor: patientPastel.inputBg,
         borderRadius: 14,
         paddingHorizontal: 16,
         paddingVertical: 14,
         borderWidth: 1,
-        borderColor: '#e2e8f0',
+        borderColor: patientPastel.borderInput,
     },
     input: {
         fontSize: 15,
@@ -581,11 +567,6 @@ const styles = StyleSheet.create({
         fontWeight: '500',
         padding: 0,
         outlineStyle: 'none',
-    },
-    rowWithIcon: {
-        flexDirection: 'row',
-        alignItems: 'center',
-        marginBottom: 10,
     },
     tagContainer: {
         flexDirection: 'row',
@@ -623,12 +604,18 @@ const styles = StyleSheet.create({
         fontWeight: '600',
     },
     addTagBtn: {
-        backgroundColor: '#e2e8f0',
-        padding: 6,
+        backgroundColor: '#e0e7ff',
+        paddingHorizontal: 12,
+        paddingVertical: 6,
         borderRadius: 8,
         justifyContent: 'center',
         alignItems: 'center',
         marginLeft: 4,
+    },
+    addTagBtnText: {
+        fontSize: 18,
+        fontWeight: '800',
+        color: patientPastel.textHeading,
     },
     removeTagBtn: {
         position: 'absolute',
@@ -654,13 +641,9 @@ const styles = StyleSheet.create({
         fontWeight: '600',
         textAlign: 'center',
     },
-    saveBtn: {
-        backgroundColor: '#0f172a',
+    saveBtnGradient: {
         paddingVertical: 18,
-        borderRadius: 100,
         alignItems: 'center',
-        marginTop: 10,
-        marginBottom: 20,
         ...theme.shadows.sm,
     },
     saveBtnText: {
@@ -689,7 +672,7 @@ const styles = StyleSheet.create({
     modalTitle: {
         fontSize: 20,
         fontWeight: '800',
-        color: '#0f172a',
+        color: patientPastel.textHeading,
     },
     modalCloseBtn: {
         padding: 4,
@@ -701,19 +684,19 @@ const styles = StyleSheet.create({
         lineHeight: 20,
     },
     modalInput: {
-        backgroundColor: '#f8fafc',
+        backgroundColor: patientPastel.inputBg,
         borderWidth: 1,
-        borderColor: '#e2e8f0',
+        borderColor: patientPastel.borderInput,
         borderRadius: 12,
         paddingHorizontal: 16,
         paddingVertical: 14,
         fontSize: 15,
-        color: '#0f172a',
+        color: patientPastel.textHeading,
         marginBottom: 20,
         outlineStyle: 'none',
     },
     modalSaveBtn: {
-        backgroundColor: '#3b82f6',
+        backgroundColor: patientPastel.primary,
         paddingVertical: 14,
         borderRadius: 12,
         alignItems: 'center',

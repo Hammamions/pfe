@@ -11,6 +11,7 @@ import {
 import { useState } from 'react';
 import { Link, Outlet, useLocation, useNavigate } from 'react-router-dom';
 import logo from '../../assets/logo sans bg.png';
+import { useProWebLang } from '../../lib/useProWebLang';
 import { Button } from '../ui/button';
 
 const navLinks = [
@@ -24,9 +25,9 @@ const navLinks = [
 export default function DoctorLayout() {
     const location = useLocation();
     const navigate = useNavigate();
+    const lang = useProWebLang();
     const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
 
-    // Read authenticated user from session (populated after login)
     const sessionUser = JSON.parse(sessionStorage.getItem('proUser') || '{}');
     const doctorPrenom = sessionUser.prenom || sessionUser.firstName || '';
     const doctorNom = sessionUser.nom || sessionUser.lastName || '';
@@ -36,12 +37,12 @@ export default function DoctorLayout() {
 
     const getLinkClass = (path) => {
         const base = "flex items-center gap-2 px-4 py-2.5 rounded-lg font-medium text-sm transition-all";
-        return `${base} ${isActive(path) ? 'text-green-700 bg-green-50 shadow-sm' : 'text-gray-600 hover:text-gray-900 hover:bg-white'}`;
+        return `${base} ${isActive(path) ? "text-indigo-800 bg-indigo-50 shadow-sm ring-1 ring-indigo-100/80" : "text-slate-600 hover:text-indigo-900 hover:bg-white/90"}`;
     };
 
     const getMobileLinkClass = (path) => {
         const base = "flex items-center gap-3 px-4 py-3 rounded-xl font-medium text-sm transition-all w-full";
-        return `${base} ${isActive(path) ? 'text-green-700 bg-green-50' : 'text-gray-600 hover:text-gray-900 hover:bg-gray-50'}`;
+        return `${base} ${isActive(path) ? "text-indigo-800 bg-indigo-50" : "text-slate-600 hover:text-indigo-900 hover:bg-indigo-50/40"}`;
     };
 
     const handleLogout = () => {
@@ -56,22 +57,26 @@ export default function DoctorLayout() {
     };
 
     return (
-        <div className="min-h-screen bg-gray-50/50">
+        <div
+            className="min-h-screen"
+            dir={lang === 'ar' ? 'rtl' : 'ltr'}
+            style={{
+                background: "linear-gradient(160deg, #fdfcfa 0%, #f0f9ff 40%, #faf5ff 100%)",
+            }}
+        >
 
-            <header className="bg-white border-b border-gray-100 sticky top-0 z-50">
+            <header className="bg-white/90 backdrop-blur-md border-b border-indigo-100/80 sticky top-0 z-50 shadow-sm shadow-indigo-500/5">
                 <div className="max-w-[1600px] mx-auto px-4 sm:px-6 h-16 sm:h-20 flex items-center justify-between">
 
-                    {/* Logo + Name */}
                     <div className="flex items-center gap-3">
                         <img src={logo} alt="MediCare Logo" className="h-9 sm:h-12 w-auto" />
                         <div>
-                            <h1 className="font-bold text-lg sm:text-xl text-gray-900 leading-none">TuniSanté</h1>
-                            <p className="text-xs sm:text-sm text-gray-500 mt-0.5">{doctorFullName}</p>
+                            <h1 className="font-bold text-lg sm:text-xl text-indigo-950 leading-none">TuniSanté</h1>
+                            <p className="text-xs sm:text-sm text-indigo-900/50 mt-0.5">{doctorFullName}</p>
                         </div>
                     </div>
 
-                    {/* Desktop Nav */}
-                    <nav className="hidden lg:flex items-center gap-2 bg-gray-50/50 p-1.5 rounded-xl border border-gray-100">
+                    <nav className="hidden lg:flex items-center gap-2 bg-indigo-50/60 p-1.5 rounded-xl border border-indigo-100/80">
                         {navLinks.map(({ to, icon: Icon, label }) => (
                             <Link key={to} to={to} className={getLinkClass(to)}>
                                 <Icon className="w-4 h-4" />
@@ -80,17 +85,17 @@ export default function DoctorLayout() {
                         ))}
                     </nav>
 
-                    {/* Desktop Logout */}
-                    <Button
-                        variant="ghost"
-                        className="hidden lg:flex text-gray-500 hover:text-red-600 hover:bg-red-50 gap-2"
-                        onClick={handleLogout}
-                    >
-                        <LogOut className="w-4 h-4" />
-                        Déconnexion
-                    </Button>
+                    <div className="hidden items-center gap-2 lg:flex">
+                        <Button
+                            variant="ghost"
+                            className="text-slate-500 hover:bg-red-50 hover:text-red-600 gap-2"
+                            onClick={handleLogout}
+                        >
+                            <LogOut className="h-4 w-4" />
+                            Déconnexion
+                        </Button>
+                    </div>
 
-                    {/* Mobile: hamburger */}
                     <Button
                         variant="ghost"
                         size="icon"
@@ -103,22 +108,18 @@ export default function DoctorLayout() {
                 </div>
             </header>
 
-            {/* Mobile Slide-in Menu Overlay */}
             {mobileMenuOpen && (
                 <div
                     className="fixed inset-0 z-50 lg:hidden"
                     aria-modal="true"
                     role="dialog"
                 >
-                    {/* Backdrop */}
                     <div
                         className="absolute inset-0 bg-black/40 backdrop-blur-sm"
                         onClick={() => setMobileMenuOpen(false)}
                     />
 
-                    {/* Drawer */}
                     <div className="absolute right-0 top-0 h-full w-72 bg-white shadow-2xl flex flex-col">
-                        {/* Drawer Header */}
                         <div className="flex items-center justify-between px-5 py-4 border-b border-gray-100">
                             <div className="flex items-center gap-3">
                                 <img src={logo} alt="Logo" className="h-9 w-auto" />
@@ -138,7 +139,6 @@ export default function DoctorLayout() {
                             </Button>
                         </div>
 
-                        {/* Nav Links */}
                         <nav className="flex-1 px-3 py-4 space-y-1 overflow-y-auto">
                             {navLinks.map(({ to, icon: Icon, label }) => (
                                 <button
@@ -152,7 +152,6 @@ export default function DoctorLayout() {
                             ))}
                         </nav>
 
-                        {/* Logout */}
                         <div className="px-3 py-4 border-t border-gray-100">
                             <button
                                 onClick={handleLogout}
@@ -170,7 +169,6 @@ export default function DoctorLayout() {
                 <Outlet />
             </main>
 
-            {/* Mobile Bottom Navigation Bar */}
             <nav className="lg:hidden fixed bottom-0 left-0 right-0 z-40 bg-white border-t border-gray-100 flex items-center justify-around px-2 h-16 shadow-[0_-2px_12px_rgba(0,0,0,0.06)]">
                 {navLinks.map(({ to, icon: Icon, label }) => (
                     <Link
@@ -178,7 +176,7 @@ export default function DoctorLayout() {
                         to={to}
                         className={`flex flex-col items-center gap-0.5 px-2 py-1 rounded-lg transition-all ${
                             isActive(to)
-                                ? 'text-green-700'
+                                ? 'text-indigo-700'
                                 : 'text-gray-400 hover:text-gray-700'
                         }`}
                     >

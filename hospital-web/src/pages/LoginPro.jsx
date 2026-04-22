@@ -8,22 +8,22 @@ const roles = [
     value: "Médecin",
     label: "Médecin",
     icon: Stethoscope,
-    activeColor: "border-blue-600 bg-blue-50 text-blue-700",
-    inactiveColor: "border-slate-200 bg-[#F1F5F9] text-slate-500 hover:border-slate-300 hover:text-slate-700",
+    activeColor: "border-indigo-400 bg-indigo-50 text-indigo-800 ring-1 ring-indigo-200/60",
+    inactiveColor: "border-slate-200/90 bg-white/70 text-slate-600 hover:border-indigo-200 hover:text-indigo-800",
   },
   {
     value: "Administrateur",
     label: "Administrateur",
     icon: ShieldCheck,
-    activeColor: "border-purple-600 bg-purple-50 text-purple-700",
-    inactiveColor: "border-slate-200 bg-[#F1F5F9] text-slate-500 hover:border-slate-300 hover:text-slate-700",
+    activeColor: "border-violet-400 bg-violet-50 text-violet-800 ring-1 ring-violet-200/60",
+    inactiveColor: "border-slate-200/90 bg-white/70 text-slate-600 hover:border-violet-200 hover:text-violet-900",
   },
   {
-    value: "Sous-Administrateur",
-    label: "Sous-Admin",
+    value: "Secrétaire",
+    label: "Secrétaire",
     icon: Users,
-    activeColor: "border-emerald-600 bg-emerald-50 text-emerald-700",
-    inactiveColor: "border-slate-200 bg-[#F1F5F9] text-slate-500 hover:border-slate-300 hover:text-slate-700",
+    activeColor: "border-sky-400 bg-sky-50 text-sky-900 ring-1 ring-sky-200/60",
+    inactiveColor: "border-slate-200/90 bg-white/70 text-slate-600 hover:border-sky-200 hover:text-sky-900",
   },
 ];
 
@@ -31,7 +31,7 @@ import api from "../lib/api";
 
 const RoleSelector = ({ role, setRole }) => (
   <div>
-    <label className="block text-[14px] font-semibold text-slate-900 mb-2">
+    <label className="block text-[14px] font-semibold text-indigo-950 mb-2">
       Je suis
     </label>
     <div className="grid grid-cols-3 gap-2">
@@ -55,6 +55,8 @@ const LoginPro = () => {
   const navigate = useNavigate();
   const [isForgotPassword, setIsForgotPassword] = useState(false);
   const [resetEmail, setResetEmail] = useState("");
+  const [forgotLoading, setForgotLoading] = useState(false);
+  const [forgotMessage, setForgotMessage] = useState("");
   const [rememberMe, setRememberMe] = useState(false);
   const [role, setRole] = useState("Médecin");
   const [error, setError] = useState("");
@@ -64,6 +66,20 @@ const LoginPro = () => {
     email: "",
     password: "",
   });
+
+  const normalizeRole = (rawRole) => {
+    const value = String(rawRole || "").toUpperCase().replace(/[-\s]/g, "_");
+    if (["DOCTOR", "MEDECIN", "MEDECINNE", "MEDECIN_NNE", "DOCTEUR"].includes(value)) {
+      return "Médecin";
+    }
+    if (["ADMIN", "ADMINISTRATEUR"].includes(value)) {
+      return "Administrateur";
+    }
+    if (["SOUS_ADMIN", "SOUSADMIN", "SUB_ADMIN"].includes(value)) {
+      return "Secrétaire";
+    }
+    return "";
+  };
 
   const handleChange = (e) => {
     setFormData({ ...formData, [e.target.name]: e.target.value });
@@ -77,16 +93,12 @@ const LoginPro = () => {
 
     try {
       const response = await api.post('/auth/login', {
-        email: formData.email,
+        email: formData.email.trim(),
         password: formData.password
       });
 
       const { token, user } = response.data;
-
-
-      const mappedRole = (user.role === 'DOCTOR' || user.role === 'MEDECIN') ? 'Médecin' :
-        user.role === 'ADMIN' ? 'Administrateur' :
-          user.role === 'SOUS_ADMIN' ? 'Sous-Administrateur' : '';
+      const mappedRole = normalizeRole(user.role);
 
       if (mappedRole !== role) {
         setError(`Ce compte n'est pas associé au rôle ${role}.`);
@@ -102,59 +114,87 @@ const LoginPro = () => {
       } else if (user.role === "ADMIN") {
         navigate("/admin/dashboard");
       } else if (user.role === "SOUS_ADMIN") {
-        navigate("/sous-admin/dashboard");
+        navigate("/sous-admin");
       }
     } catch (err) {
       console.error('Login error:', err);
-      setError(err.response?.data?.error || "Erreur de connexion au serveur.");
+      if (!err.response) {
+        setError("Impossible de contacter le serveur. Vérifiez que le backend est bien lancé.");
+      } else {
+        setError(err.response?.data?.error || "Erreur de connexion au serveur.");
+      }
     } finally {
       setLoading(false);
     }
   };
 
-  const handleForgotPassword = (e) => {
+  const handleForgotPassword = async (e) => {
     e.preventDefault();
-    if (resetEmail) {
-      alert(`Un email de réinitialisation a été envoyé à ${resetEmail}`);
-      setIsForgotPassword(false);
+    const trimmed = resetEmail.trim();
+    if (!trimmed) return;
+    setForgotLoading(true);
+    setForgotMessage("");
+    try {
+      await api.post("/auth/forgot-password", { email: trimmed });
+      setForgotMessage("Si un compte existe pour cet email, un lien de réinitialisation vient d’être envoyé. Vérifiez aussi les indésirables.");
       setResetEmail("");
+    } catch (err) {
+      const msg =
+        err.response?.data?.error ||
+        (err.response ? "Impossible d’envoyer l’email." : "Impossible de contacter le serveur (backend lancé sur le port 4000 ?).");
+      setForgotMessage(msg);
+    } finally {
+      setForgotLoading(false);
     }
   };
 
   return (
-    <div className="min-h-screen flex flex-col items-center py-12 px-4 sm:px-6 lg:px-8 font-sans text-slate-800" style={{ backgroundColor: '#F8FAFC' }}>
+    <div
+      className="min-h-screen flex flex-col items-center py-12 px-4 sm:px-6 lg:px-8 font-sans text-slate-800"
+      style={{
+        background: "linear-gradient(160deg, #fdfcfa 0%, #f0f9ff 45%, #faf5ff 100%)",
+      }}
+    >
       <div className="w-full max-w-md space-y-8">
 
         <div className="flex flex-col items-center">
           <div className="mb-4 flex items-center justify-center w-28 h-28">
             <img src={logo} alt="Logo" className="w-full h-full object-contain" />
           </div>
-          <h1 className="text-3xl font-bold text-slate-900 tracking-tight">Hôpital Connect</h1>
-          <p className="mt-2 text-[15px] text-slate-500">Accès Professionnel de Santé</p>
+          <h1 className="text-3xl font-bold text-indigo-950 tracking-tight">Hôpital Connect</h1>
+          <p className="mt-2 text-[15px] text-indigo-900/60">Accès Professionnel de Santé</p>
         </div>
 
-        <div className="bg-[#E2E8F0]/60 p-1 rounded-full flex mx-auto max-w-[340px]">
-          <div className="flex-1 py-2 text-[15px] font-medium rounded-full bg-white text-slate-900 shadow-sm text-center">
+        <div className="bg-indigo-100/50 p-1 rounded-full flex mx-auto max-w-[340px] ring-1 ring-indigo-200/40">
+          <div className="flex-1 py-2 text-[15px] font-medium rounded-full bg-white/95 text-indigo-950 shadow-sm shadow-indigo-500/10 text-center">
             Connexion
           </div>
         </div>
 
-        <div className="bg-white px-8 py-8 rounded-2xl border border-slate-100/60" style={{ boxShadow: '0 4px 20px -2px rgba(0, 0, 0, 0.05)' }}>
+        <div
+          className="bg-white/95 px-8 py-8 rounded-2xl border border-indigo-200/45 backdrop-blur-sm"
+          style={{ boxShadow: "0 8px 32px rgba(99, 102, 241, 0.1)" }}
+        >
           {isForgotPassword ? (
             <>
               <div className="mb-6">
-                <h2 className="text-[17px] font-bold text-slate-900">Mot de passe oublié ?</h2>
-                <p className="text-[15px] text-slate-500 mt-1">Entrez votre email pour recevoir un lien de réinitialisation.</p>
+                <h2 className="text-[17px] font-bold text-indigo-950">Mot de passe oublié ?</h2>
+                <p className="text-[15px] text-indigo-900/55 mt-1">Entrez votre email pour recevoir un lien de réinitialisation.</p>
               </div>
 
               <form onSubmit={handleForgotPassword} className="space-y-5">
+                {forgotMessage && (
+                  <p className={`text-[14px] rounded-lg px-3 py-2 ${forgotMessage.includes("indésirables") ? "bg-emerald-50 text-emerald-800" : "bg-red-50 text-red-700"}`}>
+                    {forgotMessage}
+                  </p>
+                )}
                 <div>
-                  <label className="block text-[14px] font-semibold text-slate-900 mb-2">
+                  <label className="block text-[14px] font-semibold text-indigo-950 mb-2">
                     Email
                   </label>
                   <div className="relative">
                     <div className="pointer-events-none absolute inset-y-0 left-0 flex items-center pl-4">
-                      <Mail className="h-4 w-4 text-slate-400" />
+                      <Mail className="h-4 w-4 text-indigo-400" />
                     </div>
                     <input
                       type="email"
@@ -162,7 +202,7 @@ const LoginPro = () => {
                       value={resetEmail}
                       onChange={(e) => setResetEmail(e.target.value)}
                       placeholder="dr.dupont@hopital.com"
-                      className="block w-full rounded-xl border-0 py-3 pl-11 text-slate-900 bg-[#F1F5F9] placeholder:text-slate-500 focus:ring-2 focus:ring-inset focus:ring-blue-600 sm:text-[15px] transition-all outline-none"
+                      className="block w-full rounded-xl border border-indigo-100 py-3 pl-11 text-slate-900 bg-[#fafafa] placeholder:text-slate-500 focus:ring-2 focus:ring-inset focus:ring-indigo-400 sm:text-[15px] transition-all outline-none"
                     />
                   </div>
                 </div>
@@ -170,17 +210,21 @@ const LoginPro = () => {
                 <div>
                   <button
                     type="submit"
-                    className="flex w-full justify-center rounded-xl bg-[#030712] px-3 py-3.5 text-[15px] font-semibold text-white shadow-sm hover:bg-slate-800 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-slate-900 transition-colors"
+                    disabled={forgotLoading}
+                    className="flex w-full justify-center rounded-xl bg-gradient-to-r from-sky-400 via-indigo-500 to-violet-400 px-3 py-3.5 text-[15px] font-semibold text-white shadow-md shadow-indigo-500/25 hover:brightness-105 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-indigo-400 transition-all disabled:opacity-60"
                   >
-                    Envoyer le lien de réinitialisation
+                    {forgotLoading ? "Envoi en cours…" : "Envoyer le lien de réinitialisation"}
                   </button>
                 </div>
 
                 <div className="text-center pt-2">
                   <button
                     type="button"
-                    onClick={() => setIsForgotPassword(false)}
-                    className="text-[15px] text-blue-500 hover:text-blue-600 transition-colors font-medium"
+                    onClick={() => {
+                      setForgotMessage("");
+                      setIsForgotPassword(false);
+                    }}
+                    className="text-[15px] text-indigo-600 hover:text-indigo-800 transition-colors font-medium"
                   >
                     Retour à la connexion
                   </button>
@@ -190,20 +234,20 @@ const LoginPro = () => {
           ) : (
             <>
               <div className="mb-6">
-                <h2 className="text-[17px] font-bold text-slate-900">Se connecter</h2>
-                <p className="text-[15px] text-slate-500 mt-1">Accédez à votre espace professionnel</p>
+                <h2 className="text-[17px] font-bold text-indigo-950">Se connecter</h2>
+                <p className="text-[15px] text-indigo-900/55 mt-1">Accédez à votre espace professionnel</p>
               </div>
 
               <form onSubmit={handleLogin} className="space-y-5">
                 <RoleSelector role={role} setRole={setRole} />
 
                 <div>
-                  <label className="block text-[14px] font-semibold text-slate-900 mb-2">
+                  <label className="block text-[14px] font-semibold text-indigo-950 mb-2">
                     Email
                   </label>
                   <div className="relative">
                     <div className="pointer-events-none absolute inset-y-0 left-0 flex items-center pl-4">
-                      <Mail className="h-4 w-4 text-slate-400" />
+                      <Mail className="h-4 w-4 text-indigo-400" />
                     </div>
                     <input
                       type="email"
@@ -212,18 +256,18 @@ const LoginPro = () => {
                       value={formData.email}
                       onChange={handleChange}
                       placeholder="dr.dupont@hopital.com"
-                      className="block w-full rounded-xl border-0 py-3 pl-11 text-slate-900 bg-[#F1F5F9] placeholder:text-slate-500 focus:ring-2 focus:ring-inset focus:ring-blue-600 sm:text-[15px] transition-all outline-none"
+                      className="block w-full rounded-xl border border-indigo-100 py-3 pl-11 text-slate-900 bg-[#fafafa] placeholder:text-slate-500 focus:ring-2 focus:ring-inset focus:ring-indigo-400 sm:text-[15px] transition-all outline-none"
                     />
                   </div>
                 </div>
 
                 <div>
-                  <label className="block text-[14px] font-semibold text-slate-900 mb-2">
+                  <label className="block text-[14px] font-semibold text-indigo-950 mb-2">
                     Mot de passe
                   </label>
                   <div className="relative">
                     <div className="pointer-events-none absolute inset-y-0 left-0 flex items-center pl-4">
-                      <Lock className="h-4 w-4 text-slate-400" />
+                      <Lock className="h-4 w-4 text-indigo-400" />
                     </div>
                     <input
                       type="password"
@@ -232,7 +276,7 @@ const LoginPro = () => {
                       value={formData.password}
                       onChange={handleChange}
                       placeholder="••••••••"
-                      className="block w-full rounded-xl border-0 py-3 pl-11 text-slate-900 bg-[#F1F5F9] placeholder:text-slate-500 focus:ring-2 focus:ring-inset focus:ring-blue-600 sm:text-[15px] transition-all outline-none"
+                      className="block w-full rounded-xl border border-indigo-100 py-3 pl-11 text-slate-900 bg-[#fafafa] placeholder:text-slate-500 focus:ring-2 focus:ring-inset focus:ring-indigo-400 sm:text-[15px] transition-all outline-none"
                     />
                   </div>
                 </div>
@@ -245,7 +289,7 @@ const LoginPro = () => {
                       type="checkbox"
                       checked={rememberMe}
                       onChange={(e) => setRememberMe(e.target.checked)}
-                      className="h-4 w-4 rounded border-slate-300 text-blue-600 focus:ring-blue-600 outline-none"
+                      className="h-4 w-4 rounded border-indigo-200 text-indigo-600 focus:ring-indigo-400 outline-none"
                     />
                     <label htmlFor="remember-me" className="ml-2 block text-[15px] text-slate-600 font-medium">
                       Se souvenir de moi
@@ -253,7 +297,14 @@ const LoginPro = () => {
                   </div>
 
                   <div className="text-[15px]">
-                    <button type="button" onClick={() => setIsForgotPassword(true)} className="text-blue-500 hover:text-blue-600 transition-colors">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setForgotMessage("");
+                        setIsForgotPassword(true);
+                      }}
+                      className="text-indigo-600 hover:text-indigo-800 transition-colors"
+                    >
                       Mot de passe oublié ?
                     </button>
                   </div>
@@ -269,7 +320,7 @@ const LoginPro = () => {
                   <button
                     type="submit"
                     disabled={loading}
-                    className={`flex w-full justify-center rounded-xl bg-[#030712] px-3 py-3.5 text-[15px] font-semibold text-white shadow-sm hover:bg-slate-800 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-slate-900 transition-colors ${loading ? 'opacity-50 cursor-not-allowed' : ''}`}
+                    className={`flex w-full justify-center rounded-xl bg-gradient-to-r from-sky-400 via-indigo-500 to-violet-400 px-3 py-3.5 text-[15px] font-semibold text-white shadow-md shadow-indigo-500/25 hover:brightness-105 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-indigo-400 transition-all ${loading ? "opacity-50 cursor-not-allowed" : ""}`}
                   >
                     {loading ? 'Connexion en cours...' : 'Se connecter'}
                   </button>

@@ -1,80 +1,45 @@
-export const mockDoctor = {
-    id: 'doc-1',
-    nom: 'Makhbouche',
-    prenom: 'Imen',
-    specialite: 'Médecine générale',
-    numeroOrdre: 'TN-45872',
-    telephone: '+216 90 000 000'
-};
-
-export const mockPatientFiles = [
-    {
-        id: 'pat-1',
-        patient: {
-            id: 'pat-1',
-            nom: 'Ben Salah',
-            prenom: 'Amine',
-            dateNaissance: '14/03/1988',
-            numeroSecu: '1880314XXXX',
-            email: 'amine.bensalah@example.com',
-            telephone: '+216 98 111 111'
-        },
-        allergies: ['Pénicilline']
-    },
-    {
-        id: 'pat-2',
-        patient: {
-            id: 'pat-2',
-            nom: 'Trabelsi',
-            prenom: 'Nour',
-            dateNaissance: '22/11/1995',
-            numeroSecu: '2951122XXXX',
-            email: 'nour.trabelsi@example.com',
-            telephone: '+216 98 222 222'
-        },
-        allergies: []
-    }
-];
-
+/** Données de démo pour l’assistant IA (mode « exemple statique » sans API). */
 export const aiSuggestions = {
     symptoms: [
-        'Douleur thoracique',
-        'Dyspnée',
+        'Douleur thoracique constrictive',
+        'Dyspnée à l’effort',
         'Palpitations',
-        'Fatigue',
-        'Toux sèche'
+        'Toux productive',
+        'Fièvre',
+        'Céphalées intenses',
+        'Nausées',
     ],
     diagnoses: [
         {
-            nom: 'Syndrome coronarien aigu',
-            probabilite: 78,
-            criteres: ['Douleur thoracique', 'Irradiation bras', 'Facteurs de risque']
-        },
-        {
-            nom: 'Angor stable',
+            nom: 'Angor stable (hypothèse)',
             probabilite: 62,
-            criteres: ['Douleur à l’effort', 'Soulagement au repos']
+            criteres: ['Douleur rétrosternale', 'Facteurs de risque CV', 'Soulagement au repos'],
         },
         {
-            nom: 'Douleur musculosquelettique',
+            nom: 'Bronchite aiguë (hypothèse)',
+            probabilite: 48,
+            criteres: ['Toux', 'Expectoration', 'Contexte viral possible'],
+        },
+        {
+            nom: 'Anxiété / crise de panique (hypothèse)',
             probabilite: 35,
-            criteres: ['Douleur localisée', 'Reproductible à la palpation']
-        }
+            criteres: ['Palpitations', 'Hyperventilation', 'Examen CV non contributif'],
+        },
     ],
     treatments: [
         {
-            medicament: 'Paracétamol',
-            dosage: '1 g',
-            frequence: '3 fois / jour',
-            duree: '5 jours',
-            indication: 'Antalgique de première intention'
+            medicament: 'Acide acétylsalicylique',
+            dosage: '75–100 mg',
+            frequence: '1 fois / jour',
+            duree: 'Selon avis cardiologique',
+            indication: 'Prévention secondaire si indiqué et sans contre-indication.',
         },
         {
-            medicament: 'Aspirine',
-            dosage: '75 mg',
-            frequence: '1 fois / jour',
-            duree: '30 jours',
-            indication: 'Prévention cardiovasculaire selon contexte clinique'
-        }
-    ]
+            medicament: 'Paracétamol',
+            dosage: '1 g',
+            frequence: 'Toutes les 6–8 h si douleur',
+            duree: '3 jours max sans réévaluation',
+            indication: 'Douleur légère à modérée, antipyrétique.',
+        },
+    ],
 };

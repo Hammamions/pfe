@@ -1,7 +1,8 @@
-import Constants from 'expo-constants';
 import { createContext, useContext, useEffect, useRef, useState } from 'react';
 
 import AsyncStorage from './utils/storage';
+import { getApiBaseUrl } from './utils/apiBase';
+import { inferOrdonnanceSubCategory, normalizeOrdonnanceContenu } from './ordonnanceUtils';
 
 const AppContext = createContext();
 
@@ -16,8 +17,60 @@ Notifications.setNotificationHandler({
     }),
 });
 
+function mapPatientNotificationsFromApi(data) {
+    const inferNotificationLink = (notif) => {
+        const text = `${notif?.titre || ''} ${notif?.message || ''}`.toLowerCase();
+        if (text.includes('rendez-vous') || text.includes('rendez vous')) return '/appointments';
+        if (text.includes('document') || text.includes('dossier') || text.includes('ordonnance')) return '/documents';
+        if (text.includes('urgence')) return '/urgence';
+        return '/dashboard';
+    };
+    const sanitizeNotificationMessage = (msg) =>
+        String(msg || '')
+            .replace(/\s*\[\[RDV_[^\]]+\]\]\s*/g, ' ')
+            .replace(/\s{2,}/g, ' ')
+            .trim();
+
+    return (Array.isArray(data) ? data : []).map((n) => {
+        const rawMessage = String(n.message || '');
+        const preVisitMatch = rawMessage.match(/\[\[RDV_PRE(?:15|30):(\d+)]]/);
+        const normalizedText = preVisitMatch
+            ? 'Veuillez confirmer votre présence à ce rendez-vous.'
+            : sanitizeNotificationMessage(n.message);
+        return {
+            rawMessage,
+            id: n.id,
+            text: normalizedText,
+            title: n.titre,
+            time: 'justNow',
+            icon: '🔔',
+            isNew: !n.lue,
+            createdAt: n.createdAt,
+            fromBackend: true,
+            link: inferNotificationLink(n),
+            preVisitAppointmentId: preVisitMatch ? Number(preVisitMatch[1]) : null,
+        };
+    });
+}
+
 export const AppProvider = ({ children }) => {
     const notifiedBackendIdsRef = useRef(new Set());
+    const recentlyDeletedNotifIdsRef = useRef(new Set());
+
+    const stripPendingDeletedNotifications = (mapped) => {
+        const blocked = recentlyDeletedNotifIdsRef.current;
+        if (!blocked.size) return mapped;
+        return (mapped || []).filter((n) => n?.id == null || !blocked.has(String(n.id)));
+    };
+
+    const registerNotificationDeleted = (id) => {
+        if (id == null || id === '') return;
+        const key = String(id);
+        recentlyDeletedNotifIdsRef.current.add(key);
+        setTimeout(() => {
+            recentlyDeletedNotifIdsRef.current.delete(key);
+        }, 15000);
+    };
     const [patient, setPatient] = useState({
         firstName: "",
         lastName: "",
@@ -65,22 +118,8 @@ export const AppProvider = ({ children }) => {
     const [services, setServices] = useState([]);
     const [equipments, setEquipments] = useState([]);
 
-    const API_URL = (() => {
-        if (Platform.OS === 'web' && typeof window !== 'undefined') {
-            const webHost = window.location.hostname || 'localhost';
-            return `http://${webHost}:4000`;
-        }
-
-        const hostUri =
-            Constants.expoConfig?.hostUri ||
-            Constants.manifest2?.extra?.expoGo?.debuggerHost ||
-            '';
-        const host = hostUri.split(':')[0];
-
-        if (host) return `http://${host}:4000`;
-        if (Platform.OS === 'android') return 'http://10.0.2.2:4000';
-        return 'http://localhost:4000';
-    })();
+    const API_URL = getApiBaseUrl();
+    const syncMutexRef = useRef(Promise.resolve());
 
     const loadData = async () => {
         try {
@@ -105,7 +144,7 @@ export const AppProvider = ({ children }) => {
 
     const loadGuidanceData = async () => {
         try {
-            const guiRes = await fetch(`${API_URL}/api/guidance`);
+            const guiRes = await fetch(`${getApiBaseUrl()}/api/guidance`);
             if (guiRes.ok) {
                 const data = await guiRes.json();
                 const allowedIcons = new Set([
@@ -146,7 +185,7 @@ export const AppProvider = ({ children }) => {
 
             const token = await AsyncStorage.getItem('token');
             if (token) {
-                const res = await fetch(`${API_URL}/api/auth/profile`, {
+                const res = await fetch(`${getApiBaseUrl()}/api/auth/profile`, {
                     method: 'PUT',
                     headers: {
                         'Content-Type': 'application/json',
@@ -199,6 +238,9 @@ export const AppProvider = ({ children }) => {
 
     const logout = async () => {
         try {
+            notifiedBackendIdsRef.current.clear();
+            recentlyDeletedNotifIdsRef.current.clear();
+            syncMutexRef.current = Promise.resolve();
             await AsyncStorage.removeItem('token');
             await AsyncStorage.removeItem('patient');
             await AsyncStorage.removeItem('user');
@@ -222,6 +264,8 @@ export const AppProvider = ({ children }) => {
                 patientSince: "",
             });
             setAppointments([]);
+            setRequests([]);
+            setHistory([]);
             setNotifications([]);
             setDocuments([]);
             console.log('[AUTH] Logged out and cleared storage');
@@ -230,21 +274,111 @@ export const AppProvider = ({ children }) => {
         }
     };
 
+    const refreshNotifications = async (token) => {
+        if (!token) return;
+        const prev = syncMutexRef.current;
+        const run = async () => {
+            await prev.catch(() => {});
+            try {
+                const base = getApiBaseUrl();
+                const notifRes = await fetch(`${base}/api/patients/notifications?_=${Date.now()}`, {
+                    cache: 'no-store',
+                    headers: {
+                        Authorization: `Bearer ${token}`,
+                        'Cache-Control': 'no-cache',
+                        Pragma: 'no-cache',
+                    },
+                });
+                if (notifRes.ok) {
+                    const activeToken = await AsyncStorage.getItem('token');
+                    if (!activeToken || activeToken !== token) return;
+                    const data = await notifRes.json();
+                    setNotifications(stripPendingDeletedNotifications(mapPatientNotificationsFromApi(data)));
+                }
+            } catch (e) {
+                console.warn('[SYNC] refreshNotifications failed', e);
+            }
+        };
+        const p = run();
+        syncMutexRef.current = p;
+        return p;
+    };
+
     const syncAllData = async (token) => {
         if (!token) return;
-        console.log('[SYNC] Starting full data synchronization...');
-        try {
+        const prev = syncMutexRef.current;
+        const run = async () => {
+            await prev.catch(() => {});
+            console.log('[SYNC] Starting full data synchronization...');
+            try {
+            const base = getApiBaseUrl();
             const savedPatientJson = await AsyncStorage.getItem('patient');
             const savedPatient = savedPatientJson ? JSON.parse(savedPatientJson) : {};
 
-            const [profRes, aptRes, docRes, notifRes] = await Promise.all([
-                fetch(`${API_URL}/api/patients/profile`, { headers: { 'Authorization': `Bearer ${token}` } }),
-                fetch(`${API_URL}/api/appointments`, { headers: { 'Authorization': `Bearer ${token}` } }),
-                fetch(`${API_URL}/api/documents`, { headers: { 'Authorization': `Bearer ${token}` } }),
-                fetch(`${API_URL}/api/patients/notifications`, { headers: { 'Authorization': `Bearer ${token}` } })
+            const docUrl = `${base}/api/documents?_=${Date.now()}`;
+            const SYNC_FETCH_MS = 25000;
+            const withTimeout = (promise, label) => {
+                let timer;
+                return Promise.race([
+                    promise.finally(() => {
+                        if (timer) clearTimeout(timer);
+                    }),
+                    new Promise((_, reject) => {
+                        timer = setTimeout(() => reject(new Error(`sync timeout: ${label}`)), SYNC_FETCH_MS);
+                    })
+                ]);
+            };
+            const syncLabels = ['profile', 'appointments', 'documents', 'notifications'];
+            const settled = await Promise.allSettled([
+                withTimeout(
+                    fetch(`${base}/api/patients/profile`, { headers: { 'Authorization': `Bearer ${token}` } }),
+                    'profile'
+                ),
+                withTimeout(
+                    fetch(`${base}/api/appointments`, { headers: { 'Authorization': `Bearer ${token}` } }),
+                    'appointments'
+                ),
+                withTimeout(
+                    fetch(docUrl, {
+                        cache: 'no-store',
+                        headers: {
+                            'Authorization': `Bearer ${token}`,
+                            'Cache-Control': 'no-cache',
+                            'Pragma': 'no-cache'
+                        }
+                    }),
+                    'documents'
+                ),
+                withTimeout(
+                    fetch(`${base}/api/patients/notifications?_=${Date.now()}`, {
+                        cache: 'no-store',
+                        headers: {
+                            Authorization: `Bearer ${token}`,
+                            'Cache-Control': 'no-cache',
+                            Pragma: 'no-cache',
+                        },
+                    }),
+                    'notifications'
+                )
             ]);
+            settled.forEach((out, i) => {
+                if (out.status === 'rejected') {
+                    console.warn(`[SYNC] ${syncLabels[i]} failed`, out.reason);
+                }
+            });
 
-            if (profRes.ok) {
+            const profRes = settled[0].status === 'fulfilled' ? settled[0].value : null;
+            const aptRes = settled[1].status === 'fulfilled' ? settled[1].value : null;
+            const docRes = settled[2].status === 'fulfilled' ? settled[2].value : null;
+            const notifRes = settled[3].status === 'fulfilled' ? settled[3].value : null;
+
+            const activeToken = await AsyncStorage.getItem('token');
+            if (!activeToken || activeToken !== token) {
+                console.log('[SYNC] Apply skipped (déconnexion ou session remplacée)');
+                return;
+            }
+
+            if (profRes?.ok) {
                 const data = await profRes.json();
                 const standardizedData = {
                     ...data,
@@ -263,14 +397,14 @@ export const AppProvider = ({ children }) => {
                 await AsyncStorage.setItem('patient', JSON.stringify(standardizedData));
             }
 
-            if (aptRes.ok) {
+            if (aptRes?.ok) {
                 const data = await aptRes.json();
                 setAppointments(data.filter(a => a.status === 'confirme' || a.status === 'en_cours'));
                 setHistory(data.filter(a => a.status === 'termine' || a.status === 'annule'));
                 setRequests(data.filter(a => a.status === 'en_attente' || a.status === 'reporte' || a.status === 'demande_annulation'));
             }
 
-            if (docRes.ok) {
+            if (docRes?.ok) {
                 const data = await docRes.json();
                 const parseDocMeta = (urlFichier) => {
                     try {
@@ -284,59 +418,66 @@ export const AppProvider = ({ children }) => {
                         };
                     } catch { return {}; }
                 };
-                const mappedDocs = (Array.isArray(data) ? data : []).map((doc) => ({
-                    ...parseDocMeta(doc.urlFichier),
-                    id: doc.id,
-                    title: doc.title || doc.titre || 'Document',
-                    doctor: doc.doctor || doc.praticien || 'notSpecified',
-                    date: doc.date || (doc.createdAt ? new Date(doc.createdAt).toLocaleDateString('fr-FR') : ''),
-                    size: doc.size || 'N/A',
-                    category: doc.category || doc.type || 'autre',
-                    subCategory: doc.subCategory || null,
-                    createdAt: doc.createdAt || null
-                }));
+                const normalizeDocId = (doc) => {
+                    const rawStr = String(doc.id ?? '').trim();
+                    if (/^ord_\d+$/i.test(rawStr)) {
+                        const m = /^ord_(\d+)$/i.exec(rawStr);
+                        return `ord_${m[1]}`;
+                    }
+                    const isOrd =
+                        Boolean(doc.isOrdonnance) ||
+                        String(doc.type || doc.category || '').toLowerCase() === 'ordonnance';
+                    if (isOrd) {
+                        const n = parseInt(rawStr, 10);
+                        if (!Number.isNaN(n)) return `ord_${n}`;
+                    }
+                    return doc.id;
+                };
+                const mappedDocs = (Array.isArray(data) ? data : []).map((doc) => {
+                    const rawContenu = doc.ordonnanceContenu ?? doc.ordonnance_contenu ?? doc.contenu;
+                    const idStr = doc.id != null ? String(doc.id).trim() : '';
+                    const isOrdRow =
+                        Boolean(doc.isOrdonnance) ||
+                        String(doc.type || doc.category || '').toLowerCase() === 'ordonnance' ||
+                        /^ord_\d+$/i.test(idStr);
+                    return {
+                        ...parseDocMeta(doc.urlFichier),
+                        id: normalizeDocId(doc),
+                        title: doc.title || doc.titre || 'Document',
+                        doctor: doc.doctor || doc.praticien || 'notSpecified',
+                        date: doc.date || (doc.createdAt ? new Date(doc.createdAt).toLocaleDateString('fr-FR') : ''),
+                        size: doc.size || 'N/A',
+                        category: doc.category || doc.type || 'autre',
+                        createdAt: doc.createdAt || null,
+                        ordonnanceContenu: normalizeOrdonnanceContenu(rawContenu),
+                        isOrdonnance: isOrdRow,
+                        subCategory: doc.subCategory || (isOrdRow ? inferOrdonnanceSubCategory(rawContenu) : null),
+                        urlFichier: doc.urlFichier || null,
+                        publicId: doc.publicId || null,
+                        contentSha256: doc.contentSha256 || null,
+                        isSecureDocument: Boolean(doc.isSecureDocument || doc.publicId),
+                        securePreviewSummary: doc.securePreviewSummary || null,
+                        anchorTxHash: doc.anchorTxHash || null,
+                        medecinSpecialite: doc.medecinSpecialite ?? null,
+                        medecinNumeroOrdre: doc.medecinNumeroOrdre ?? null
+                    };
+                });
                 setDocuments(mappedDocs);
             }
 
-            if (notifRes.ok) {
+            if (notifRes?.ok) {
                 const data = await notifRes.json();
-                const isRelevantPatientNotification = (notif) => {
-                    const text = `${notif?.titre || ''} ${notif?.message || ''}`.toLowerCase();
-                    const isDocumentNotif = text.includes('document') || text.includes('dossier');
-                    const isAppointmentStatusNotif =
-                        (text.includes('rendez-vous') || text.includes('rendez vous')) &&
-                        (text.includes('confirm') || text.includes('report') || text.includes('annul') || text.includes('statut') || text.includes('mise à jour') || text.includes('mis à jour') || text.includes('planifié') ||
-                            text.includes('début') || text.includes('préparer') || text.includes('recevoir'));
-                    const isConsultationDoneNotif = text.includes('consultation') && (text.includes('termin') || text.includes('complète'));
-                    return isDocumentNotif || isAppointmentStatusNotif || isConsultationDoneNotif;
-                };
-                const inferNotificationLink = (notif) => {
-                    const text = `${notif?.titre || ''} ${notif?.message || ''}`.toLowerCase();
-                    if (text.includes('rendez-vous') || text.includes('rendez vous')) return '/appointments';
-                    if (text.includes('document') || text.includes('dossier')) return '/documents';
-                    if (text.includes('urgence')) return '/urgence';
-                    return '/dashboard';
-                };
-                const mappedNotifs = data
-                    .filter(isRelevantPatientNotification)
-                    .map(n => ({
-                        id: n.id,
-                        text: n.message,
-                        title: n.titre,
-                        time: "justNow",
-                        icon: "🔔",
-                        isNew: !n.lue,
-                        createdAt: n.createdAt,
-                        fromBackend: true,
-                        link: inferNotificationLink(n)
-                    }));
-                setNotifications(mappedNotifs);
+                setNotifications(stripPendingDeletedNotifications(mapPatientNotificationsFromApi(data)));
             }
 
             console.log('[SYNC] Synchronization complete.');
-        } catch (error) {
-            console.error('[SYNC] Error syncing data:', error);
-        }
+            } catch (error) {
+                console.error('[SYNC] Error syncing data:', error);
+            }
+        };
+        const p = run();
+        syncMutexRef.current = p;
+        return p;
     };
 
     useEffect(() => {
@@ -400,6 +541,8 @@ export const AppProvider = ({ children }) => {
             services,
             equipments,
             syncAllData,
+            refreshNotifications,
+            registerNotificationDeleted,
             logout,
             API_URL
         }}>

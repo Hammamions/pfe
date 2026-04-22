@@ -1,13 +1,12 @@
 import { Feather } from '@expo/vector-icons';
 import AsyncStorage from './utils/storage';
 import Constants from 'expo-constants';
-import { Stack, useRouter } from 'expo-router';
+import { Stack } from 'expo-router';
 import React, { useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import {
     ActivityIndicator,
     Alert,
-    Dimensions,
     KeyboardAvoidingView,
     Modal,
     Platform,
@@ -19,14 +18,12 @@ import {
     TouchableOpacity,
     View
 } from 'react-native';
-import { theme } from '../theme';
+import { patientPastel, theme } from '../theme';
+import ColorMoodRating from './components/ColorMoodRating';
 import HeaderSidebar from './components/HeaderSidebar';
-
-const { width } = Dimensions.get('window');
 
 const Satisfaction = () => {
     const { t, i18n } = useTranslation();
-    const router = useRouter();
     const isRTL = i18n.language === 'ar';
     const API_URL = (() => {
         const hostUri =
@@ -44,9 +41,8 @@ const Satisfaction = () => {
 
     const handleSubmit = async () => {
         if (rating === 0) {
-            const msg = isRTL ? 'يرجى اختيار تقييم' : 'Veuillez choisir une note';
-            if (Platform.OS === 'web') window.alert(msg);
-            else Alert.alert(t('error'), msg);
+            if (Platform.OS === 'web') window.alert(t('ratingPickRequired'));
+            else Alert.alert(t('error'), t('ratingPickRequired'));
             return;
         }
 
@@ -84,27 +80,6 @@ const Satisfaction = () => {
         }
     };
 
-    const StarRating = () => {
-        return (
-            <View style={[styles.starsRow, isRTL && { flexDirection: 'row-reverse' }]}>
-                {[1, 2, 3, 4, 5].map((s) => (
-                    <TouchableOpacity
-                        key={s}
-                        onPress={() => setRating(s)}
-                        style={styles.starTouch}
-                    >
-                        <Feather
-                            name="star"
-                            size={width > 400 ? 50 : 40}
-                            color={s <= rating ? '#fbbf24' : '#e2e8f0'}
-                            fill={s <= rating ? '#fbbf24' : 'transparent'}
-                        />
-                    </TouchableOpacity>
-                ))}
-            </View>
-        );
-    };
-
     return (
         <SafeAreaView style={styles.container}>
             <Stack.Screen options={{ headerShown: false }} />
@@ -134,7 +109,7 @@ const Satisfaction = () => {
                             {t('ratingInstructions')}
                         </Text>
 
-                        <StarRating />
+                        <ColorMoodRating value={rating} onChange={setRating} isRTL={isRTL} t={t} />
 
                         <View style={styles.divider} />
 
@@ -196,7 +171,7 @@ const Satisfaction = () => {
 const styles = StyleSheet.create({
     container: {
         flex: 1,
-        backgroundColor: '#f8fafc',
+        backgroundColor: patientPastel.pageBg,
     },
     scrollContent: {
         padding: 20,
@@ -211,7 +186,7 @@ const styles = StyleSheet.create({
         width: 70,
         height: 70,
         borderRadius: 35,
-        backgroundColor: '#2563eb',
+        backgroundColor: patientPastel.primary,
         justifyContent: 'center',
         alignItems: 'center',
         marginBottom: 20,
@@ -220,7 +195,7 @@ const styles = StyleSheet.create({
     heroTitle: {
         fontSize: 28,
         fontWeight: '900',
-        color: '#0f172a',
+        color: patientPastel.textHeading,
         marginBottom: 8,
         textAlign: 'center',
     },
@@ -239,22 +214,13 @@ const styles = StyleSheet.create({
     sectionTitle: {
         fontSize: 20,
         fontWeight: '800',
-        color: '#0f172a',
+        color: patientPastel.textHeading,
         marginBottom: 5,
     },
     instructionText: {
         fontSize: 14,
         color: '#94a3b8',
         marginBottom: 25,
-    },
-    starsRow: {
-        flexDirection: 'row',
-        justifyContent: 'center',
-        gap: 10,
-        marginBottom: 10,
-    },
-    starTouch: {
-        padding: 5,
     },
     divider: {
         height: 1,
@@ -268,7 +234,7 @@ const styles = StyleSheet.create({
         marginBottom: 12,
     },
     textArea: {
-        backgroundColor: '#f8fafc',
+        backgroundColor: patientPastel.pageBg,
         borderRadius: 20,
         padding: 20,
         fontSize: 16,
@@ -280,7 +246,7 @@ const styles = StyleSheet.create({
         marginBottom: 25,
     },
     submitBtn: {
-        backgroundColor: '#0f172a',
+        backgroundColor: patientPastel.primaryDeep,
         paddingVertical: 18,
         borderRadius: 18,
         alignItems: 'center',
@@ -321,7 +287,7 @@ const styles = StyleSheet.create({
     modalTitle: {
         fontSize: 24,
         fontWeight: '900',
-        color: '#0f172a',
+        color: patientPastel.textHeading,
         marginBottom: 10,
         textAlign: 'center',
     },

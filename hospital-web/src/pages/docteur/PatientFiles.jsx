@@ -22,7 +22,29 @@ import {
 } from '../../components/ui/dialog';
 import { Input } from '../../components/ui/input';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '../../components/ui/tabs';
-import api from '../../lib/api';
+import api, { resolveDocumentOpenUrl } from '../../lib/api';
+
+const sanitizeMotif = (motif) => {
+    if (typeof motif !== 'string') return '';
+    return motif
+        .replace(/\[[^\]]+\]/g, ' ')
+        .replace(/\s{2,}/g, ' ')
+        .trim();
+};
+
+const isConsultationReportHistoryBlob = (entry) => {
+    const raw = String(entry || '').trim();
+    if (!raw.startsWith('{') || !raw.endsWith('}')) return false;
+    try {
+        const o = JSON.parse(raw);
+        return o?.kind === 'consultation_report';
+    } catch {
+        return false;
+    }
+};
+
+const filterAntecedentsForDisplay = (list) =>
+    (Array.isArray(list) ? list : []).filter((item) => !isConsultationReportHistoryBlob(item));
 
 export default function PatientFilesPage() {
     const [patientFiles, setPatientFiles] = useState([]);
@@ -30,6 +52,8 @@ export default function PatientFilesPage() {
     const [searchQuery, setSearchQuery] = useState('');
     const [selectedPatient, setSelectedPatient] = useState(null);
     const [showConsultationSent, setShowConsultationSent] = useState(false);
+    const [consultationRequestLoading, setConsultationRequestLoading] = useState(false);
+    const [consultationRequestError, setConsultationRequestError] = useState(null);
     const location = useLocation();
     const navigate = useNavigate();
     const fileInputRef = useRef(null);
@@ -67,6 +91,12 @@ export default function PatientFilesPage() {
             patient.patient.prenom.toLowerCase().includes(searchQuery.toLowerCase()) ||
             (patient.patient.numeroSecu || '').includes(searchQuery)
     );
+
+    const visibleDocuments = selectedPatient
+        ? (selectedPatient.documents || []).filter((d) => d.urlFichier && String(d.urlFichier).trim())
+        : [];
+
+    const antecedentsVisible = filterAntecedentsForDisplay(selectedPatient?.antecedents || []);
 
     return (
         <div className="space-y-6">
@@ -159,7 +189,15 @@ export default function PatientFilesPage() {
                 ))}
             </div>
 
-            <Dialog open={!!selectedPatient} onOpenChange={() => setSelectedPatient(null)}>
+            <Dialog
+                open={!!selectedPatient}
+                onOpenChange={(open) => {
+                    if (!open) {
+                        setSelectedPatient(null);
+                        setConsultationRequestError(null);
+                    }
+                }}
+            >
                 <DialogContent className="max-w-4xl max-h-[90vh] overflow-y-auto">
                     <DialogHeader>
                         <DialogTitle className="flex items-center gap-3">
@@ -179,11 +217,10 @@ export default function PatientFilesPage() {
 
                     {selectedPatient && (
                         <Tabs defaultValue="info" className="w-full">
-                            <TabsList className="grid w-full grid-cols-4">
+                            <TabsList className="grid w-full grid-cols-3">
                                 <TabsTrigger value="info">Informations</TabsTrigger>
                                 <TabsTrigger value="consultations">Consultations</TabsTrigger>
                                 <TabsTrigger value="documents">Documents</TabsTrigger>
-                                <TabsTrigger value="analyses">Analyses</TabsTrigger>
                             </TabsList>
 
                             <TabsContent value="info" className="space-y-4 mt-4">
@@ -240,9 +277,9 @@ export default function PatientFilesPage() {
                                         <CardTitle className="text-base">Antécédents médicaux</CardTitle>
                                     </CardHeader>
                                     <CardContent>
-                                        {selectedPatient.antecedents.length > 0 ? (
+                                        {antecedentsVisible.length > 0 ? (
                                             <div className="flex flex-wrap gap-2">
-                                                {selectedPatient.antecedents.map((antecedent, idx) => (
+                                                {antecedentsVisible.map((antecedent, idx) => (
                                                     <Badge key={idx} variant="secondary">
                                                         {antecedent}
                                                     </Badge>
@@ -257,16 +294,39 @@ export default function PatientFilesPage() {
 
                             <TabsContent value="consultations" className="space-y-4 mt-4">
                                 <div className="flex justify-between items-center">
-                                    <h3 className="font-semibold text-gray-900">
-                                        Historique des consultations
-                                    </h3>
+                                    <div>
+                                        <h3 className="font-semibold text-gray-900">
+                                            Historique des consultations
+                                        </h3>
+                                        {consultationRequestError && (
+                                            <p className="text-sm text-red-600 mt-1">{consultationRequestError}</p>
+                                        )}
+                                    </div>
                                     <Button
                                         size="sm"
                                         className="gap-2 bg-blue-600 hover:bg-blue-700"
-                                        onClick={() => setShowConsultationSent(true)}
+                                        disabled={consultationRequestLoading}
+                                        onClick={async () => {
+                                            setConsultationRequestError(null);
+                                            setConsultationRequestLoading(true);
+                                            try {
+                                                await api.post('/professionals/request-new-consultation', {
+                                                    patientId: selectedPatient.patientId
+                                                });
+                                                setShowConsultationSent(true);
+                                            } catch (e) {
+                                                const msg =
+                                                    e?.response?.data?.error ||
+                                                    e?.message ||
+                                                    'Impossible d’envoyer la demande.';
+                                                setConsultationRequestError(msg);
+                                            } finally {
+                                                setConsultationRequestLoading(false);
+                                            }
+                                        }}
                                     >
                                         <Plus className="w-4 h-4" />
-                                        Nouvelle consultation
+                                        {consultationRequestLoading ? 'Envoi…' : 'Nouvelle consultation'}
                                     </Button>
                                 </div>
 
@@ -278,7 +338,7 @@ export default function PatientFilesPage() {
                                                     <div className="flex items-start justify-between">
                                                         <div>
                                                             <CardTitle className="text-base">
-                                                                {consultation.motif}
+                                                                {sanitizeMotif(consultation.motif) || 'Consultation'}
                                                             </CardTitle>
                                                             <CardDescription className="flex items-center gap-2 mt-1">
                                                                 <Calendar className="w-4 h-4" />
@@ -328,14 +388,22 @@ export default function PatientFilesPage() {
                             <TabsContent value="documents" className="mt-4">
                                 <Card>
                                     <CardContent className="py-6">
-                                        {selectedPatient.documents?.length > 0 ? (
+                                        {visibleDocuments.length > 0 ? (
                                             <div className="space-y-3">
-                                                {selectedPatient.documents.map((doc) => (
-                                                    <div key={doc.id} className="border border-gray-200 rounded-xl p-3">
+                                                {visibleDocuments.map((doc) => (
+                                                    <div key={String(doc.id)} className="border border-gray-200 rounded-xl p-3">
                                                         <p className="font-semibold text-gray-900">{doc.titre}</p>
                                                         <p className="text-xs text-gray-500 mt-1">{doc.type || 'Document médical'}</p>
+                                                        {doc.rdvDate && (
+                                                            <p className="text-[10px] text-gray-400 mt-1 uppercase tracking-wide">
+                                                                Demande du{' '}
+                                                                {new Date(doc.rdvDate).toLocaleDateString('fr-FR', {
+                                                                    dateStyle: 'short'
+                                                                })}
+                                                            </p>
+                                                        )}
                                                         <a
-                                                            href={doc.urlFichier}
+                                                            href={resolveDocumentOpenUrl(doc.urlFichier)}
                                                             target="_blank"
                                                             rel="noreferrer"
                                                             className="text-sm text-blue-600 hover:underline mt-2 inline-block"
@@ -355,14 +423,6 @@ export default function PatientFilesPage() {
                                 </Card>
                             </TabsContent>
 
-                            <TabsContent value="analyses" className="mt-4">
-                                <Card>
-                                    <CardContent className="py-12 text-center">
-                                        <FileText className="w-12 h-12 text-gray-400 mx-auto mb-2" />
-                                        <p className="text-gray-600">Aucune analyse disponible</p>
-                                    </CardContent>
-                                </Card>
-                            </TabsContent>
                         </Tabs>
                     )}
                 </DialogContent>
@@ -383,7 +443,8 @@ export default function PatientFilesPage() {
                             {selectedPatient?.patient.prenom} {selectedPatient?.patient.nom}
                         </p>
                         <p className="text-gray-500 text-sm leading-relaxed mb-8">
-                            a été envoyée avec succès. Le patient sera notifié dès que possible.
+                            a été transmise au secrétariat pour planification. Le patient recevra une
+                            notification.
                         </p>
 
                         <button

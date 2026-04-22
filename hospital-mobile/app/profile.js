@@ -1,17 +1,54 @@
 
-import { Feather, Ionicons } from '@expo/vector-icons';
+import { LinearGradient } from 'expo-linear-gradient';
 import { Stack, useRouter } from 'expo-router';
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Alert, Dimensions, Modal, SafeAreaView, ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
-import { theme } from '../theme';
+import { dashboardVibe, patientPastel, theme } from '../theme';
 import { useApp } from './AppContext';
 import CustomCalendar from './components/CustomCalendar';
 import HeaderSidebar from './components/HeaderSidebar';
 
 const { width } = Dimensions.get('window');
 
-const InfoField = ({ label, value, icon, iconType = 'feather', isEditing, isRTL, t, multiline = false, onChangeText, required = false, error = false, editable = true, keyboardType = 'default' }) => (
+const isRawConsultationReportEntry = (entry) => {
+    const raw = String(entry || '').trim();
+    if (!raw || !raw.startsWith('{') || !raw.endsWith('}')) return false;
+    try {
+        const parsed = JSON.parse(raw);
+        return parsed?.kind === 'consultation_report';
+    } catch {
+        return false;
+    }
+};
+
+const cleanMedicalHistory = (list) =>
+    (Array.isArray(list) ? list : []).filter((item) => !isRawConsultationReportEntry(item));
+
+const extractConsultationReportSummaries = (list) => {
+    const out = [];
+    for (const entry of Array.isArray(list) ? list : []) {
+        if (!isRawConsultationReportEntry(entry)) continue;
+        try {
+            const p = JSON.parse(String(entry).trim());
+            const d = p.createdAt ? new Date(p.createdAt) : null;
+            const dateStr = d && !Number.isNaN(d.getTime()) ? d.toLocaleDateString('fr-FR') : '';
+            const doctor = String(p.medecin || '').trim();
+            const secure = Boolean(p.sentSecure);
+            out.push({
+                id: String(p.id || `${dateStr}-${out.length}`),
+                dateStr,
+                doctor,
+                secure,
+                preview: String(p.summary || '').trim().slice(0, 120)
+            });
+        } catch {
+        }
+    }
+    return out;
+};
+
+const InfoField = ({ label, value, isEditing, isRTL, t, multiline = false, onChangeText, required = false, error = false, editable = true, keyboardType = 'default' }) => (
     <View style={styles.infoField}>
         <View style={[styles.labelRow, isRTL && { flexDirection: 'row-reverse' }]}>
             <Text style={[styles.infoLabel, isRTL && { textAlign: 'right' }]}>{label}</Text>
@@ -22,11 +59,6 @@ const InfoField = ({ label, value, icon, iconType = 'feather', isEditing, isRTL,
             isRTL && { flexDirection: 'row-reverse' },
             isEditing && error && { borderColor: '#ef4444', borderBottomWidth: 2 }
         ]}>
-            {icon && (
-                iconType === 'feather' ?
-                    <Feather name={icon} size={18} color={isEditing && error ? "#ef4444" : "#94a3b8"} style={isRTL ? { marginLeft: 10 } : { marginRight: 10 }} /> :
-                    <Ionicons name={icon} size={18} color={isEditing && error ? "#ef4444" : "#94a3b8"} style={isRTL ? { marginLeft: 10 } : { marginRight: 10 }} />
-            )}
             {isEditing ? (
                 <TextInput
                     style={[styles.input, isRTL && { textAlign: 'right' }, { flex: 1 }]}
@@ -38,7 +70,7 @@ const InfoField = ({ label, value, icon, iconType = 'feather', isEditing, isRTL,
                     keyboardType={keyboardType}
                 />
             ) : (
-                <Text style={[styles.valueText, isRTL && { textAlign: 'right' }, { flex: 1 }]}>{value || t('notSpecified')}</Text>
+                <Text selectable style={[styles.valueText, isRTL && { textAlign: 'right' }, { flex: 1 }]}>{value || t('notSpecified')}</Text>
             )}
         </View>
         {isEditing && error && <Text style={[styles.errorText, isRTL && { textAlign: 'right' }]}>{error}</Text>}
@@ -52,16 +84,27 @@ const Profile = () => {
     const [isEditing, setIsEditing] = useState(false);
     const [sidebarVisible, setSidebarVisible] = useState(false);
     const [bloodModalVisible, setBloodModalVisible] = useState(false);
-    const [editData, setEditData] = useState({ ...patient });
+    const [editData, setEditData] = useState({
+        ...patient,
+        history: cleanMedicalHistory(patient.history)
+    });
     const [activeModal, setActiveModal] = useState(null);
     const [newTagValue, setNewTagValue] = useState('');
     const [errors, setErrors] = useState({});
     const [showDateModal, setShowDateModal] = useState(false);
     const isRTL = i18n.language === 'ar';
 
+    const consultationRows = useMemo(
+        () => (!isEditing ? extractConsultationReportSummaries(patient.history) : []),
+        [isEditing, patient.history]
+    );
+
     useEffect(() => {
         if (!isEditing) {
-            setEditData({ ...patient });
+            setEditData({
+                ...patient,
+                history: cleanMedicalHistory(patient.history)
+            });
         }
     }, [patient, isEditing]);
 
@@ -81,16 +124,23 @@ const Profile = () => {
 
     const handleEditToggle = () => {
         if (isEditing) {
-            setEditData({ ...patient });
+            setEditData({
+                ...patient,
+                history: cleanMedicalHistory(patient.history)
+            });
             setErrors({});
         } else {
-            setEditData({ ...patient });
+            setEditData({
+                ...patient,
+                history: cleanMedicalHistory(patient.history)
+            });
         }
         setIsEditing(!isEditing);
     };
 
     const handleSave = () => {
         const newErrors = {};
+        const emergency = editData.emergencyContact || {};
         if (!editData.lastName?.trim()) newErrors.lastName = t('fieldRequired');
         if (!editData.firstName?.trim()) newErrors.firstName = t('fieldRequired');
         if (!editData.birthDate?.trim()) newErrors.birthDate = t('fieldRequired');
@@ -103,13 +153,13 @@ const Profile = () => {
         if (!editData.bloodGroup?.trim()) newErrors.bloodGroup = t('fieldRequired');
         if (!editData.socialSecurity?.trim()) newErrors.socialSecurity = t('fieldRequired');
 
-        if (!editData.emergencyContact.name?.trim()) newErrors.emergencyName = t('fieldRequired');
-        if (!editData.emergencyContact.relation?.trim()) newErrors.emergencyRelation = t('fieldRequired');
-        if (!editData.emergencyContact.phone?.trim()) newErrors.emergencyPhone = t('fieldRequired');
-        else if (!validatePhone(editData.emergencyContact.phone)) newErrors.emergencyPhone = t('invalidPhone');
+        if (!emergency.name?.trim()) newErrors.emergencyName = t('fieldRequired');
+        if (!emergency.relation?.trim()) newErrors.emergencyRelation = t('fieldRequired');
+        if (!emergency.phone?.trim()) newErrors.emergencyPhone = t('fieldRequired');
+        else if (!validatePhone(emergency.phone)) newErrors.emergencyPhone = t('invalidPhone');
 
-        if (!editData.emergencyContact.email?.trim()) newErrors.emergencyEmail = t('fieldRequired');
-        else if (!validateEmail(editData.emergencyContact.email)) newErrors.emergencyEmail = t('invalidEmail');
+        if (!emergency.email?.trim()) newErrors.emergencyEmail = t('fieldRequired');
+        else if (!validateEmail(emergency.email)) newErrors.emergencyEmail = t('invalidEmail');
 
         if (Object.keys(newErrors).length > 0) {
             setErrors(newErrors);
@@ -117,7 +167,10 @@ const Profile = () => {
             return;
         }
 
-        setPatient({ ...editData });
+        setPatient({
+            ...editData,
+            history: cleanMedicalHistory(editData.history)
+        });
         setIsEditing(false);
         setErrors({});
     };
@@ -164,14 +217,7 @@ const Profile = () => {
                     <Text style={[styles.headerMainSubtitle, isRTL && { textAlign: 'right' }]}>{t('personalInfoProfileDesc')}</Text>
                 </View>
                 <TouchableOpacity onPress={handleEditToggle} style={styles.modifyBtn}>
-                    {isEditing ? (
-                        <Text style={styles.modifyBtnText}>{t('cancel')}</Text>
-                    ) : (
-                        <>
-                            <Feather name="edit" size={16} color="#fff" style={{ marginRight: 8 }} />
-                            <Text style={styles.modifyBtnText}>{t('modify')}</Text>
-                        </>
-                    )}
+                    <Text style={styles.modifyBtnText}>{isEditing ? t('cancel') : t('modify')}</Text>
                 </TouchableOpacity>
             </View>
 
@@ -191,22 +237,17 @@ const Profile = () => {
 
                     <View style={styles.heroInfoList}>
                         <View style={[styles.heroInfoRow, isRTL && { flexDirection: 'row-reverse' }]}>
-                            <Feather name="user" size={16} color="#94a3b8" />
-                            <Text style={[styles.heroInfoText, isRTL && { textAlign: 'right', marginRight: 0, marginLeft: 12 }]}>
+                            <Text style={[styles.heroInfoText, isRTL && { textAlign: 'right' }]}>
                                 {t('patientSince')} {patient.patientSince}
                             </Text>
                         </View>
                         <View style={[styles.heroInfoRow, isRTL && { flexDirection: 'row-reverse' }]}>
-                            <Feather name="calendar" size={16} color="#94a3b8" />
-                            <Text style={[styles.heroInfoText, isRTL && { textAlign: 'right', marginRight: 0, marginLeft: 12 }]}>
+                            <Text style={[styles.heroInfoText, isRTL && { textAlign: 'right' }]}>
                                 {t('bornOn')} {patient.birthDate}
                             </Text>
                         </View>
                         <View style={[styles.heroInfoRow, isRTL && { flexDirection: 'row-reverse' }]}>
-                            <Ionicons name="water-outline" size={16} color="#ef4444" />
-                            <Text style={[styles.heroInfoText, isRTL && { textAlign: 'right', marginRight: 0, marginLeft: 12 }]}>
-                                {patient.bloodGroup}
-                            </Text>
+                            <Text style={[styles.heroInfoText, isRTL && { textAlign: 'right' }]}>{patient.bloodGroup}</Text>
                         </View>
                     </View>
                 </View>
@@ -219,13 +260,13 @@ const Profile = () => {
                     <InfoField label={t('firstName')} value={isEditing ? editData.firstName : patient.firstName} isEditing={isEditing} isRTL={isRTL} t={t} onChangeText={(text) => handleInputChange('firstName', text)} required error={errors.firstName} />
                     {isEditing ? (
                         <TouchableOpacity onPress={() => setShowDateModal(true)}>
-                            <InfoField label={t('birthDate')} value={editData.birthDate} isEditing={true} isRTL={isRTL} t={t} icon="calendar" required error={errors.birthDate} />
+                            <InfoField label={t('birthDate')} value={editData.birthDate} isEditing={true} isRTL={isRTL} t={t} required error={errors.birthDate} />
                         </TouchableOpacity>
                     ) : (
-                        <InfoField label={t('birthDate')} value={patient.birthDate} isEditing={false} isRTL={isRTL} t={t} icon="calendar" required error={errors.birthDate} />
+                        <InfoField label={t('birthDate')} value={patient.birthDate} isEditing={false} isRTL={isRTL} t={t} required error={errors.birthDate} />
                     )}
-                    <InfoField label={t('email')} value={isEditing ? editData.email : patient.email} isEditing={isEditing} isRTL={isRTL} t={t} onChangeText={(text) => handleInputChange('email', text)} icon="mail" required error={errors.email} />
-                    <InfoField label={t('phone')} value={isEditing ? editData.phone : patient.phone} isEditing={isEditing} isRTL={isRTL} t={t} onChangeText={(text) => handleInputChange('phone', text)} icon="phone" keyboardType="phone-pad" required error={errors.phone} />
+                    <InfoField label={t('email')} value={isEditing ? editData.email : patient.email} isEditing={isEditing} isRTL={isRTL} t={t} onChangeText={(text) => handleInputChange('email', text)} required error={errors.email} />
+                    <InfoField label={t('phone')} value={isEditing ? editData.phone : patient.phone} isEditing={isEditing} isRTL={isRTL} t={t} onChangeText={(text) => handleInputChange('phone', text)} keyboardType="phone-pad" required error={errors.phone} />
                 </View>
 
                 <View style={styles.card}>
@@ -234,22 +275,19 @@ const Profile = () => {
 
                     {isEditing ? (
                         <TouchableOpacity onPress={() => setBloodModalVisible(true)}>
-                            <InfoField label={t('bloodGroup')} value={editData.bloodGroup} isEditing={true} isRTL={isRTL} t={t} icon="water-outline" iconType="ionicons" required error={errors.bloodGroup} editable={false} />
+                            <InfoField label={t('bloodGroup')} value={editData.bloodGroup} isEditing={true} isRTL={isRTL} t={t} required error={errors.bloodGroup} editable={false} />
                         </TouchableOpacity>
                     ) : (
-                        <InfoField label={t('bloodGroup')} value={patient.bloodGroup} isEditing={false} isRTL={isRTL} t={t} icon="water-outline" iconType="ionicons" required error={errors.bloodGroup} />
+                        <InfoField label={t('bloodGroup')} value={patient.bloodGroup} isEditing={false} isRTL={isRTL} t={t} required error={errors.bloodGroup} />
                     )}
-                    <InfoField label={t('socialSecurity')} value={isEditing ? editData.socialSecurity : patient.socialSecurity} isEditing={isEditing} isRTL={isRTL} t={t} onChangeText={(text) => handleInputChange('socialSecurity', text)} icon="shield" required error={errors.socialSecurity} />
+                    <InfoField label={t('socialSecurity')} value={isEditing ? editData.socialSecurity : patient.socialSecurity} isEditing={isEditing} isRTL={isRTL} t={t} onChangeText={(text) => handleInputChange('socialSecurity', text)} required error={errors.socialSecurity} />
 
                     <View style={styles.infoField}>
-                        <View style={[styles.rowWithIcon, isRTL && { flexDirection: 'row-reverse' }]}>
-                            <Feather name="alert-triangle" size={16} color="#ef4444" style={isRTL ? { marginLeft: 8 } : { marginRight: 8 }} />
-                            <Text style={[styles.infoLabel, { marginBottom: 0 }]}>{t('allergies')}</Text>
-                        </View>
+                        <Text style={[styles.infoLabel, { marginBottom: 10 }, isRTL && { textAlign: 'right' }]}>{t('allergies')}</Text>
                         <View style={[styles.tagContainer, isRTL && { flexDirection: 'row-reverse' }, { marginTop: 10 }]}>
                             {((isEditing ? editData.allergies : patient.allergies) || []).map((tag, i) => (
                                 <View key={i} style={styles.tagAllergy}>
-                                    <Text style={styles.tagAllergyText}>{t(tag)}</Text>
+                                    <Text selectable style={styles.tagAllergyText}>{t(tag)}</Text>
                                     {isEditing && (
                                         <TouchableOpacity onPress={() => handleRemoveTag('allergies', i)} style={styles.removeTagBtn}>
                                             <Text style={styles.removeTagText}>×</Text>
@@ -259,21 +297,18 @@ const Profile = () => {
                             ))}
                             {isEditing && (
                                 <TouchableOpacity onPress={() => setActiveModal('allergies')} style={styles.addTagBtn}>
-                                    <Feather name="plus" size={16} color="#0f172a" />
+                                    <Text style={styles.addTagBtnText}>+</Text>
                                 </TouchableOpacity>
                             )}
                         </View>
                     </View>
 
                     <View style={styles.infoField}>
-                        <View style={[styles.rowWithIcon, isRTL && { flexDirection: 'row-reverse' }]}>
-                            <Feather name="file-text" size={16} color="#3b82f6" style={isRTL ? { marginLeft: 8 } : { marginRight: 8 }} />
-                            <Text style={[styles.infoLabel, { marginBottom: 0 }]}>{t('medicalHistory')}</Text>
-                        </View>
+                        <Text style={[styles.infoLabel, { marginBottom: 10 }, isRTL && { textAlign: 'right' }]}>{t('medicalHistory')}</Text>
                         <View style={[styles.tagContainer, isRTL && { flexDirection: 'row-reverse' }, { marginTop: 10 }]}>
-                            {((isEditing ? editData.history : patient.history) || []).map((tag, i) => (
+                            {cleanMedicalHistory(isEditing ? editData.history : patient.history).map((tag, i) => (
                                 <View key={i} style={styles.tagHistory}>
-                                    <Text style={styles.tagHistoryText}>{t(tag)}</Text>
+                                    <Text selectable style={styles.tagHistoryText}>{t(tag)}</Text>
                                     {isEditing && (
                                         <TouchableOpacity onPress={() => handleRemoveTag('history', i)} style={styles.removeTagBtn}>
                                             <Text style={styles.removeTagTextHistory}>×</Text>
@@ -283,11 +318,47 @@ const Profile = () => {
                             ))}
                             {isEditing && (
                                 <TouchableOpacity onPress={() => setActiveModal('history')} style={styles.addTagBtn}>
-                                    <Feather name="plus" size={16} color="#0f172a" />
+                                    <Text style={styles.addTagBtnText}>+</Text>
                                 </TouchableOpacity>
                             )}
                         </View>
                     </View>
+
+                    {!isEditing && consultationRows.length > 0 ? (
+                        <View style={[styles.infoField, { marginTop: 14 }]}>
+                            <Text style={[styles.infoLabel, { marginBottom: 8 }, isRTL && { textAlign: 'right' }]}>
+                                {t('consultationReportsSection')}
+                            </Text>
+                            <Text
+                                style={[
+                                    styles.sectionSubtitle,
+                                    { marginBottom: 10, fontSize: 12 },
+                                    isRTL && { textAlign: 'right' }
+                                ]}
+                            >
+                                {t('consultationReportsSecureHint')}
+                            </Text>
+                            {consultationRows.map((row) => (
+                                <View
+                                    key={row.id}
+                                    style={[
+                                        styles.tagHistory,
+                                        { alignSelf: 'stretch', marginBottom: 8, paddingVertical: 10, paddingHorizontal: 12 }
+                                    ]}
+                                >
+                                    <Text selectable style={[styles.tagHistoryText, { lineHeight: 20 }]}>
+                                        {(row.dateStr ? `${row.dateStr} · ` : '') + (row.doctor ? `${row.doctor} · ` : '')}
+                                        {row.secure ? t('consultationReportsSecureLabel') : row.preview || t('consultationReportsNoPreview')}
+                                    </Text>
+                                </View>
+                            ))}
+                            <TouchableOpacity onPress={() => router.push('/documents')} activeOpacity={0.85}>
+                                <Text style={[styles.linkToDocuments, isRTL && { textAlign: 'right' }]}>
+                                    {t('consultationReportsOpenDocuments')} →
+                                </Text>
+                            </TouchableOpacity>
+                        </View>
+                    ) : null}
                 </View>
 
                 <View style={styles.card}>
@@ -321,7 +392,6 @@ const Profile = () => {
                         isRTL={isRTL}
                         t={t}
                         onChangeText={(text) => handleInputChange('phone', text, 'emergencyContact')}
-                        icon="phone"
                         keyboardType="phone-pad"
                         required
                         error={errors.emergencyPhone}
@@ -333,7 +403,6 @@ const Profile = () => {
                         isRTL={isRTL}
                         t={t}
                         onChangeText={(text) => handleInputChange('email', text, 'emergencyContact')}
-                        icon="mail"
                         keyboardType="email-address"
                         required
                         error={errors.emergencyEmail}
@@ -342,8 +411,15 @@ const Profile = () => {
 
                 {isEditing && (
                     <View style={styles.actions}>
-                        <TouchableOpacity style={styles.saveBtn} onPress={handleSave}>
-                            <Text style={styles.saveBtnText}>{t('saveChanges')}</Text>
+                        <TouchableOpacity onPress={handleSave} activeOpacity={0.9} style={{ borderRadius: 100, overflow: 'hidden' }}>
+                            <LinearGradient
+                                colors={dashboardVibe.primaryCtaGradient}
+                                start={{ x: 0, y: 0 }}
+                                end={{ x: 1, y: 0 }}
+                                style={styles.saveBtnGradient}
+                            >
+                                <Text style={styles.saveBtnText}>{t('saveChanges')}</Text>
+                            </LinearGradient>
                         </TouchableOpacity>
                     </View>
                 )}
@@ -437,20 +513,20 @@ const Profile = () => {
 const styles = StyleSheet.create({
     container: {
         flex: 1,
-        backgroundColor: '#f8fafc',
+        backgroundColor: patientPastel.pageBg,
     },
     mainHeader: {
         paddingHorizontal: 20,
         paddingTop: 20,
         paddingBottom: 20,
-        backgroundColor: '#f8fafc',
+        backgroundColor: patientPastel.pageBg,
         flexDirection: 'row',
         alignItems: 'center',
     },
     headerMainTitle: {
         fontSize: 32,
         fontWeight: '900',
-        color: '#0f172a',
+        color: patientPastel.textHeading,
     },
     headerMainSubtitle: {
         fontSize: 14,
@@ -460,7 +536,7 @@ const styles = StyleSheet.create({
     modifyBtn: {
         flexDirection: 'row',
         alignItems: 'center',
-        backgroundColor: '#0f172a',
+        backgroundColor: patientPastel.primaryDeep,
         paddingHorizontal: 16,
         paddingVertical: 10,
         borderRadius: 12,
@@ -488,7 +564,7 @@ const styles = StyleSheet.create({
         width: 120,
         height: 120,
         borderRadius: 60,
-        backgroundColor: '#2563eb',
+        backgroundColor: patientPastel.primary,
         justifyContent: 'center',
         alignItems: 'center',
         marginBottom: 20,
@@ -525,7 +601,6 @@ const styles = StyleSheet.create({
         alignItems: 'center',
     },
     heroInfoText: {
-        marginLeft: 12,
         fontSize: 15,
         color: '#475569',
         fontWeight: '500',
@@ -567,12 +642,12 @@ const styles = StyleSheet.create({
     inputWrapper: {
         flexDirection: 'row',
         alignItems: 'center',
-        backgroundColor: '#f8fafc',
+        backgroundColor: patientPastel.inputBg,
         borderRadius: 14,
         paddingHorizontal: 16,
         paddingVertical: 14,
         borderWidth: 1,
-        borderColor: '#f1f5f9',
+        borderColor: patientPastel.borderInput,
     },
     input: {
         fontSize: 15,
@@ -599,11 +674,6 @@ const styles = StyleSheet.create({
         color: '#e11d48',
         fontWeight: '700',
         fontSize: 16,
-    },
-    rowWithIcon: {
-        flexDirection: 'row',
-        alignItems: 'center',
-        marginBottom: 10,
     },
     tagContainer: {
         flexDirection: 'row',
@@ -641,12 +711,18 @@ const styles = StyleSheet.create({
         fontWeight: '600',
     },
     addTagBtn: {
-        backgroundColor: '#e2e8f0',
-        padding: 6,
+        backgroundColor: '#e0e7ff',
+        paddingHorizontal: 12,
+        paddingVertical: 6,
         borderRadius: 8,
         justifyContent: 'center',
         alignItems: 'center',
         marginLeft: 4,
+    },
+    addTagBtnText: {
+        fontSize: 18,
+        fontWeight: '800',
+        color: patientPastel.textHeading,
     },
     removeTagBtn: {
         position: 'absolute',
@@ -686,15 +762,14 @@ const styles = StyleSheet.create({
         borderRadius: 6,
     },
     bloodOptionText: {
-        color: '#0f172a',
+        color: patientPastel.textHeading,
         fontWeight: '600',
     },
     actions: {
         marginTop: 10,
         marginBottom: 40,
     },
-    saveBtn: {
-        backgroundColor: '#0f172a',
+    saveBtnGradient: {
         paddingVertical: 18,
         borderRadius: 16,
         alignItems: 'center',
@@ -722,12 +797,12 @@ const styles = StyleSheet.create({
         marginBottom: 15,
     },
     modalInput: {
-        backgroundColor: '#f8fafc',
+        backgroundColor: patientPastel.inputBg,
         borderRadius: 12,
         padding: 15,
         fontSize: 16,
         borderWidth: 1,
-        borderColor: '#f1f5f9',
+        borderColor: patientPastel.borderInput,
         marginBottom: 20,
     },
     errorText: {
@@ -747,7 +822,7 @@ const styles = StyleSheet.create({
         padding: 10,
     },
     modalConfirm: {
-        backgroundColor: '#2563eb',
+        backgroundColor: patientPastel.primary,
         paddingHorizontal: 20,
         paddingVertical: 10,
         borderRadius: 10,
@@ -763,7 +838,7 @@ const styles = StyleSheet.create({
         paddingHorizontal: 20,
         paddingTop: 10,
         paddingBottom: 10,
-        backgroundColor: theme.colors.background,
+        backgroundColor: patientPastel.pageBg,
     },
     headerCenter: {
         flex: 1,
@@ -772,7 +847,7 @@ const styles = StyleSheet.create({
     appHeaderTitle: {
         fontSize: 18,
         fontWeight: '800',
-        color: '#0f172a',
+        color: patientPastel.textHeading,
         letterSpacing: -0.5,
     },
     appHeaderSubtitle: {
@@ -784,6 +859,12 @@ const styles = StyleSheet.create({
         width: 44,
         height: 44,
         justifyContent: 'center',
+    },
+    linkToDocuments: {
+        marginTop: 4,
+        fontSize: 14,
+        fontWeight: '700',
+        color: patientPastel.primaryDeep,
     },
 });
 

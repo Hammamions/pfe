@@ -5,14 +5,17 @@
 @custom-variant dark (&:is(.dark *));
 
 :root {
-  --primary: oklch(0.205 0 0);
-  --primary-hover: #1d4ed8;
+  --primary: #6366f1;
+  --primary-hover: #4f46e5;
   --secondary: oklch(0.97 0 0);
-  --background: oklch(1 0 0);
+  --background: #f5f3ff;
   --surface: #ffffff;
-  --text-main: #1e293b;
-  --text-muted: #64748b;
-  --border: oklch(0.922 0 0);
+  --text-main: #3730a3;
+  --text-muted: #6b7280;
+  --border: rgba(165, 180, 252, 0.45);
+  --hospital-gradient-cta: linear-gradient(135deg, #60a5fa 0%, #6366f1 50%, #a78bfa 100%);
+  --hospital-screen: linear-gradient(160deg, #fdfcfa 0%, #f0f9ff 45%, #faf5ff 100%);
+  --hospital-hero: linear-gradient(135deg, #dbeafe 0%, #e0e7ff 35%, #ede9fe 70%, #fce7f3 100%);
   --danger: #dc2626;
   --success: #16a34a;
   --warning: #f59e0b;
@@ -32,7 +35,7 @@
   --card-foreground: oklch(0.145 0 0);
   --popover: oklch(1 0 0);
   --popover-foreground: oklch(0.145 0 0);
-  --primary-foreground: oklch(0.985 0 0);
+  --primary-foreground: #ffffff;
   --secondary-foreground: oklch(0.205 0 0);
   --muted: oklch(0.97 0 0);
   --muted-foreground: oklch(0.556 0 0);
@@ -40,7 +43,7 @@
   --accent-foreground: oklch(0.205 0 0);
   --destructive: oklch(0.577 0.245 27.325);
   --input: oklch(0.922 0 0);
-  --ring: oklch(0.708 0 0);
+  --ring: #a5b4fc;
   --chart-1: oklch(0.646 0.222 41.116);
   --chart-2: oklch(0.6 0.118 184.704);
   --chart-3: oklch(0.398 0.07 227.392);
@@ -64,6 +67,9 @@ body {
   margin: 0;
   min-width: 320px;
   min-height: 100vh;
+  background-color: var(--background);
+  -webkit-text-size-adjust: 100%;
+  text-size-adjust: 100%;
 }
 
 #root {
@@ -72,7 +78,7 @@ body {
 }
 
 .auth-page {
-  background: linear-gradient(135deg, #eff6ff 0%, #dbeafe 100%);
+  background: var(--hospital-screen);
   min-height: 100vh;
   display: flex;
   align-items: center;
@@ -93,7 +99,7 @@ body {
 .logo-icon-large {
   width: 100px;
   height: 100px;
-  background: var(--primary);
+  background: var(--hospital-gradient-cta);
   border-radius: 20px;
   display: inline-flex;
   align-items: center;
@@ -140,15 +146,16 @@ body {
 
 .auth-tab.active {
   background: white;
-  color: var(--text-main);
-  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.05);
+  color: #3730a3;
+  box-shadow: 0 2px 8px rgba(99, 102, 241, 0.12);
 }
 
 .auth-card-modern {
-  background: white;
+  background: rgba(255, 255, 255, 0.92);
+  border: 1px solid rgba(165, 180, 252, 0.45);
   border-radius: 16px;
   padding: 2.5rem;
-  box-shadow: 0 4px 6px rgba(0, 0, 0, 0.05);
+  box-shadow: 0 8px 32px rgba(99, 102, 241, 0.08);
 }
 
 .auth-card-header {
@@ -192,9 +199,9 @@ body {
 
 .form-input-modern:focus {
   outline: none;
-  border-color: var(--primary);
-  background: white;
-  box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.1);
+  border-color: #818cf8;
+  background: #fffdfb;
+  box-shadow: 0 0 0 3px rgba(99, 102, 241, 0.18);
 }
 
 .form-row-between {
@@ -221,14 +228,14 @@ body {
 
 .link-primary {
   font-size: 0.875rem;
-  color: var(--primary);
+  color: #4f46e5;
   font-weight: 500;
 }
 
 .btn-primary-modern {
   width: 100%;
   padding: 0.875rem;
-  background: #0f172a;
+  background: var(--hospital-gradient-cta);
   color: white;
   border: none;
   border-radius: var(--radius);
@@ -236,12 +243,13 @@ body {
   font-weight: 600;
   cursor: pointer;
   transition: all 0.2s;
+  box-shadow: 0 4px 14px rgba(99, 102, 241, 0.35);
 }
 
 .btn-primary-modern:hover {
-  background: #1e293b;
+  filter: brightness(1.05);
   transform: translateY(-1px);
-  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+  box-shadow: 0 8px 22px rgba(99, 102, 241, 0.4);
 }
 
 .auth-footer-text {
@@ -254,12 +262,13 @@ body {
 
 .dashboard-wrapper {
   min-height: 100vh;
-  background: #f8fafc;
+  background: var(--hospital-screen);
 }
 
 .dashboard-header {
-  background: white;
-  border-bottom: 1px solid var(--border);
+  background: rgba(255, 255, 255, 0.88);
+  backdrop-filter: blur(10px);
+  border-bottom: 1px solid rgba(165, 180, 252, 0.35);
   padding: 1rem 2rem;
   display: flex;
   justify-content: space-between;
@@ -310,8 +319,8 @@ body {
 }
 
 .navigation-link.active {
-  background: #eff6ff;
-  color: var(--primary);
+  background: #e0e7ff;
+  color: #4338ca;
   filter: grayscale(0%);
 }
 
@@ -426,7 +435,7 @@ body {
 
 .section-link {
   font-size: 0.875rem;
-  color: var(--primary);
+  color: #4f46e5;
   font-weight: 500;
 }
 
@@ -449,7 +458,7 @@ body {
 }
 
 .appointment-date {
-  background: #dbeafe;
+  background: linear-gradient(145deg, #dbeafe 0%, #e0e7ff 100%);
   border-radius: 8px;
   padding: 0.75rem;
   text-align: center;
@@ -459,13 +468,13 @@ body {
 .date-number {
   font-size: 1.5rem;
   font-weight: 700;
-  color: var(--primary);
+  color: #4338ca;
   line-height: 1;
 }
 
 .date-month {
   font-size: 0.75rem;
-  color: var(--primary);
+  color: #6366f1;
   font-weight: 500;
   margin-top: 0.25rem;
 }
@@ -565,8 +574,8 @@ body {
 }
 
 .notification-item.info {
-  background: #eff6ff;
-  border-left-color: var(--primary);
+  background: #eef2ff;
+  border-left-color: #6366f1;
 }
 
 .notification-item.reminder {
@@ -623,13 +632,14 @@ body {
   align-items: center;
   gap: 0.5rem;
   padding: 0.625rem 1.25rem;
-  color: rgb(255, 249, 249);
+  color: #fff;
   border: none;
-  border-radius: 8px;
+  border-radius: 10px;
   font-weight: 600;
   cursor: pointer;
   transition: all 0.2s;
-  background-color: rgb(0, 0, 0);
+  background: var(--hospital-gradient-cta);
+  box-shadow: 0 4px 12px rgba(99, 102, 241, 0.3);
 }
 
 .profile-grid {
@@ -650,7 +660,7 @@ body {
 .profile-avatar-large {
   width: 120px;
   height: 120px;
-  background: #2563eb;
+  background: var(--hospital-gradient-cta);
   color: white;
   border-radius: 50%;
   display: flex;
@@ -1250,8 +1260,8 @@ body {
 .profile-edit-input:focus {
   outline: none;
   background: white;
-  border-color: var(--primary);
-  box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.1);
+  border-color: #818cf8;
+  box-shadow: 0 0 0 3px rgba(99, 102, 241, 0.15);
 }
 
 .input-with-icon {
@@ -1299,17 +1309,18 @@ body {
 
 .btn-save {
   padding: 0.75rem 2rem;
-  background: #0f172a;
+  background: var(--hospital-gradient-cta);
   color: white;
   border: none;
-  border-radius: 8px;
+  border-radius: 10px;
   font-weight: 600;
   cursor: pointer;
   transition: all 0.2s;
+  box-shadow: 0 4px 12px rgba(99, 102, 241, 0.28);
 }
 
 .btn-save:hover {
-  background: #1e293b;
+  filter: brightness(1.05);
 }
 
 .btn-cancel-large {
@@ -1354,23 +1365,24 @@ body {
 }
 
 .btn-new-appointment {
-  background: linear-gradient(135deg, #0f172a 0%, #1e293b 100%);
+  background: var(--hospital-gradient-cta);
   color: white;
   padding: 0.875rem 1.75rem;
   border: none;
-  border-radius: 12px;
+  border-radius: 999px;
   font-weight: 600;
   cursor: pointer;
   display: flex;
   align-items: center;
   gap: 0.625rem;
   transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
-  box-shadow: 0 4px 6px -1px rgba(15, 23, 42, 0.2);
+  box-shadow: 0 4px 16px rgba(99, 102, 241, 0.35);
 }
 
 .btn-new-appointment:hover {
   transform: translateY(-2px);
-  box-shadow: 0 10px 15px -3px rgba(15, 23, 42, 0.3);
+  box-shadow: 0 10px 24px rgba(99, 102, 241, 0.4);
+  filter: brightness(1.03);
 }
 
 .appointment-tabs {
@@ -1397,8 +1409,8 @@ body {
 
 .tab-item.active {
   background: white;
-  color: #0f172a;
-  box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.05), 0 2px 4px -1px rgba(0, 0, 0, 0.03);
+  color: #3730a3;
+  box-shadow: 0 4px 12px rgba(99, 102, 241, 0.12);
 }
 
 .appointments-grid {
@@ -1423,7 +1435,7 @@ body {
 }
 
 .apt-date-block {
-  background: #f0f7ff;
+  background: linear-gradient(160deg, #dbeafe 0%, #e9d5ff 100%);
   width: 100px;
   display: flex;
   flex-direction: column;
@@ -1435,14 +1447,14 @@ body {
 .apt-day {
   font-size: 1.75rem;
   font-weight: 800;
-  color: #2563eb;
+  color: #4338ca;
   line-height: 1;
 }
 
 .apt-month {
   font-size: 0.875rem;
   font-weight: 600;
-  color: #60a5fa;
+  color: #6366f1;
   margin-top: 0.25rem;
   text-transform: capitalize;
 }
@@ -1466,8 +1478,8 @@ body {
   display: inline-block;
   font-size: 0.75rem;
   font-weight: 700;
-  color: #2563eb;
-  background: #eff6ff;
+  color: #4338ca;
+  background: #e0e7ff;
   padding: 0.25rem 0.75rem;
   border-radius: 20px;
   margin-bottom: 1rem;
@@ -1583,7 +1595,7 @@ body {
 }
 
 .date-time-banner {
-  background: #f0f7ff;
+  background: linear-gradient(135deg, #eef2ff 0%, #faf5ff 100%);
   margin: 0 2.5rem 2rem;
   padding: 1.5rem;
   border-radius: 16px;
@@ -1609,7 +1621,7 @@ body {
   display: block;
   font-size: 1.125rem;
   font-weight: 700;
-  color: #2563eb;
+  color: #6366f1;
   margin-top: 0.25rem;
 }
 
@@ -1832,8 +1844,8 @@ body {
 }
 
 .label-pfe-up:hover {
-  background: #f0f7ff;
-  border-color: #2563eb;
+  background: #eef2ff;
+  border-color: #818cf8;
 }
 
 .up-icon {
@@ -1863,7 +1875,8 @@ body {
 }
 
 .btn-pfe-submit:not(.disabled) {
-  background: #2563eb;
+  background: var(--hospital-gradient-cta);
+  box-shadow: 0 4px 14px rgba(99, 102, 241, 0.35);
 }
 
 .file-pill {
@@ -1919,8 +1932,8 @@ body {
 
 .search-input-modern:focus {
   outline: none;
-  border-color: #2563eb;
-  box-shadow: 0 10px 15px -3px rgba(37, 99, 235, 0.1);
+  border-color: #a5b4fc;
+  box-shadow: 0 10px 22px -3px rgba(99, 102, 241, 0.18);
 }
 
 .search-icon-pos {
@@ -1958,8 +1971,8 @@ body {
 }
 
 .specialty-card-modern.selected {
-  border-color: #2563eb;
-  background: #f0f7ff;
+  border-color: #818cf8;
+  background: linear-gradient(145deg, #eef2ff 0%, #faf5ff 100%);
 }
 
 .spec-icon-wrapper {
@@ -1990,7 +2003,7 @@ body {
   right: 0.75rem;
   width: 24px;
   height: 24px;
-  background: #2563eb;
+  background: linear-gradient(135deg, #6366f1, #8b5cf6);
   color: white;
   border-radius: 50%;
   display: flex;
@@ -2035,7 +2048,7 @@ body {
 
 .btn-confirm-booking {
   padding: 1rem 3rem;
-  background: #0f172a;
+  background: var(--hospital-gradient-cta);
   color: white;
   border: none;
   border-radius: 14px;
@@ -2043,12 +2056,13 @@ body {
   cursor: pointer;
   transition: all 0.3s;
   white-space: nowrap;
+  box-shadow: 0 4px 16px rgba(99, 102, 241, 0.35);
 }
 
 .btn-confirm-booking:hover:not(.disabled) {
-  background: #1e293b;
+  filter: brightness(1.05);
   transform: translateY(-2px);
-  box-shadow: 0 4px 12px rgba(15, 23, 42, 0.15);
+  box-shadow: 0 8px 22px rgba(99, 102, 241, 0.4);
 }
 
 .btn-confirm-booking.disabled {
@@ -2158,8 +2172,8 @@ body {
 }
 
 .upload-label:hover {
-  background: #f8fafc;
-  border-color: #2563eb;
+  background: #faf5ff;
+  border-color: #a78bfa;
 }
 
 .upload-icon {
@@ -2243,10 +2257,10 @@ body {
 }
 
 .btn-black-pfe {
-  background: #0f172a;
+  background: var(--hospital-gradient-cta);
   color: white;
   padding: 0.75rem 1.25rem;
-  border-radius: 10px;
+  border-radius: 999px;
   border: none;
   font-weight: 600;
   display: flex;
@@ -2254,10 +2268,11 @@ body {
   gap: 0.5rem;
   cursor: pointer;
   transition: all 0.2s;
+  box-shadow: 0 4px 14px rgba(99, 102, 241, 0.3);
 }
 
 .btn-black-pfe:hover {
-  background: #1e293b;
+  filter: brightness(1.05);
   transform: translateY(-1px);
 }
 
@@ -2265,7 +2280,7 @@ body {
   display: flex;
   gap: 0.5rem;
   margin-bottom: 2rem;
-  background: #f1f5f9;
+  background: rgba(224, 231, 255, 0.6);
   padding: 4px;
   border-radius: 12px;
   width: fit-content;
@@ -2284,8 +2299,8 @@ body {
 
 .tab-btn-pfe.active {
   background: white;
-  color: #0f172a;
-  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.05);
+  color: #3730a3;
+  box-shadow: 0 2px 10px rgba(99, 102, 241, 0.12);
 }
 
 .apt-items-container {
@@ -2312,8 +2327,8 @@ body {
 }
 
 .date-box-pfe {
-  background: #eff6ff;
-  color: #2563eb;
+  background: linear-gradient(145deg, #dbeafe 0%, #e0e7ff 100%);
+  color: #4338ca;
   padding: 1rem;
   border-radius: 12px;
   min-width: 70px;
@@ -2452,7 +2467,7 @@ body {
 }
 
 .detail-hero-card-pfe {
-  background: #f0f7ff;
+  background: linear-gradient(135deg, #eef2ff 0%, #faf5ff 100%);
   border-radius: 16px;
   padding: 1.5rem;
   margin-bottom: 2rem;
@@ -2480,7 +2495,7 @@ body {
 .hero-time-pfe {
   font-size: 1rem;
   font-weight: 600;
-  color: #2563eb;
+  color: #6366f1;
   margin: 0.25rem 0 0;
 }
 
@@ -2691,7 +2706,7 @@ body {
 }
 
 .step-circle.active {
-  background: #2563eb;
+  background: linear-gradient(135deg, #6366f1, #8b5cf6);
   color: white;
 }
 
@@ -2770,7 +2785,7 @@ body {
 .btn-primary-pfe {
   width: 100%;
   padding: 1rem;
-  background: #0f172a;
+  background: var(--hospital-gradient-cta);
   color: white;
   border: none;
   border-radius: 12px;
@@ -2778,10 +2793,11 @@ body {
   font-weight: 700;
   cursor: pointer;
   transition: all 0.2s;
+  box-shadow: 0 4px 14px rgba(99, 102, 241, 0.3);
 }
 
 .btn-primary-pfe:hover {
-  background: #1e293b;
+  filter: brightness(1.05);
 }
 
 .btn-primary-pfe.disabled {

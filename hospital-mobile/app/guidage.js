@@ -3,7 +3,7 @@ import { Stack } from 'expo-router';
 import { useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Dimensions, SafeAreaView, ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
-import { theme } from '../theme';
+import { patientPastel, theme } from '../theme';
 import { useApp } from './AppContext';
 import HeaderSidebar from './components/HeaderSidebar';
 
@@ -390,7 +390,7 @@ const styles = StyleSheet.create({
         marginBottom: 20,
     },
     planMap: {
-        backgroundColor: '#f8fafc',
+        backgroundColor: patientPastel.pageBg,
         borderRadius: 20,
         padding: 40,
         alignItems: 'center',

@@ -27,6 +27,10 @@ api.interceptors.response.use(
     (response) => response,
     (error) => {
         if (error.response && error.response.status === 401) {
+            // AJOUTEZ CECI POUR LE DEBUG
+            console.error("Détails de l'erreur 401:", error.response.data);
+            alert("Erreur 401 : " + (error.response.data.message || "Session expirée ou clé API invalide"));
+
             sessionStorage.removeItem('proToken');
             sessionStorage.removeItem('proUser');
             if (!window.location.pathname.includes('/login-pro')) {

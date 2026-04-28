@@ -108,6 +108,11 @@ router.post('/summary', authenticateMedecin, async (req: AuthRequest, res: Respo
         });
     } catch (e) {
         const msg = e instanceof Error ? e.message : 'Erreur serveur';
+        if (msg.includes('HTTP 401')) {
+            return res.status(401).json({
+                error: 'La clé API configurée est invalide ou a expiré. Veuillez générer une nouvelle clé sur le site de Groq (https://console.groq.com/keys) et la mettre dans le .env.'
+            });
+        }
         if (msg.includes('LLM_API_KEY')) {
             return res.status(503).json({
                 error:
@@ -181,6 +186,11 @@ router.post('/diagnostic', authenticateMedecin, async (req: AuthRequest, res: Re
         });
     } catch (e) {
         const msg = e instanceof Error ? e.message : 'Erreur serveur';
+        if (msg.includes('HTTP 401')) {
+            return res.status(401).json({
+                error: 'La clé API configurée est invalide ou a expiré. Veuillez générer une nouvelle clé sur le site de Groq (https://console.groq.com/keys) et la mettre dans le .env.'
+            });
+        }
         if (msg.includes('LLM_API_KEY')) {
             return res.status(503).json({
                 error:

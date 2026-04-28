@@ -160,8 +160,8 @@ export default function AIAssistantPage() {
                         {patients.length === 0
                             ? 'Aucun patient disponible'
                             : selectedPatientId
-                              ? selectedPatientLabel
-                              : 'Sélectionner un patient'}
+                                ? selectedPatientLabel
+                                : 'Sélectionner un patient'}
                     </span>
                     <ChevronDown className="h-4 w-4 shrink-0 text-indigo-500" aria-hidden />
                 </SelectTrigger>
@@ -278,10 +278,12 @@ export default function AIAssistantPage() {
 
     const handleGenerateSummary = async () => {
         if (!transcription.trim()) return;
+
         setSummaryLoading(true);
         setActionError('');
         setSummary('');
         setSummaryRagSources([]);
+
         try {
             const { data } = await api.post('/professionals/assistant/summary', {
                 notes: transcription
@@ -305,6 +307,7 @@ export default function AIAssistantPage() {
             setDiagApiError('Saisissez des symptômes ou importez les notes de consultation.');
             return;
         }
+
         setDiagApiError('');
         setDiagLoading(true);
         setUseStaticDiagDemo(false);
@@ -312,6 +315,7 @@ export default function AIAssistantPage() {
         setLlmTreatments(null);
         setDiagRagSources([]);
         try {
+            // 2. FIX THIS URL: Must start with /professionals
             const { data } = await api.post('/professionals/assistant/diagnostic', {
                 clinicalText: text
             });
@@ -341,14 +345,14 @@ export default function AIAssistantPage() {
         llmDiagnoses && llmDiagnoses.length
             ? llmDiagnoses
             : useStaticDiagDemo
-              ? aiSuggestions.diagnoses
-              : [];
+                ? aiSuggestions.diagnoses
+                : [];
     const displayTreatments =
         llmTreatments && llmTreatments.length
             ? llmTreatments
             : useStaticDiagDemo
-              ? aiSuggestions.treatments
-              : [];
+                ? aiSuggestions.treatments
+                : [];
 
     const handleCopy = (text) => {
         navigator.clipboard.writeText(text);
@@ -671,11 +675,10 @@ export default function AIAssistantPage() {
                             {patientSelectBlock}
                             {diagFeedback ? (
                                 <div
-                                    className={`rounded-md border px-3 py-2 text-sm ${
-                                        diagFeedback.type === 'success'
-                                            ? 'border-emerald-200 bg-emerald-50 text-emerald-900'
-                                            : 'border-red-200 bg-red-50 text-red-900'
-                                    }`}
+                                    className={`rounded-md border px-3 py-2 text-sm ${diagFeedback.type === 'success'
+                                        ? 'border-emerald-200 bg-emerald-50 text-emerald-900'
+                                        : 'border-red-200 bg-red-50 text-red-900'
+                                        }`}
                                 >
                                     <p>{diagFeedback.text}</p>
                                     {diagFeedback.type === 'success' ? (
@@ -714,12 +717,13 @@ export default function AIAssistantPage() {
                                     </Button>
                                     <Button
                                         type="button"
-                                        variant="outline"
+                                        className="bg-indigo-600 outline-none text-white hover:bg-indigo-700"
                                         size="sm"
                                         disabled={diagLoading}
-                                        onClick={() => void handleRunDiagnosticIa()}
+                                        onClick={() => void handleRunDiagnosticIa(true)}
                                     >
-                                        {diagLoading ? 'Analyse…' : 'Analyser (IA + RAG)'}
+                                        <Sparkles className="w-4 h-4 mr-2" />
+                                        {diagLoading ? 'Analyse...' : 'Analyser (IA simulée)'}
                                     </Button>
                                     <Button
                                         type="button"
@@ -727,7 +731,7 @@ export default function AIAssistantPage() {
                                         size="sm"
                                         onClick={handleLoadStaticDiagDemo}
                                     >
-                                        Exemple statique (sans API)
+                                        Exemple statique direct
                                     </Button>
                                 </div>
                                 {diagApiError ? (

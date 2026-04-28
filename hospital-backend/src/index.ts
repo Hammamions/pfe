@@ -2,7 +2,7 @@ import dotenv from 'dotenv';
 import path from 'path';
 import cors from 'cors';
 import express, { Request, Response } from 'express';
-import fs from 'fs';
+import fs from 'fs'; 
 
 dotenv.config({ path: path.join(__dirname, '../.env') });
 import appointmentsRouter from './routes/appointments';

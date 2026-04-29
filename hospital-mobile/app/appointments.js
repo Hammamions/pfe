@@ -4,13 +4,13 @@ import { Stack } from 'expo-router';
 import React, { useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { ActivityIndicator, Alert, Modal, Platform, Pressable, RefreshControl, SafeAreaView, ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, useWindowDimensions, View } from 'react-native';
+import { BOOKING_SPECIALTIES, specialtyToI18nKey } from '../constants/bookingSpecialties';
 import { dashboardVibe, patientPastel, theme } from '../theme';
 import { useApp } from './AppContext';
 import HeaderSidebar from './components/HeaderSidebar';
 import SwipeDeleteRow from './components/SwipeDeleteRow';
-import AsyncStorage from './utils/storage';
 import { getDocumentAsync } from './utils/pickDocument';
-import { BOOKING_SPECIALTIES, specialtyToI18nKey } from '../constants/bookingSpecialties';
+import AsyncStorage from './utils/storage';
 
 const Appointments = () => {
     const { t, i18n } = useTranslation();
@@ -20,6 +20,15 @@ const Appointments = () => {
     const [step, setStep] = useState(1);
     const [selectedAppointment, setSelectedAppointment] = useState(null);
     const [showDetailModal, setShowDetailModal] = useState(false);
+
+    React.useEffect(() => {
+        if (showDetailModal && selectedAppointment) {
+            const updated = appointments.find(a => a.id === selectedAppointment.id);
+            if (updated && JSON.stringify(updated) !== JSON.stringify(selectedAppointment)) {
+                setSelectedAppointment(updated);
+            }
+        }
+    }, [appointments, showDetailModal, selectedAppointment]);
     const [historyFilter, setHistoryFilter] = useState('all');
     const [showSuccessModal, setShowSuccessModal] = useState(false);
     const [requestType, setRequestType] = useState(null);
@@ -97,15 +106,63 @@ const Appointments = () => {
                 return;
             }
             await syncAllData(token);
-            notifyUser(
-                t('confirm'),
-                intent === 'WILL_ATTEND' ? t('preVisitThanks') : t('preVisitRescheduleHint'),
-                'success',
-            );
-            setPreVisitFeedback(intent === 'WILL_ATTEND' ? t('preVisitThanks') : t('preVisitRescheduleHint'));
-            setSelectedAppointment((prev) => (
-                prev ? { ...prev, needsPreVisitConfirmation: false } : prev
-            ));
+
+            if (intent === 'WANT_RESCHEDULE') {
+                const updated = {
+                    ...selectedAppointment,
+                    status: 'en_attente',
+                    requestType: 'reschedule',
+                    needsPreVisitConfirmation: false
+                };
+                if (setAppointments) setAppointments((prev) => (prev || []).filter((a) => a.id !== updated.id));
+                if (setRequests) setRequests((prev) => {
+                    const next = (prev || []).filter((a) => a.id !== updated.id);
+                    return [updated, ...next];
+                });
+
+                setShowDetailModal(false);
+                setTimeout(() => setShowSuccessModal(true), 500);
+            } else {
+                notifyUser(
+                    t('confirm'),
+                    intent === 'WILL_ATTEND' ? t('preVisitThanks') : t('preVisitRescheduleHint'),
+                    'success',
+                );
+                setPreVisitFeedback(intent === 'WILL_ATTEND' ? t('preVisitThanks') : t('preVisitRescheduleHint'));
+                setSelectedAppointment((prev) => (
+                    prev ? { ...prev, needsPreVisitConfirmation: false } : prev
+                ));
+            }
+        } catch (e) {
+            console.warn(e);
+            notifyUser(t('error'), 'Impossible de contacter le serveur', 'error');
+        } finally {
+            setPreVisitSubmitting(false);
+        }
+    };
+
+    const handleSwapChoice = async (choice) => {
+        if (!selectedAppointment) return;
+        try {
+            setPreVisitSubmitting(true);
+            const token = await AsyncStorage.getItem('token');
+            if (!token) return;
+            const res = await fetch(`${API_URL}/api/appointments/${selectedAppointment.id}`, {
+                method: 'PUT',
+                headers: {
+                    'Content-Type': 'application/json',
+                    Authorization: `Bearer ${token}`,
+                },
+                body: JSON.stringify({ swapChoice: choice }),
+            });
+            const data = await res.json().catch(() => ({}));
+            if (!res.ok) {
+                notifyUser(t('error'), data.error || 'Erreur', 'error');
+                return;
+            }
+            await syncAllData(token);
+            notifyUser(t('confirm'), choice === 'ACCEPT' ? t('requestConfirmed') : t('close'), 'success');
+            setShowDetailModal(false);
         } catch (e) {
             console.warn(e);
             notifyUser(t('error'), 'Impossible de contacter le serveur', 'error');
@@ -130,6 +187,7 @@ const Appointments = () => {
                 newStatus = 'REPORTE';
             }
 
+            setIsSubmitting(true);
             const res = await fetch(`${API_URL}/api/appointments/${selectedAppointment.id}`, {
                 method: 'PUT',
                 headers: {
@@ -177,6 +235,8 @@ const Appointments = () => {
         } catch (error) {
             console.error('Error updating appointment:', error);
             Alert.alert(t('error'), 'Impossible de contacter le serveur');
+        } finally {
+            setIsSubmitting(false);
         }
     };
 
@@ -205,17 +265,7 @@ const Appointments = () => {
     };
 
     const handleDeleteHistory = (id) => {
-        const title = t('deleteQuestion');
-        const message = t('deleteConfirmAppointment');
-        const run = () => void executeDeleteHistory(id);
-        if (Platform.OS === 'web' && typeof window !== 'undefined') {
-            if (window.confirm(`${title}\n\n${message}`)) run();
-            return;
-        }
-        Alert.alert(title, message, [
-            { text: t('cancel'), style: 'cancel' },
-            { text: t('delete'), style: 'destructive', onPress: run }
-        ]);
+        executeDeleteHistory(id);
     };
 
     const onRefresh = React.useCallback(async () => {
@@ -665,114 +715,114 @@ const Appointments = () => {
                         accessibilityLabel={t('deleteFromHistory')}
                         onDelete={() => handleDeleteHistory(apt.id)}
                     >
-                    <Pressable
-                        style={styles.aptCard}
-                        onPress={() => { setSelectedAppointment(apt); setShowDetailModal(true); }}
-                    >
-                        <View style={[styles.aptTop, isRTL && { flexDirection: 'row-reverse' }]}>
-                            {apt.isPlanned ? (
-                                <View style={styles.dateBox}>
-                                    <Text style={styles.dateVal}>{apt.date}</Text>
-                                    <Text style={styles.dateMonth}>{t(apt.month)}</Text>
-                                </View>
-                            ) : (
-                                <View style={[styles.dateBox, { backgroundColor: '#f1f5f9' }]}>
-                                    <Feather name="clock" size={24} color="#94a3b8" />
-                                </View>
-                            )}
-                            <View style={[styles.aptMain, isRTL && { paddingLeft: 0, paddingRight: 18, alignItems: 'flex-end' }]}>
-                                <View style={[styles.aptHeaderRow, isRTL && { flexDirection: 'row-reverse', width: '100%' }]}>
-                                    <View
-                                        style={[
-                                            styles.aptNameColumn,
-                                            isRTL && { alignItems: 'flex-end', paddingRight: 0, paddingLeft: 10 }
-                                        ]}
-                                    >
-                                        <Text
-                                            style={[styles.doctorName, { fontSize: doctorNameFont }]}
-                                            numberOfLines={2}
-                                        >
-                                            {(apt.status === 'en_attente' || apt.status === 'reporte' || apt.status === 'annule' || apt.status === 'demande_annulation') ? (apt.doctor === 'Médecin à définir' ? t('notSpecified') : apt.doctor) : t(apt.doctor)}
-                                        </Text>
-                                        <Text style={styles.specTextSmall}>{t(specialtyToI18nKey(apt.specialty))}</Text>
+                        <Pressable
+                            style={styles.aptCard}
+                            onPress={() => { setSelectedAppointment(apt); setShowDetailModal(true); }}
+                        >
+                            <View style={[styles.aptTop, isRTL && { flexDirection: 'row-reverse' }]}>
+                                {apt.isPlanned ? (
+                                    <View style={styles.dateBox}>
+                                        <Text style={styles.dateVal}>{apt.date}</Text>
+                                        <Text style={styles.dateMonth}>{t(apt.month)}</Text>
                                     </View>
-                                    {(() => {
-                                        const config = {
-                                            en_attente: { bg: '#e0f2fe', color: '#0369a1', labelKey: 'aptStatusEnAttente' },
-                                            reporte: { bg: '#fef3c7', color: '#b45309', labelKey: 'aptStatusReporte' },
-                                            demande_annulation: { bg: '#fee2e2', color: '#b91c1c', labelKey: 'aptStatusDemandeAnnulation' },
-                                            annule: { bg: '#fee2e2', color: '#b91c1c', labelKey: 'aptStatusAnnule' },
-                                            termine: { bg: '#f1f5f9', color: '#475569', labelKey: 'aptStatusTermine' },
-                                            en_cours: { bg: '#ffedd5', color: '#c2410c', labelKey: 'aptStatusEnCours' },
-                                            confirme: { bg: '#dcfce7', color: '#15803d', labelKey: 'aptStatusConfirme' }
-                                        };
-                                        const stat = (apt.status || '').toLowerCase().replace('é', 'e').replace('confirmed', 'confirme');
-                                        const c = config[stat] || { bg: '#f1f5f9', color: '#64748b', labelKey: null };
-                                        const statusLabel = c.labelKey ? t(c.labelKey) : t(apt.status);
-                                        return (
-                                            <View style={[styles.statusBadge, { backgroundColor: c.bg }]}>
-                                                <Text
-                                                    style={[
-                                                        styles.statusBadgeText,
-                                                        { color: c.color },
-                                                        narrow && styles.statusBadgeTextCompact
-                                                    ]}
-                                                    numberOfLines={2}
-                                                >
-                                                    {statusLabel}
-                                                </Text>
-                                            </View>
-                                        );
-                                    })()}
-                                </View>
-
-                                {activeTab === 'requests' && apt.requestType && (
-                                    <View style={styles.requestInfoBox}>
-                                        <Feather name={apt.requestType === 'reschedule' ? "calendar" : "x-circle"} size={14} color="#6366f1" />
-                                        <Text style={styles.requestInfoText}>
-                                            {apt.requestType === 'reschedule' ? t('reportRequest') : t('cancelRequest')}
-                                        </Text>
+                                ) : (
+                                    <View style={[styles.dateBox, { backgroundColor: '#f1f5f9' }]}>
+                                        <Feather name="clock" size={24} color="#94a3b8" />
                                     </View>
                                 )}
-
-                                <View style={[styles.aptDetailsRow, isRTL && { flexDirection: 'row-reverse' }, { marginTop: 15 }]}>
-                                    <View style={[styles.detailItem, isRTL && { flexDirection: 'row-reverse' }]}>
-                                        <Feather name="clock" size={14} color="#64748b" style={isRTL ? { marginLeft: 6 } : { marginRight: 6 }} />
-                                        <Text style={styles.detailText}>
-                                            {apt.isPlanned ? apt.time : t('dateNotDefined')}
-                                        </Text>
+                                <View style={[styles.aptMain, isRTL && { paddingLeft: 0, paddingRight: 18, alignItems: 'flex-end' }]}>
+                                    <View style={[styles.aptHeaderRow, isRTL && { flexDirection: 'row-reverse', width: '100%' }]}>
+                                        <View
+                                            style={[
+                                                styles.aptNameColumn,
+                                                isRTL && { alignItems: 'flex-end', paddingRight: 0, paddingLeft: 10 }
+                                            ]}
+                                        >
+                                            <Text
+                                                style={[styles.doctorName, { fontSize: doctorNameFont }]}
+                                                numberOfLines={2}
+                                            >
+                                                {(apt.status === 'en_attente' || apt.status === 'reporte' || apt.status === 'annule' || apt.status === 'demande_annulation') ? (apt.doctor === 'Médecin à définir' ? t('notSpecified') : apt.doctor) : t(apt.doctor)}
+                                            </Text>
+                                            <Text style={styles.specTextSmall}>{t(specialtyToI18nKey(apt.specialty))}</Text>
+                                        </View>
+                                        {(() => {
+                                            const config = {
+                                                en_attente: { bg: '#e0f2fe', color: '#0369a1', labelKey: 'aptStatusEnAttente' },
+                                                reporte: { bg: '#fef3c7', color: '#b45309', labelKey: 'aptStatusReporte' },
+                                                demande_annulation: { bg: '#fee2e2', color: '#b91c1c', labelKey: 'aptStatusDemandeAnnulation' },
+                                                annule: { bg: '#fee2e2', color: '#b91c1c', labelKey: 'aptStatusAnnule' },
+                                                termine: { bg: '#f1f5f9', color: '#475569', labelKey: 'aptStatusTermine' },
+                                                en_cours: { bg: '#ffedd5', color: '#c2410c', labelKey: 'aptStatusEnCours' },
+                                                confirme: { bg: '#dcfce7', color: '#15803d', labelKey: 'aptStatusConfirme' }
+                                            };
+                                            const stat = (apt.status || '').toLowerCase().replace('é', 'e').replace('confirmed', 'confirme');
+                                            const c = config[stat] || { bg: '#f1f5f9', color: '#64748b', labelKey: null };
+                                            const statusLabel = c.labelKey ? t(c.labelKey) : t(apt.status);
+                                            return (
+                                                <View style={[styles.statusBadge, { backgroundColor: c.bg }]}>
+                                                    <Text
+                                                        style={[
+                                                            styles.statusBadgeText,
+                                                            { color: c.color },
+                                                            narrow && styles.statusBadgeTextCompact
+                                                        ]}
+                                                        numberOfLines={2}
+                                                    >
+                                                        {statusLabel}
+                                                    </Text>
+                                                </View>
+                                            );
+                                        })()}
                                     </View>
-                                </View>
 
-                                <View style={[styles.aptDetailsRow, isRTL && { flexDirection: 'row-reverse' }, { marginTop: 10, flexWrap: 'wrap' }]}>
-                                    <View style={[styles.detailItem, isRTL && { flexDirection: 'row-reverse' }, { flexShrink: 1, marginRight: 10 }]}>
-                                        <Feather name="map-pin" size={14} color="#64748b" style={isRTL ? { marginLeft: 6 } : { marginRight: 6 }} />
-                                        <Text style={styles.detailText} numberOfLines={1}>
-                                            {apt.isPlanned ? t(apt.location) : t('locationNotDefined')}
-                                        </Text>
-                                    </View>
-                                    {apt.isPlanned && (
-                                        <View style={[styles.roomIndicator, isRTL && { flexDirection: 'row-reverse' }, { marginLeft: 0 }]}>
-                                            <View style={styles.roomDot} />
-                                            <Text style={styles.roomText}>{t('room')} {t(apt.room) || 'A301'}</Text>
+                                    {activeTab === 'requests' && apt.requestType && (
+                                        <View style={styles.requestInfoBox}>
+                                            <Feather name={apt.requestType === 'reschedule' ? "calendar" : "x-circle"} size={14} color="#6366f1" />
+                                            <Text style={styles.requestInfoText}>
+                                                {apt.requestType === 'reschedule' ? t('reportRequest') : t('cancelRequest')}
+                                            </Text>
                                         </View>
                                     )}
-                                </View>
 
-                                <View style={[styles.aptDivider, { marginVertical: 15 }]} />
-                                <View style={{ gap: 8 }}>
-                                    <Text style={[styles.motifText, isRTL && { textAlign: 'right' }, { marginTop: 0 }]}>
-                                        <Text style={{ fontWeight: '700' }}>{t('reason')}: </Text>
-                                        {sanitizeMotif(apt.motif) || t('notSpecified')}
-                                    </Text>
-                                    <Text style={[styles.motifText, isRTL && { textAlign: 'right' }, { marginTop: 0 }]}>
-                                        <Text style={{ fontWeight: '700' }}>{t('attachedDocuments')}</Text>
-                                        {apt.hasDocuments ? t('attachedDocumentsYes') : t('attachedDocumentsNo')}
-                                    </Text>
+                                    <View style={[styles.aptDetailsRow, isRTL && { flexDirection: 'row-reverse' }, { marginTop: 15 }]}>
+                                        <View style={[styles.detailItem, isRTL && { flexDirection: 'row-reverse' }]}>
+                                            <Feather name="clock" size={14} color="#64748b" style={isRTL ? { marginLeft: 6 } : { marginRight: 6 }} />
+                                            <Text style={styles.detailText}>
+                                                {apt.isPlanned ? apt.time : t('dateNotDefined')}
+                                            </Text>
+                                        </View>
+                                    </View>
+
+                                    <View style={[styles.aptDetailsRow, isRTL && { flexDirection: 'row-reverse' }, { marginTop: 10, flexWrap: 'wrap' }]}>
+                                        <View style={[styles.detailItem, isRTL && { flexDirection: 'row-reverse' }, { flexShrink: 1, marginRight: 10 }]}>
+                                            <Feather name="map-pin" size={14} color="#64748b" style={isRTL ? { marginLeft: 6 } : { marginRight: 6 }} />
+                                            <Text style={styles.detailText} numberOfLines={1}>
+                                                {apt.isPlanned ? t(apt.location) : t('locationNotDefined')}
+                                            </Text>
+                                        </View>
+                                        {apt.isPlanned && (
+                                            <View style={[styles.roomIndicator, isRTL && { flexDirection: 'row-reverse' }, { marginLeft: 0 }]}>
+                                                <View style={styles.roomDot} />
+                                                <Text style={styles.roomText}>{t('room')} {t(apt.room) || 'A301'}</Text>
+                                            </View>
+                                        )}
+                                    </View>
+
+                                    <View style={[styles.aptDivider, { marginVertical: 15 }]} />
+                                    <View style={{ gap: 8 }}>
+                                        <Text style={[styles.motifText, isRTL && { textAlign: 'right' }, { marginTop: 0 }]}>
+                                            <Text style={{ fontWeight: '700' }}>{t('reason')}: </Text>
+                                            {sanitizeMotif(apt.motif) || t('notSpecified')}
+                                        </Text>
+                                        <Text style={[styles.motifText, isRTL && { textAlign: 'right' }, { marginTop: 0 }]}>
+                                            <Text style={{ fontWeight: '700' }}>{t('attachedDocuments')}</Text>
+                                            {apt.hasDocuments ? t('attachedDocumentsYes') : t('attachedDocumentsNo')}
+                                        </Text>
+                                    </View>
                                 </View>
                             </View>
-                        </View>
-                    </Pressable>
+                        </Pressable>
                     </SwipeDeleteRow>
                 ))}
             </ScrollView>
@@ -845,8 +895,20 @@ const Appointments = () => {
                                             {selectedAppointment.hasDocuments ? t('attachedDocumentsYes') : t('attachedDocumentsNo')}
                                         </Text>
                                     </View>
+                                    {selectedAppointment.earlierSlot && (
+                                        <View style={[styles.preVisitCard, { backgroundColor: '#f0fdf4', borderColor: '#bbf7d0' }]}>
+                                            <Text style={[styles.preVisitText, { color: '#166534' }, isRTL && { textAlign: 'right' }]}>
+                                                {t('earlierSlotAvailableBanner', {
+                                                    time: (() => {
+                                                        const d = new Date(selectedAppointment.earlierSlot.date);
+                                                        return `${d.getHours().toString().padStart(2, '0')}:${d.getMinutes().toString().padStart(2, '0')}`;
+                                                    })()
+                                                })}
+                                            </Text>
+                                        </View>
+                                    )}
 
-                                    {selectedAppointment.needsPreVisitConfirmation && (
+                                    {selectedAppointment.needsPreVisitConfirmation && !selectedAppointment.earlierSlot && (
                                         <View style={styles.preVisitCard}>
                                             <Text style={[styles.preVisitText, isRTL && { textAlign: 'right' }]}>
                                                 {t('preVisitBanner')}
@@ -891,20 +953,39 @@ const Appointments = () => {
                                         </View>
                                     )}
 
-                                    {(selectedAppointment.status === 'confirmed' || selectedAppointment.status === 'confirmé' || selectedAppointment.status === 'confirme' || selectedAppointment.status === 'en_cours') && selectedAppointment.status !== 'en_attente' && !selectedAppointment.needsPreVisitConfirmation && (
+                                    {(selectedAppointment.status === 'confirmed' || selectedAppointment.status === 'confirmé' || selectedAppointment.status === 'confirme' || selectedAppointment.status === 'en_cours') && selectedAppointment.status !== 'en_attente' && (selectedAppointment.earlierSlot || !selectedAppointment.needsPreVisitConfirmation) && (
                                         <View style={[styles.detailActionRow, isRTL && { flexDirection: 'row-reverse' }]}>
-                                            <TouchableOpacity
-                                                style={[styles.detailSmallBtn, styles.detailEditBtn]}
-                                                onPress={() => initiateRequest('reschedule')}
-                                            >
-                                                <Text style={styles.detailSmallBtnText}>{t('modify')}</Text>
-                                            </TouchableOpacity>
-                                            <TouchableOpacity
-                                                style={[styles.detailSmallBtn, styles.detailCancelBtn]}
-                                                onPress={() => initiateRequest('cancel')}
-                                            >
-                                                <Text style={styles.detailSmallBtnDanger}>{t('cancelRequest')}</Text>
-                                            </TouchableOpacity>
+                                            {selectedAppointment.earlierSlot ? (
+                                                <>
+                                                    <TouchableOpacity
+                                                        style={[styles.detailSmallBtn, styles.detailEditBtn]}
+                                                        onPress={() => handleSwapChoice('ACCEPT')}
+                                                    >
+                                                        <Text style={styles.detailSmallBtnText}>{t('acceptEarlierSlot')}</Text>
+                                                    </TouchableOpacity>
+                                                    <TouchableOpacity
+                                                        style={[styles.detailSmallBtn, styles.detailCancelBtn]}
+                                                        onPress={() => handleSwapChoice('DECLINE')}
+                                                    >
+                                                        <Text style={styles.detailSmallBtnDanger}>{t('keepOriginalSlot')}</Text>
+                                                    </TouchableOpacity>
+                                                </>
+                                            ) : (
+                                                <>
+                                                    <TouchableOpacity
+                                                        style={[styles.detailSmallBtn, styles.detailEditBtn]}
+                                                        onPress={() => initiateRequest('reschedule')}
+                                                    >
+                                                        <Text style={styles.detailSmallBtnText}>{t('modify')}</Text>
+                                                    </TouchableOpacity>
+                                                    <TouchableOpacity
+                                                        style={[styles.detailSmallBtn, styles.detailCancelBtn]}
+                                                        onPress={() => initiateRequest('cancel')}
+                                                    >
+                                                        <Text style={styles.detailSmallBtnDanger}>{t('cancelRequest')}</Text>
+                                                    </TouchableOpacity>
+                                                </>
+                                            )}
                                         </View>
                                     )}
 
@@ -921,15 +1002,15 @@ const Appointments = () => {
 
                                     {(selectedAppointment.status === 'termine' ||
                                         selectedAppointment.status === 'annule') && (
-                                        <TouchableOpacity
-                                            style={[styles.detailDeleteHistoryBtn, isRTL && { flexDirection: 'row-reverse' }]}
-                                            onPress={() => handleDeleteHistory(selectedAppointment.id)}
-                                            activeOpacity={0.88}
-                                        >
-                                            <Feather name="trash-2" size={18} color="#b91c1c" />
-                                            <Text style={styles.detailDeleteHistoryBtnText}>{t('deleteFromHistory')}</Text>
-                                        </TouchableOpacity>
-                                    )}
+                                            <TouchableOpacity
+                                                style={[styles.detailDeleteHistoryBtn, isRTL && { flexDirection: 'row-reverse' }]}
+                                                onPress={() => handleDeleteHistory(selectedAppointment.id)}
+                                                activeOpacity={0.88}
+                                            >
+                                                <Feather name="trash-2" size={18} color="#b91c1c" />
+                                                <Text style={styles.detailDeleteHistoryBtnText}>{t('deleteFromHistory')}</Text>
+                                            </TouchableOpacity>
+                                        )}
                                 </View>
                             </ScrollView>
                         )}

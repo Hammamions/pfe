@@ -11,8 +11,9 @@ const router = Router();
 
 const SYSTEM_TUNISIA =
     "Tu es un assistant d'aide à la décision médicale pour des médecins en Tunisie. " +
-    'Réponds en français clair. Tu ne remplaces pas le médecin : signale l’incertitude, ' +
+    'Réponds en français clair avec le vocabulaire médical tunisien usuel. Tu ne remplaces pas le médecin : signale l’incertitude, ' +
     "cite les limites, et rappelle de vérifier les contre-indications et l'ordonnance locale. " +
+    "Lorsque tu suggères des traitements, fournis UNIQUEMENT le nom commercial exact disponible en Tunisie (ex: Doliprane, Augmentin, Gripex). NE MENTIONNE JAMAIS le nom du laboratoire de fabrication (comme Pfizer, Sanofi, Tunis Pharma, etc.). " +
     'Si des extraits de documents sont fournis, privilégie-les pour les faits factuels ; sinon reste prudent et général.';
 
 function chunksToSources(chunks: RagChunk[]): { file: string; excerpt: string }[] {
@@ -87,11 +88,13 @@ router.post('/summary', authenticateMedecin, async (req: AuthRequest, res: Respo
         const userPrompt =
             'Voici des extraits de la base documentaire (contexte Tunisie / orientation clinique) :\n\n' +
             `${ragBlock}\n\n---\n\n` +
-            'Notes brutes du médecin (à structurer) :\n\n' +
+            'Notes brutes du médecin (à traiter) :\n\n' +
             `${notes}\n\n---\n\n` +
-            'Produis un compte rendu structuré en markdown avec sections : Motif / Histoire / Examen / ' +
-            'Hypothèses diagnostiques (à valider) / Proposition de suite (examens, orientation). ' +
-            'Reste concis et professionnel.';
+            "Ton objectif est de transformer ces notes brutes (issues d'une dictée vocale ou d'une saisie) en un compte rendu médical rédigé de manière professionnelle, fluide et bien ponctuée.\n" +
+            "Consigne très importante : Conserve **EXACTEMENT** les informations, l'ordre des idées et garde-le sous forme de paragraphes comme le texte original.\n" +
+            "- Ne découpe pas le texte avec des titres ou des sections (pas de Motif, Histoire, Examen, etc.) sauf si le médecin les a explicitement demandés.\n" +
+            "- N'invente AUCUNE information clinique, aucun symptôme, ni aucun résultat d'examen.\n" +
+            "- Contente-toi de corriger la grammaire, la syntaxe, et le vocabulaire médical pour rendre le paragraphe propre et lisible.";
 
         const { content, model } = await chatCompletion(
             [
@@ -130,8 +133,8 @@ router.post('/diagnostic', authenticateMedecin, async (req: AuthRequest, res: Re
             typeof req.body?.clinicalText === 'string'
                 ? req.body.clinicalText.trim()
                 : typeof req.body?.symptoms === 'string'
-                  ? req.body.symptoms.trim()
-                  : '';
+                    ? req.body.symptoms.trim()
+                    : '';
         if (!clinicalText) {
             return res.status(400).json({
                 error: 'Le champ "clinicalText" (ou "symptoms") est requis : symptômes ou notes cliniques.'
@@ -151,7 +154,7 @@ router.post('/diagnostic', authenticateMedecin, async (req: AuthRequest, res: Re
             '{"medicament":"string","dosage":"string","frequence":"string","duree":"string","indication":"string"}' +
             ']}\n' +
             'Propose 2 à 5 hypothèses diagnostiques ordonnées par probabilité (entier 0-100). ' +
-            'Les traitements sont des pistes générales à valider (posologies indicatives), pas une prescription finale.';
+            'Les traitements sont des pistes générales à valider (posologies indicatives). IMPORTANT : Fournis les noms commerciaux des médicaments connus au marché tunisien.';
 
         const { content, model } = await chatCompletion(
             [

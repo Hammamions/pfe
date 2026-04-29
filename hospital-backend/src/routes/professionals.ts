@@ -1,20 +1,20 @@
+import { randomUUID } from 'crypto';
 import { Response, Router } from 'express';
 import fs from 'fs';
-import { randomUUID } from 'crypto';
 import path from 'path';
 import { PDFDocument, StandardFonts, type PDFFont } from 'pdf-lib';
 import QRCode from 'qrcode';
+import { anchorHashOnChain } from '../chain/anchor';
+import { encryptPdfForStorage, sha256Hex } from '../crypto/secureDocCrypto';
 import { prisma } from '../lib/prisma';
 import { authenticateProfessional, AuthRequest } from '../middleware/auth';
-import { ensureSalleAttenteForTodaysAppointments } from '../utils/salleAttenteSync';
 import {
     formatAppointmentCalendarDateKey,
     formatAppointmentTime,
     utcInstantFromWallClock
 } from '../utils/appointmentDisplay';
-import { anchorHashOnChain } from '../chain/anchor';
-import { encryptPdfForStorage, sha256Hex } from '../crypto/secureDocCrypto';
 import { mintDocumentVerifyJwt } from '../utils/documentVerifyJwt';
+import { ensureSalleAttenteForTodaysAppointments } from '../utils/salleAttenteSync';
 import { normalizeSpecialty, specialtyLabelFr } from '../utils/specialty';
 
 const router = Router();
@@ -355,7 +355,7 @@ async function autoCloseAbsentAppointments(params: {
                 data: {
                     utilisateurId: apt.patient.utilisateurId,
                     titre: ABSENCE_NOTIFICATION_TITLE,
-                    message: `Absence constatée pour le rendez-vous ${marker}. Le délai de 30 minutes est dépassé, le rendez-vous est clos automatiquement.`
+                    message: `Absence constatée pour le rendez-vous. Le délai de 30 minutes est dépassé, le rendez-vous est clos automatiquement.`
                 }
             });
         }
@@ -715,13 +715,16 @@ router.get('/all-appointments', authenticateProfessional, async (req: AuthReques
             const documentNameMatch = rawMotif.match(/\[DOC_NAME:([^\]]+)\]/);
             const isUrgentFromRdv = /\[URGENT:1\]/.test(rawMotif);
             const hasPresentTag = /\[PRESENT:1\]/.test(rawMotif);
+            const hasAttendTag = /\[PREVISIT:ATTEND\]/.test(rawMotif);
             const waitingPresence = apt.patient.salleAttente?.[0]?.presenceStatus;
             const computedPresenceStatus =
-                apt.statut === 'EN_COURS' || hasPresentTag
+                apt.statut === 'EN_COURS' || hasPresentTag || waitingPresence === 'PRESENT'
                     ? 'PRESENT'
-                    : (waitingPresence === 'ABSENT' || waitingPresence === 'EN_RETARD')
-                        ? waitingPresence
-                        : 'PREVU';
+                    : hasAttendTag
+                        ? 'CONFIRME'
+                        : (waitingPresence === 'ABSENT' || waitingPresence === 'EN_RETARD')
+                            ? waitingPresence
+                            : 'PREVU';
 
             return {
                 id: apt.id,
@@ -735,10 +738,11 @@ router.get('/all-appointments', authenticateProfessional, async (req: AuthReques
                 specialty: apt.medecin?.specialite || apt.specialite || '',
                 motif: cleanMotif,
                 status: apt.statut,
-                statut: apt.statut, 
+                statut: apt.statut,
                 requestType,
                 lieu: apt.lieu,
                 salle: apt.salle,
+                medecinId: apt.medecinId,
                 presenceStatus: computedPresenceStatus,
                 isUrgent: isUrgentFromRdv,
                 hasDocuments,
@@ -877,39 +881,39 @@ router.get('/doctor-waiting-room', authenticateProfessional, async (req: AuthReq
             const rawHistorique = apt.patient.dossierMedical?.historiqueMedical || [];
             const antecedentsDisplay = filterHistoriqueForAntecedentsDisplay(rawHistorique);
             return ({
-            id: apt.id,
-            patientId: apt.patientId,
-            patientName: `${apt.patient.utilisateur.prenom} ${apt.patient.utilisateur.nom}`,
-            patient: {
-                prenom: apt.patient.utilisateur.prenom,
-                nom: apt.patient.utilisateur.nom,
-                email: apt.patient.utilisateur.email || '',
-                telephone: apt.patient.telephone || '',
-                dateNaissance: apt.patient.dossierMedical?.dateNaissance || '',
-                groupeSanguin: apt.patient.dossierMedical?.groupeSanguin || 'Non précisé',
-                numeroSecu: apt.patient.dossierMedical?.numSecuriteSociale || ''
-            },
-            motif: stripAppointmentMotifTags(apt.motif) || 'Consultation',
-            heure: formatAppointmentTime(apt.date),
-            lieu: apt.lieu || 'À définir',
-            salle: apt.salle || 'À définir',
-            dossierMedical: {
-                bloodGroup: apt.patient.dossierMedical?.groupeSanguin || 'Non précisé',
+                id: apt.id,
+                patientId: apt.patientId,
+                patientName: `${apt.patient.utilisateur.prenom} ${apt.patient.utilisateur.nom}`,
+                patient: {
+                    prenom: apt.patient.utilisateur.prenom,
+                    nom: apt.patient.utilisateur.nom,
+                    email: apt.patient.utilisateur.email || '',
+                    telephone: apt.patient.telephone || '',
+                    dateNaissance: apt.patient.dossierMedical?.dateNaissance || '',
+                    groupeSanguin: apt.patient.dossierMedical?.groupeSanguin || 'Non précisé',
+                    numeroSecu: apt.patient.dossierMedical?.numSecuriteSociale || ''
+                },
+                motif: stripAppointmentMotifTags(apt.motif) || 'Consultation',
+                heure: formatAppointmentTime(apt.date),
+                lieu: apt.lieu || 'À définir',
+                salle: apt.salle || 'À définir',
+                dossierMedical: {
+                    bloodGroup: apt.patient.dossierMedical?.groupeSanguin || 'Non précisé',
+                    allergies: apt.patient.dossierMedical?.allergies || [],
+                    history: antecedentsDisplay,
+                    socialSecurity: apt.patient.dossierMedical?.numSecuriteSociale || ''
+                },
                 allergies: apt.patient.dossierMedical?.allergies || [],
-                history: antecedentsDisplay,
-                socialSecurity: apt.patient.dossierMedical?.numSecuriteSociale || ''
-            },
-            allergies: apt.patient.dossierMedical?.allergies || [],
-            antecedents: antecedentsDisplay,
-            consultations: parseConsultationHistoryEntries(
-                rawHistorique,
-                `Dr. ${apt.medecin?.utilisateur?.prenom || ''} ${apt.medecin?.utilisateur?.nom || ''}`.trim()
-            ),
-            documents: [
-                ...(apt.patient.dossierMedical?.documents || []),
-                ...(rdvAttachmentsByPatient.get(apt.patientId) || [])
-            ]
-        });
+                antecedents: antecedentsDisplay,
+                consultations: parseConsultationHistoryEntries(
+                    rawHistorique,
+                    `Dr. ${apt.medecin?.utilisateur?.prenom || ''} ${apt.medecin?.utilisateur?.nom || ''}`.trim()
+                ),
+                documents: [
+                    ...(apt.patient.dossierMedical?.documents || []),
+                    ...(rdvAttachmentsByPatient.get(apt.patientId) || [])
+                ]
+            });
         }
         ));
     } catch (err) {
@@ -1121,7 +1125,7 @@ router.post('/doctor-agenda/:id/reschedule-request', authenticateProfessional, a
                 data: {
                     utilisateurId: appointment.sousAdmin.utilisateurId,
                     titre: ' Demande de report médecin',
-                    message: `Le Dr a demandé le report du rendez-vous #${appointment.id} de ${appointment.patient.utilisateur.prenom} ${appointment.patient.utilisateur.nom}.`
+                    message: `Le Dr a demandé le report du rendez-vous de ${appointment.patient.utilisateur.prenom} ${appointment.patient.utilisateur.nom}.`
                 }
             });
         }
@@ -1266,6 +1270,8 @@ router.post('/consultation-reports', authenticateProfessional, async (req: AuthR
         const patientId = Number(req.body?.patientId);
         const summary = String(req.body?.summary || '').trim();
         const sendSecure = parseSendSecureFlag(req.body?.sendSecure);
+        const notifyPatient = req.body?.notifyPatient !== false; // Active par défaut pour "Envoyer", explicite false pour "Sauvegarder"
+
         if (!Number.isFinite(patientId) || patientId <= 0 || !summary) {
             return res.status(400).json({ error: 'patientId et summary requis' });
         }
@@ -1293,13 +1299,13 @@ router.post('/consultation-reports', authenticateProfessional, async (req: AuthR
         });
 
         const doctorLabel = `Dr. ${medecin.utilisateur.prenom} ${medecin.utilisateur.nom}`;
-        const notificationData = {
+        const notificationData = notifyPatient ? {
             utilisateurId: patient.utilisateurId,
             titre: sendSecure ? 'Nouveau document — compte rendu' : 'Mise à jour du dossier',
             message: sendSecure
                 ? `${doctorLabel} vous a envoyé un compte rendu sécurisé. Ouvrez la section Documents pour le consulter ou le télécharger.`
                 : `${doctorLabel} a enregistré un compte rendu de consultation dans votre dossier. Consultez Documents ou votre espace patient pour les détails.`
-        };
+        } : null;
 
         let secureDoc: { id: number; publicId: string | null } | null = null;
         let writtenSecureAbsPath: string | null = null;
@@ -1362,7 +1368,9 @@ router.post('/consultation-reports', authenticateProfessional, async (req: AuthR
                         }
                     });
                     secureDoc = { id: created.id, publicId: created.publicId };
-                    await tx.notification.create({ data: notificationData });
+                    if (notificationData) {
+                        await tx.notification.create({ data: notificationData });
+                    }
                 });
             } catch (txErr) {
                 if (writtenSecureAbsPath) {
@@ -1379,7 +1387,9 @@ router.post('/consultation-reports', authenticateProfessional, async (req: AuthR
                     where: { id: dossier.id },
                     data: { historiqueMedical: { push: historyItem } }
                 });
-                await tx.notification.create({ data: notificationData });
+                if (notificationData) {
+                    await tx.notification.create({ data: notificationData });
+                }
             });
         }
 
@@ -1392,17 +1402,17 @@ router.post('/consultation-reports', authenticateProfessional, async (req: AuthR
 
         return res.status(201).json({
             message: sendSecure
-                ? 'Compte rendu sauvegardé et envoyé au patient en sécurisé'
-                : 'Compte rendu sauvegardé dans le dossier',
+                ? (notifyPatient ? 'Compte rendu sauvegardé et envoyé au patient' : 'Compte rendu sauvegardé (non notifié)')
+                : 'Compte rendu sauvegardé dans le dossier (JSON)',
             secureDocument: secureDoc,
-            patientNotified: true,
+            patientNotified: !!notificationData,
             documentSecurity: sendSecure
                 ? {
-                      kind: 'encrypted_consultation',
-                      description:
-                          'PDF chiffré au stockage ; déchiffrement réservé au patient. Pas de signature numérique médecin sur ce flux.',
-                      blockchainAnchored: blockchainAnchoredForResponse
-                  }
+                    kind: 'encrypted_consultation',
+                    description:
+                        'PDF chiffré au stockage ; déchiffrement réservé au patient. Pas de signature numérique médecin sur ce flux.',
+                    blockchainAnchored: blockchainAnchoredForResponse
+                }
                 : undefined,
             verifyToken,
             verifyPath

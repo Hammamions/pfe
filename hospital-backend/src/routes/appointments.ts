@@ -1,8 +1,8 @@
 import crypto from 'crypto';
-import fs from 'fs';
-import path from 'path';
 import { Response, Router } from 'express';
+import fs from 'fs';
 import multer from 'multer';
+import path from 'path';
 import { prisma } from '../lib/prisma';
 import { authenticatePatient, AuthRequest } from '../middleware/auth';
 import { formatAppointmentCalendarParts, formatAppointmentTime } from '../utils/appointmentDisplay';
@@ -105,7 +105,7 @@ router.get('/', authenticatePatient, async (req: AuthRequest, res: Response) => 
                     data: {
                         utilisateurId: req.userId as number,
                         titre: ' Absence rendez-vous',
-                        message: `Absence constatée pour le rendez-vous ${marker}. Le délai de 30 minutes est dépassé, le rendez-vous est clos automatiquement.`
+                        message: `Absence constatée pour le rendez-vous. Le délai de 30 minutes est dépassé, le rendez-vous est clos automatiquement.`
                     }
                 });
             }
@@ -119,7 +119,17 @@ router.get('/', authenticatePatient, async (req: AuthRequest, res: Response) => 
             orderBy: { date: 'asc' }
         });
 
-        const formatted = appointments.map(apt => {
+        // Search for relevant "chained" slot offers in notifications
+        const notifications = await prisma.notification.findMany({
+            where: {
+                utilisateurId: req.userId as number,
+                message: { contains: '[[RDV_CHAIN:' }
+            }
+        });
+
+        console.log(`[DEBUG] Fetching appointments for user ${req.userId}. Found ${appointments.length} appointments.`);
+
+        const formatted = await Promise.all(appointments.map(async (apt) => {
             const dateObj = new Date(apt.date);
             const cal = formatAppointmentCalendarParts(dateObj);
             let status = apt.statut.toLowerCase();
@@ -130,7 +140,7 @@ router.get('/', authenticatePatient, async (req: AuthRequest, res: Response) => 
                     (apt.statut as any) === 'TERMINE');
             if (!isPlanned && apt.statut === 'CONFIRME') status = 'en_attente';
 
-            
+
             if ((apt.statut as any) === 'EN_ATTENTE' && (apt.motif?.startsWith('[ANNULER]') || apt.motif?.startsWith('[REPORT]'))) {
                 status = 'en_attente';
             } else if (apt.motif?.startsWith('[ANNULER]')) status = 'demande_annulation';
@@ -148,9 +158,32 @@ router.get('/', authenticatePatient, async (req: AuthRequest, res: Response) => 
                 isPlanned &&
                 apt.statut === 'CONFIRME' &&
                 msUntilStart > 0 &&
-                msUntilStart <= 33 * 60 * 1000 &&
+                msUntilStart <= 125 * 60 * 1000 &&
                 !/\[PREVISIT:ATTEND\]/.test(rawMotif) &&
                 !/\[PREVISIT:ASK_RESCHEDULE\]/.test(rawMotif);
+
+            // Check for earlier slot offer
+            let earlierSlot: { date: string, offeringId: number } | null = null;
+            const chainMarkerSuffix = `:${apt.id}]]`;
+            const myChainNotif = notifications.find(n => n.message.includes(chainMarkerSuffix));
+            if (myChainNotif) {
+                console.log(`[DEBUG] Found potential chain notif for apt ${apt.id}: ${myChainNotif.message}`);
+                const match = myChainNotif.message.match(/\[\[RDV_CHAIN:(\d+):(\d+)\]\]/);
+                if (match && parseInt(match[2]) === apt.id) {
+                    const offeringId = parseInt(match[1]);
+                    const offeringApt = await prisma.rendezVous.findUnique({
+                        where: { id: offeringId },
+                        select: { date: true }
+                    });
+                    if (offeringApt) {
+                        earlierSlot = {
+                            date: offeringApt.date.toISOString(),
+                            offeringId
+                        };
+                        console.log(`[DEBUG] Attached earlierSlot to apt ${apt.id}: ${earlierSlot.date}`);
+                    }
+                }
+            }
 
             return {
                 id: apt.id,
@@ -170,15 +203,16 @@ router.get('/', authenticatePatient, async (req: AuthRequest, res: Response) => 
                 isPlanned,
                 motif: apt.motif
                     ? apt.motif
-                        
+
                         .replace(/\[[^\]]+\]/g, ' ')
                         .replace(/\s{2,}/g, ' ')
                         .trim()
                     : '',
                 hasDocuments,
                 documentName,
+                earlierSlot
             };
-        });
+        }));
 
         return res.json(formatted);
     } catch (error) {
@@ -286,12 +320,62 @@ router.post('/', authenticatePatient, async (req: AuthRequest, res: Response) =>
 });
 
 
+async function notifyNextPatientOfAvailableSlot(appointment: any, options: { afterDate?: Date } = {}) {
+    const dayStart = new Date(appointment.date);
+    dayStart.setHours(0, 0, 0, 0);
+    const dayEnd = new Date(dayStart);
+    dayEnd.setDate(dayEnd.getDate() + 1);
+
+    const startAfter = options.afterDate || appointment.date;
+
+    let nextApt: any = null;
+    if (appointment.medecinId || appointment.sousAdminId) {
+        const nextWhere: any = {
+            id: { not: appointment.id },
+            date: { gt: startAfter, gte: dayStart, lt: dayEnd },
+            statut: 'CONFIRME' as any
+        };
+        if (appointment.medecinId) {
+            nextWhere.medecinId = appointment.medecinId;
+        } else if (appointment.sousAdminId) {
+            nextWhere.sousAdminId = appointment.sousAdminId;
+        }
+        nextApt = await prisma.rendezVous.findFirst({
+            where: nextWhere,
+            orderBy: { date: 'asc' },
+            include: { patient: { include: { utilisateur: true } } }
+        });
+    }
+    if (nextApt?.patient?.utilisateurId) {
+        const chainMarker = `[[RDV_CHAIN:${appointment.id}:${nextApt.id}]]`;
+        const existingChain = await prisma.notification.findFirst({
+            where: {
+                utilisateurId: nextApt.patient.utilisateurId,
+                message: { contains: chainMarker }
+            },
+            select: { id: true }
+        });
+        if (!existingChain) {
+            await prisma.notification.create({
+                data: {
+                    utilisateurId: nextApt.patient.utilisateurId,
+                    titre: '📅 Créneau plus tôt disponible',
+                    message: `Un patient avant vous souhaite reporter son rendez-vous. Souhaitez-vous prendre sa place à son heure initiale ou garder votre créneau actuel ? Ouvrez le rendez-vous pour donner votre accord. ${chainMarker}`
+                }
+            });
+        }
+    }
+}
+
 router.put('/:id', authenticatePatient, async (req: AuthRequest, res: Response) => {
     const { id } = req.params;
-    const { status, requestType, date: newDate, preVisitIntent } = req.body;
+    const { status, requestType, date: newDate, preVisitIntent, swapChoice } = req.body;
 
     try {
-        const patient = await prisma.patient.findUnique({ where: { utilisateurId: req.userId } });
+        const patient = await prisma.patient.findUnique({
+            where: { utilisateurId: req.userId },
+            include: { utilisateur: true }
+        });
         if (!patient) return res.status(404).json({ error: 'Patient non trouvé' });
 
         const appointment = await prisma.rendezVous.findFirst({
@@ -299,15 +383,87 @@ router.put('/:id', authenticatePatient, async (req: AuthRequest, res: Response) 
         });
         if (!appointment) return res.status(404).json({ error: 'Rendez-vous non trouvé' });
 
+        if (swapChoice === 'ACCEPT' || swapChoice === 'DECLINE') {
+            const chainNotif = await prisma.notification.findFirst({
+                where: {
+                    utilisateurId: req.userId as number,
+                    message: { contains: `:${id}]]` }
+                }
+            });
+
+            if (chainNotif) {
+                if (swapChoice === 'ACCEPT') {
+                    const match = chainNotif.message.match(/\[\[RDV_CHAIN:(\d+):(\d+)\]\]/);
+                    if (match && match[2] && parseInt(match[2]) === parseInt(id as string)) {
+                        const offeringId = parseInt(match[1]);
+                        const offeringApt = await prisma.rendezVous.findUnique({
+                            where: { id: offeringId }
+                        });
+                        if (offeringApt) {
+                            // Move current patient to the earlier slot
+                            await prisma.rendezVous.update({
+                                where: { id: parseInt(id as string) },
+                                data: {
+                                    statut: 'EN_ATTENTE',
+                                    date: offeringApt.date,
+                                    motif: `[SWAP_ACCEPT] [SWAP_FROM:${appointment.date.toISOString()}] ${appointment.motif || ''}`.trim()
+                                }
+                            });
+
+                            // The current patient's ORIGINAL slot is now vacant! Offer it to the next person.
+                            // We use the original appointment object which has the old date.
+                            await notifyNextPatientOfAvailableSlot(appointment);
+
+                            if (appointment.sousAdminId) {
+                                const sa = await prisma.sousAdmin.findUnique({
+                                    where: { id: appointment.sousAdminId },
+                                    include: { utilisateur: true }
+                                });
+                                if (sa?.utilisateurId) {
+                                    await prisma.notification.create({
+                                        data: {
+                                            utilisateurId: sa.utilisateurId,
+                                            titre: '📌 Proposition de créneau acceptée',
+                                            message: `Un patient a accepté d'avancer son rendez-vous à ${offeringApt.date.toLocaleTimeString('fr-FR')}. Veuillez valider la demande.`
+                                        }
+                                    });
+                                }
+                            }
+                        }
+                    }
+                } else if (swapChoice === 'DECLINE') {
+                    // Current patient declined the earlier slot. Pass it to the next person.
+                    const match = chainNotif.message.match(/\[\[RDV_CHAIN:(\d+):(\d+)\]\]/);
+                    if (match) {
+                        const offeringId = parseInt(match[1]);
+                        const offeringApt = await prisma.rendezVous.findUnique({
+                            where: { id: offeringId }
+                        });
+                        if (offeringApt) {
+                            // Notify next patient AFTER current appointment
+                            await notifyNextPatientOfAvailableSlot(offeringApt, { afterDate: appointment.date });
+                        }
+                    }
+                }
+
+                await prisma.notification.delete({ where: { id: chainNotif.id } });
+                const refreshed = await prisma.rendezVous.findUnique({ where: { id: parseInt(id as string) } });
+                return res.json({
+                    message: swapChoice === 'ACCEPT' ? 'Rendez-vous avancé avec succès' : 'Offre déclinée',
+                    appointment: { ...refreshed, earlierSlot: null }
+                });
+            }
+        }
+
         const rawIntent = typeof preVisitIntent === 'string' ? preVisitIntent.toUpperCase() : '';
         if (rawIntent === 'WILL_ATTEND' || rawIntent === 'WANT_RESCHEDULE') {
             if (appointment.statut !== 'CONFIRME') {
                 return res.status(400).json({ error: 'Cette action concerne uniquement un rendez-vous confirmé.' });
             }
             const msUntil = new Date(appointment.date).getTime() - Date.now();
-            if (msUntil <= 0 || msUntil > 30 * 60 * 1000) {
+            if (msUntil <= 0 || msUntil > 130 * 60 * 1000) {
                 return res.status(400).json({
-                    error: 'Cette action est disponible dans les 30 minutes avant l’heure du rendez-vous.'
+                    error: 'Cette action est disponible dans les 2 heures avant l’heure du rendez-vous.'
                 });
             }
 
@@ -315,110 +471,60 @@ router.put('/:id', authenticatePatient, async (req: AuthRequest, res: Response) 
                 if (/\[PREVISIT:ATTEND\]/.test(appointment.motif || '')) {
                     return res.json({ message: 'Présence déjà enregistrée', appointment });
                 }
-                const startOfDay = new Date(appointment.date);
-                startOfDay.setHours(0, 0, 0, 0);
-                const endOfDay = new Date(startOfDay);
-                endOfDay.setDate(endOfDay.getDate() + 1);
-                const motifWithPresenceTag = `${upsertPreVisitAttend(appointment.motif)} [PRESENT:1]`
-                    .replace(/\s{2,}/g, ' ')
-                    .trim();
+                const motifWithPresenceTag = upsertPreVisitAttend(appointment.motif);
                 const updatedPv = await prisma.rendezVous.update({
                     where: { id: appointment.id },
                     data: { motif: motifWithPresenceTag }
                 });
-                await prisma.salleAttente.updateMany({
-                    where: {
-                        patientId: patient.id,
-                        joinedAt: { gte: startOfDay, lt: endOfDay }
-                    },
-                    data: {
-                        presenceStatus: 'PRESENT' as any,
-                        status: 'EN_CONSULTATION'
-                    }
-                });
+
                 await prisma.notification.create({
                     data: {
                         utilisateurId: patient.utilisateurId,
                         titre: '✅ Présence enregistrée',
-                        message: `Merci : nous avons bien noté votre présence pour le rendez-vous #${appointment.id}.`
+                        message: `Merci : nous avons bien noté votre présence pour le rendez-vous.`
                     }
                 });
                 return res.json({ message: 'Présence enregistrée', appointment: updatedPv });
             }
 
-            if (!/\[PREVISIT:ASK_RESCHEDULE\]/.test(appointment.motif || '')) {
-                await prisma.rendezVous.update({
-                    where: { id: appointment.id },
-                    data: { motif: upsertPreVisitRescheduleAsk(appointment.motif) }
-                });
-                await prisma.notification.create({
-                    data: {
-                        utilisateurId: patient.utilisateurId,
-                        titre: '📅 Changer l’heure',
-                        message: `Pour reporter le rendez-vous #${appointment.id}, ouvrez le détail du rendez-vous puis utilisez « Demande de report ».`
-                    }
-                });
-                if (appointment.sousAdminId) {
-                    const sa = await prisma.sousAdmin.findUnique({
-                        where: { id: appointment.sousAdminId },
-                        include: { utilisateur: true }
+            if (rawIntent === 'WANT_RESCHEDULE') {
+                if (!/\[PREVISIT:ASK_RESCHEDULE\]/.test(appointment.motif || '')) {
+                    const newMotif = `[REPORT] ${upsertPreVisitRescheduleAsk(appointment.motif)}`.replace(/\s{2,}/g, ' ').trim();
+                    await prisma.rendezVous.update({
+                        where: { id: appointment.id },
+                        data: {
+                            statut: 'EN_ATTENTE',
+                            motif: newMotif
+                        }
                     });
-                    if (sa?.utilisateurId) {
-                        await prisma.notification.create({
-                            data: {
-                                utilisateurId: sa.utilisateurId,
-                                titre: '⚠️ Patient : report souhaité',
-                                message: `Le patient souhaite reporter le rendez-vous #${appointment.id} (rappel avant venue).`
-                            }
+                    await prisma.notification.create({
+                        data: {
+                            utilisateurId: patient.utilisateurId,
+                            titre: '📅 Changer l’heure',
+                            message: `Pour reporter le rendez-vous, ouvrez le détail du rendez-vous puis utilisez « Demande de report ».`
+                        }
+                    });
+                    if (appointment.sousAdminId) {
+                        const sa = await prisma.sousAdmin.findUnique({
+                            where: { id: appointment.sousAdminId },
+                            include: { utilisateur: true }
                         });
+                        if (sa?.utilisateurId) {
+                            await prisma.notification.create({
+                                data: {
+                                    utilisateurId: sa.utilisateurId,
+                                    titre: '⚠️ Patient : report souhaité',
+                                    message: `Le patient souhaite reporter le rendez-vous (rappel avant venue).`
+                                }
+                            });
+                        }
                     }
-                }
 
-                const dayStart = new Date(appointment.date);
-                dayStart.setHours(0, 0, 0, 0);
-                const dayEnd = new Date(dayStart);
-                dayEnd.setDate(dayEnd.getDate() + 1);
-
-                let nextApt: any = null;
-                if (appointment.medecinId || appointment.sousAdminId) {
-                    const nextWhere: any = {
-                        id: { not: appointment.id },
-                        date: { gt: appointment.date, gte: dayStart, lt: dayEnd },
-                        statut: 'CONFIRME' as any
-                    };
-                    if (appointment.medecinId) {
-                        nextWhere.medecinId = appointment.medecinId;
-                    } else if (appointment.sousAdminId) {
-                        nextWhere.sousAdminId = appointment.sousAdminId;
-                    }
-                    nextApt = await prisma.rendezVous.findFirst({
-                        where: nextWhere,
-                        orderBy: { date: 'asc' },
-                        include: { patient: { include: { utilisateur: true } } }
-                    });
+                    await notifyNextPatientOfAvailableSlot(appointment);
                 }
-                if (nextApt?.patient?.utilisateurId) {
-                    const chainMarker = `[[RDV_CHAIN:${appointment.id}:${nextApt.id}]]`;
-                    const existingChain = await prisma.notification.findFirst({
-                        where: {
-                            utilisateurId: nextApt.patient.utilisateurId,
-                            message: { contains: chainMarker }
-                        },
-                        select: { id: true }
-                    });
-                    if (!existingChain) {
-                        await prisma.notification.create({
-                            data: {
-                                utilisateurId: nextApt.patient.utilisateurId,
-                                titre: '📅 File d’attente',
-                                message: `Un patient avant vous sur la même journée souhaite reporter : votre créneau reste confirmé pour l’instant. Ouvrez Rendez-vous pour confirmer que vous gardez l’heure ou pour demander aussi un report. ${chainMarker}`
-                            }
-                        });
-                    }
-                }
+                const refreshed = await prisma.rendezVous.findUnique({ where: { id: appointment.id } });
+                return res.json({ message: 'Demande enregistrée', appointment: refreshed });
             }
-            const refreshed = await prisma.rendezVous.findUnique({ where: { id: appointment.id } });
-            return res.json({ message: 'Demande enregistrée', appointment: refreshed });
         }
 
         const requestedStatus = String(status || '').toUpperCase();
@@ -445,7 +551,11 @@ router.put('/:id', authenticatePatient, async (req: AuthRequest, res: Response) 
             data: { statut: finalStatus, motif: finalMotif, date: finalDate }
         });
 
-      
+        if (requestedStatus === 'REPORTE' || String(requestType || '').toLowerCase() === 'reschedule') {
+            await notifyNextPatientOfAvailableSlot(appointment);
+        }
+
+
         if ((requestedStatus === 'ANNULE' || requestedStatus === 'REPORTE') && appointment.sousAdminId) {
             const sa = await prisma.sousAdmin.findUnique({
                 where: { id: appointment.sousAdminId },
@@ -457,7 +567,7 @@ router.put('/:id', authenticatePatient, async (req: AuthRequest, res: Response) 
                     data: {
                         utilisateurId: sa.utilisateurId,
                         titre: '📌 Nouvelle demande patient',
-                        message: `Le patient a envoyé une demande ${demandLabel} du rendez-vous #${appointment.id}.`
+                        message: `Le patient a envoyé une demande ${demandLabel} du rendez-vous.`
                     }
                 });
             }

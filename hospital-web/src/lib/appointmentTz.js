@@ -1,12 +1,16 @@
 export const APPOINTMENT_DISPLAY_TZ = 'Europe/Paris';
 
 export function calendarDateKeyInTz(d, timeZone = APPOINTMENT_DISPLAY_TZ) {
+    if (!d) return '';
+    const dateObj = new Date(d);
+    if (isNaN(dateObj.getTime())) return '';
+
     return new Intl.DateTimeFormat('en-CA', {
         timeZone,
         year: 'numeric',
         month: '2-digit',
         day: '2-digit'
-    }).format(d);
+    }).format(dateObj);
 }
 
 

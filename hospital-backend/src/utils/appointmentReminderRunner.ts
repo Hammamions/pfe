@@ -79,13 +79,6 @@ export async function maybeNotifySoonAfterConfirm(
     if (await isPatientAlreadyPresentForAppointmentDay(prisma, apt.patientId, params.appointmentAt)) return;
     if (hasAnyPreVisitTag(apt?.motif)) return;
 
-    const marker = markerRdvPre30(params.appointmentId);
-    const existing = await prisma.notification.findFirst({
-        where: { utilisateurId: params.patientUserId, message: { contains: marker } },
-        select: { id: true }
-    });
-    if (existing) return;
-
     const heure = formatAppointmentTime(params.appointmentAt);
     const lieu = params.lieu || 'lieu à confirmer';
     const salle = params.salle || 'salle à confirmer';
@@ -93,7 +86,7 @@ export async function maybeNotifySoonAfterConfirm(
         data: {
             utilisateurId: params.patientUserId,
             titre: '❓ Serez-vous présent(e) ?',
-            message: `Veuillez confirmer votre présence à ce rendez-vous. ${marker}`
+            message: `Veuillez confirmer votre présence à ce rendez-vous.`
         }
     });
     await prisma.rendezVous.update({
@@ -105,7 +98,7 @@ export async function maybeNotifySoonAfterConfirm(
 
 export async function tickPreVisitPresenceAsk(prisma: PrismaClient): Promise<void> {
     const now = new Date();
-    const horizon = new Date(now.getTime() + 30 * 60 * 1000);
+    const horizon = new Date(now.getTime() + 120 * 60 * 1000);
 
     const candidates = await prisma.rendezVous.findMany({
         where: {
@@ -121,16 +114,6 @@ export async function tickPreVisitPresenceAsk(prisma: PrismaClient): Promise<voi
         if (await isPatientAlreadyPresentForAppointmentDay(prisma, apt.patientId, apt.date)) continue;
         if (hasAnyPreVisitTag(apt.motif)) continue;
 
-        const marker = markerRdvPre30(apt.id);
-        const existing = await prisma.notification.findFirst({
-            where: {
-                utilisateurId: apt.patient.utilisateurId,
-                message: { contains: marker }
-            },
-            select: { id: true }
-        });
-        if (existing) continue;
-
         const heure = formatAppointmentTime(apt.date);
         const lieu = apt.lieu || 'lieu à confirmer';
         const salle = apt.salle || 'salle à confirmer';
@@ -138,7 +121,7 @@ export async function tickPreVisitPresenceAsk(prisma: PrismaClient): Promise<voi
             data: {
                 utilisateurId: apt.patient.utilisateurId,
                 titre: '❓ Serez-vous présent(e) ?',
-                message: `Veuillez confirmer votre présence à ce rendez-vous. ${marker}`
+                message: `Veuillez confirmer votre présence à votre rendez-vous de ${heure}.`
             }
         });
         await prisma.rendezVous.update({
@@ -172,15 +155,7 @@ export async function tickAwaitingConsultationReminders(prisma: PrismaClient): P
     });
 
     for (const apt of candidates) {
-        const marker = markerRdvT15(apt.id);
-        const existing = await prisma.notification.findFirst({
-            where: {
-                utilisateurId: apt.patient.utilisateurId,
-                message: { contains: marker }
-            },
-            select: { id: true }
-        });
-        if (existing) continue;
+        if ((apt.motif || '').includes('[T15_NOTIFIED]')) continue;
 
         const heure = formatAppointmentTime(apt.date);
         const lieu = apt.lieu || 'lieu à confirmer';
@@ -189,8 +164,12 @@ export async function tickAwaitingConsultationReminders(prisma: PrismaClient): P
             data: {
                 utilisateurId: apt.patient.utilisateurId,
                 titre: '🔔 Rendez-vous imminent',
-                message: `Votre créneau commence à ${heure}. Rendez-vous au ${lieu} (${salle}). ${marker}`
+                message: `Votre créneau commence à ${heure}. Rendez-vous au ${lieu} (${salle}).`
             }
+        });
+        await prisma.rendezVous.update({
+            where: { id: apt.id },
+            data: { motif: `${apt.motif || ''} [T15_NOTIFIED]`.trim() }
         });
     }
 }

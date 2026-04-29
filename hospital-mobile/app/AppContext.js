@@ -1,8 +1,8 @@
 import { createContext, useContext, useEffect, useRef, useState } from 'react';
 
-import AsyncStorage from './utils/storage';
-import { getApiBaseUrl } from './utils/apiBase';
 import { inferOrdonnanceSubCategory, normalizeOrdonnanceContenu } from './ordonnanceUtils';
+import { getApiBaseUrl } from './utils/apiBase';
+import AsyncStorage from './utils/storage';
 
 const AppContext = createContext();
 
@@ -278,7 +278,7 @@ export const AppProvider = ({ children }) => {
         if (!token) return;
         const prev = syncMutexRef.current;
         const run = async () => {
-            await prev.catch(() => {});
+            await prev.catch(() => { });
             try {
                 const base = getApiBaseUrl();
                 const notifRes = await fetch(`${base}/api/patients/notifications?_=${Date.now()}`, {
@@ -308,169 +308,169 @@ export const AppProvider = ({ children }) => {
         if (!token) return;
         const prev = syncMutexRef.current;
         const run = async () => {
-            await prev.catch(() => {});
+            await prev.catch(() => { });
             console.log('[SYNC] Starting full data synchronization...');
             try {
-            const base = getApiBaseUrl();
-            const savedPatientJson = await AsyncStorage.getItem('patient');
-            const savedPatient = savedPatientJson ? JSON.parse(savedPatientJson) : {};
+                const base = getApiBaseUrl();
+                const savedPatientJson = await AsyncStorage.getItem('patient');
+                const savedPatient = savedPatientJson ? JSON.parse(savedPatientJson) : {};
 
-            const docUrl = `${base}/api/documents?_=${Date.now()}`;
-            const SYNC_FETCH_MS = 25000;
-            const withTimeout = (promise, label) => {
-                let timer;
-                return Promise.race([
-                    promise.finally(() => {
-                        if (timer) clearTimeout(timer);
-                    }),
-                    new Promise((_, reject) => {
-                        timer = setTimeout(() => reject(new Error(`sync timeout: ${label}`)), SYNC_FETCH_MS);
-                    })
+                const docUrl = `${base}/api/documents?_=${Date.now()}`;
+                const SYNC_FETCH_MS = 25000;
+                const withTimeout = (promise, label) => {
+                    let timer;
+                    return Promise.race([
+                        promise.finally(() => {
+                            if (timer) clearTimeout(timer);
+                        }),
+                        new Promise((_, reject) => {
+                            timer = setTimeout(() => reject(new Error(`sync timeout: ${label}`)), SYNC_FETCH_MS);
+                        })
+                    ]);
+                };
+                const syncLabels = ['profile', 'appointments', 'documents', 'notifications'];
+                const settled = await Promise.allSettled([
+                    withTimeout(
+                        fetch(`${base}/api/patients/profile`, { headers: { 'Authorization': `Bearer ${token}` } }),
+                        'profile'
+                    ),
+                    withTimeout(
+                        fetch(`${base}/api/appointments?_=${Date.now()}`, { headers: { 'Authorization': `Bearer ${token}` } }),
+                        'appointments'
+                    ),
+                    withTimeout(
+                        fetch(docUrl, {
+                            cache: 'no-store',
+                            headers: {
+                                'Authorization': `Bearer ${token}`,
+                                'Cache-Control': 'no-cache',
+                                'Pragma': 'no-cache'
+                            }
+                        }),
+                        'documents'
+                    ),
+                    withTimeout(
+                        fetch(`${base}/api/patients/notifications?_=${Date.now()}`, {
+                            cache: 'no-store',
+                            headers: {
+                                Authorization: `Bearer ${token}`,
+                                'Cache-Control': 'no-cache',
+                                Pragma: 'no-cache',
+                            },
+                        }),
+                        'notifications'
+                    )
                 ]);
-            };
-            const syncLabels = ['profile', 'appointments', 'documents', 'notifications'];
-            const settled = await Promise.allSettled([
-                withTimeout(
-                    fetch(`${base}/api/patients/profile`, { headers: { 'Authorization': `Bearer ${token}` } }),
-                    'profile'
-                ),
-                withTimeout(
-                    fetch(`${base}/api/appointments`, { headers: { 'Authorization': `Bearer ${token}` } }),
-                    'appointments'
-                ),
-                withTimeout(
-                    fetch(docUrl, {
-                        cache: 'no-store',
-                        headers: {
-                            'Authorization': `Bearer ${token}`,
-                            'Cache-Control': 'no-cache',
-                            'Pragma': 'no-cache'
-                        }
-                    }),
-                    'documents'
-                ),
-                withTimeout(
-                    fetch(`${base}/api/patients/notifications?_=${Date.now()}`, {
-                        cache: 'no-store',
-                        headers: {
-                            Authorization: `Bearer ${token}`,
-                            'Cache-Control': 'no-cache',
-                            Pragma: 'no-cache',
-                        },
-                    }),
-                    'notifications'
-                )
-            ]);
-            settled.forEach((out, i) => {
-                if (out.status === 'rejected') {
-                    console.warn(`[SYNC] ${syncLabels[i]} failed`, out.reason);
-                }
-            });
-
-            const profRes = settled[0].status === 'fulfilled' ? settled[0].value : null;
-            const aptRes = settled[1].status === 'fulfilled' ? settled[1].value : null;
-            const docRes = settled[2].status === 'fulfilled' ? settled[2].value : null;
-            const notifRes = settled[3].status === 'fulfilled' ? settled[3].value : null;
-
-            const activeToken = await AsyncStorage.getItem('token');
-            if (!activeToken || activeToken !== token) {
-                console.log('[SYNC] Apply skipped (déconnexion ou session remplacée)');
-                return;
-            }
-
-            if (profRes?.ok) {
-                const data = await profRes.json();
-                const standardizedData = {
-                    ...data,
-                    firstName: data.firstName || data.prenom || "",
-                    lastName: data.lastName || data.nom || "",
-                    phone: data.phone || data.telephone || savedPatient.phone || "",
-                    patientSince: data.createdAt ? new Date(data.createdAt).getFullYear().toString() : (data.patientSince || "2024"),
-                    emergencyContact: {
-                        name: data.emergencyContact?.name || savedPatient?.emergencyContact?.name || "",
-                        phone: data.emergencyContact?.phone || savedPatient?.emergencyContact?.phone || "",
-                        relation: data.emergencyContact?.relation || savedPatient?.emergencyContact?.relation || "",
-                        email: data.emergencyContact?.email || savedPatient?.emergencyContact?.email || ""
+                settled.forEach((out, i) => {
+                    if (out.status === 'rejected') {
+                        console.warn(`[SYNC] ${syncLabels[i]} failed`, out.reason);
                     }
-                };
-                setPatient(standardizedData);
-                await AsyncStorage.setItem('patient', JSON.stringify(standardizedData));
-            }
-
-            if (aptRes?.ok) {
-                const data = await aptRes.json();
-                setAppointments(data.filter(a => a.status === 'confirme' || a.status === 'en_cours'));
-                setHistory(data.filter(a => a.status === 'termine' || a.status === 'annule'));
-                setRequests(data.filter(a => a.status === 'en_attente' || a.status === 'reporte' || a.status === 'demande_annulation'));
-            }
-
-            if (docRes?.ok) {
-                const data = await docRes.json();
-                const parseDocMeta = (urlFichier) => {
-                    try {
-                        if (!urlFichier || typeof urlFichier !== 'string') return {};
-                        const query = urlFichier.split('?')[1] || '';
-                        const params = new URLSearchParams(query);
-                        return {
-                            issuerName: params.get('issuer') || '',
-                            practitionerName: params.get('practitioner') || '',
-                            sourceType: params.get('source') || ''
-                        };
-                    } catch { return {}; }
-                };
-                const normalizeDocId = (doc) => {
-                    const rawStr = String(doc.id ?? '').trim();
-                    if (/^ord_\d+$/i.test(rawStr)) {
-                        const m = /^ord_(\d+)$/i.exec(rawStr);
-                        return `ord_${m[1]}`;
-                    }
-                    const isOrd =
-                        Boolean(doc.isOrdonnance) ||
-                        String(doc.type || doc.category || '').toLowerCase() === 'ordonnance';
-                    if (isOrd) {
-                        const n = parseInt(rawStr, 10);
-                        if (!Number.isNaN(n)) return `ord_${n}`;
-                    }
-                    return doc.id;
-                };
-                const mappedDocs = (Array.isArray(data) ? data : []).map((doc) => {
-                    const rawContenu = doc.ordonnanceContenu ?? doc.ordonnance_contenu ?? doc.contenu;
-                    const idStr = doc.id != null ? String(doc.id).trim() : '';
-                    const isOrdRow =
-                        Boolean(doc.isOrdonnance) ||
-                        String(doc.type || doc.category || '').toLowerCase() === 'ordonnance' ||
-                        /^ord_\d+$/i.test(idStr);
-                    return {
-                        ...parseDocMeta(doc.urlFichier),
-                        id: normalizeDocId(doc),
-                        title: doc.title || doc.titre || 'Document',
-                        doctor: doc.doctor || doc.praticien || 'notSpecified',
-                        date: doc.date || (doc.createdAt ? new Date(doc.createdAt).toLocaleDateString('fr-FR') : ''),
-                        size: doc.size || 'N/A',
-                        category: doc.category || doc.type || 'autre',
-                        createdAt: doc.createdAt || null,
-                        ordonnanceContenu: normalizeOrdonnanceContenu(rawContenu),
-                        isOrdonnance: isOrdRow,
-                        subCategory: doc.subCategory || (isOrdRow ? inferOrdonnanceSubCategory(rawContenu) : null),
-                        urlFichier: doc.urlFichier || null,
-                        publicId: doc.publicId || null,
-                        contentSha256: doc.contentSha256 || null,
-                        isSecureDocument: Boolean(doc.isSecureDocument || doc.publicId),
-                        securePreviewSummary: doc.securePreviewSummary || null,
-                        anchorTxHash: doc.anchorTxHash || null,
-                        medecinSpecialite: doc.medecinSpecialite ?? null,
-                        medecinNumeroOrdre: doc.medecinNumeroOrdre ?? null
-                    };
                 });
-                setDocuments(mappedDocs);
-            }
 
-            if (notifRes?.ok) {
-                const data = await notifRes.json();
-                setNotifications(stripPendingDeletedNotifications(mapPatientNotificationsFromApi(data)));
-            }
+                const profRes = settled[0].status === 'fulfilled' ? settled[0].value : null;
+                const aptRes = settled[1].status === 'fulfilled' ? settled[1].value : null;
+                const docRes = settled[2].status === 'fulfilled' ? settled[2].value : null;
+                const notifRes = settled[3].status === 'fulfilled' ? settled[3].value : null;
 
-            console.log('[SYNC] Synchronization complete.');
+                const activeToken = await AsyncStorage.getItem('token');
+                if (!activeToken || activeToken !== token) {
+                    console.log('[SYNC] Apply skipped (déconnexion ou session remplacée)');
+                    return;
+                }
+
+                if (profRes?.ok) {
+                    const data = await profRes.json();
+                    const standardizedData = {
+                        ...data,
+                        firstName: data.firstName || data.prenom || "",
+                        lastName: data.lastName || data.nom || "",
+                        phone: data.phone || data.telephone || savedPatient.phone || "",
+                        patientSince: data.createdAt ? new Date(data.createdAt).getFullYear().toString() : (data.patientSince || "2024"),
+                        emergencyContact: {
+                            name: data.emergencyContact?.name || savedPatient?.emergencyContact?.name || "",
+                            phone: data.emergencyContact?.phone || savedPatient?.emergencyContact?.phone || "",
+                            relation: data.emergencyContact?.relation || savedPatient?.emergencyContact?.relation || "",
+                            email: data.emergencyContact?.email || savedPatient?.emergencyContact?.email || ""
+                        }
+                    };
+                    setPatient(standardizedData);
+                    await AsyncStorage.setItem('patient', JSON.stringify(standardizedData));
+                }
+
+                if (aptRes?.ok) {
+                    const data = await aptRes.json();
+                    setAppointments(data.filter(a => a.status === 'confirme' || a.status === 'en_cours'));
+                    setHistory(data.filter(a => a.status === 'termine' || a.status === 'annule'));
+                    setRequests(data.filter(a => a.status === 'en_attente' || a.status === 'reporte' || a.status === 'demande_annulation'));
+                }
+
+                if (docRes?.ok) {
+                    const data = await docRes.json();
+                    const parseDocMeta = (urlFichier) => {
+                        try {
+                            if (!urlFichier || typeof urlFichier !== 'string') return {};
+                            const query = urlFichier.split('?')[1] || '';
+                            const params = new URLSearchParams(query);
+                            return {
+                                issuerName: params.get('issuer') || '',
+                                practitionerName: params.get('practitioner') || '',
+                                sourceType: params.get('source') || ''
+                            };
+                        } catch { return {}; }
+                    };
+                    const normalizeDocId = (doc) => {
+                        const rawStr = String(doc.id ?? '').trim();
+                        if (/^ord_\d+$/i.test(rawStr)) {
+                            const m = /^ord_(\d+)$/i.exec(rawStr);
+                            return `ord_${m[1]}`;
+                        }
+                        const isOrd =
+                            Boolean(doc.isOrdonnance) ||
+                            String(doc.type || doc.category || '').toLowerCase() === 'ordonnance';
+                        if (isOrd) {
+                            const n = parseInt(rawStr, 10);
+                            if (!Number.isNaN(n)) return `ord_${n}`;
+                        }
+                        return doc.id;
+                    };
+                    const mappedDocs = (Array.isArray(data) ? data : []).map((doc) => {
+                        const rawContenu = doc.ordonnanceContenu ?? doc.ordonnance_contenu ?? doc.contenu;
+                        const idStr = doc.id != null ? String(doc.id).trim() : '';
+                        const isOrdRow =
+                            Boolean(doc.isOrdonnance) ||
+                            String(doc.type || doc.category || '').toLowerCase() === 'ordonnance' ||
+                            /^ord_\d+$/i.test(idStr);
+                        return {
+                            ...parseDocMeta(doc.urlFichier),
+                            id: normalizeDocId(doc),
+                            title: doc.title || doc.titre || 'Document',
+                            doctor: doc.doctor || doc.praticien || 'notSpecified',
+                            date: doc.date || (doc.createdAt ? new Date(doc.createdAt).toLocaleDateString('fr-FR') : ''),
+                            size: doc.size || 'N/A',
+                            category: doc.category || doc.type || 'autre',
+                            createdAt: doc.createdAt || null,
+                            ordonnanceContenu: normalizeOrdonnanceContenu(rawContenu),
+                            isOrdonnance: isOrdRow,
+                            subCategory: doc.subCategory || (isOrdRow ? inferOrdonnanceSubCategory(rawContenu) : null),
+                            urlFichier: doc.urlFichier || null,
+                            publicId: doc.publicId || null,
+                            contentSha256: doc.contentSha256 || null,
+                            isSecureDocument: Boolean(doc.isSecureDocument || doc.publicId),
+                            securePreviewSummary: doc.securePreviewSummary || null,
+                            anchorTxHash: doc.anchorTxHash || null,
+                            medecinSpecialite: doc.medecinSpecialite ?? null,
+                            medecinNumeroOrdre: doc.medecinNumeroOrdre ?? null
+                        };
+                    });
+                    setDocuments(mappedDocs);
+                }
+
+                if (notifRes?.ok) {
+                    const data = await notifRes.json();
+                    setNotifications(stripPendingDeletedNotifications(mapPatientNotificationsFromApi(data)));
+                }
+
+                console.log('[SYNC] Synchronization complete.');
             } catch (error) {
                 console.error('[SYNC] Error syncing data:', error);
             }

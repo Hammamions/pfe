@@ -12,6 +12,7 @@
         "create-admin": "ts-node --transpile-only src/utils/create-admin.ts",
         "seed:today-rdv-test": "ts-node --transpile-only src/utils/create-today-test-appointments.ts",
         "seed:reclamation-rdv-test": "ts-node --transpile-only src/utils/create-reclamation-test-appointments.ts",
+        "seed:ghada-ahmed": "ts-node --transpile-only src/utils/create-appointments-ghada-ahmed.ts",
         "db:migrate": "prisma migrate dev",
         "db:push": "prisma db push",
         "db:pull": "prisma db pull",
@@ -21,7 +22,8 @@
         "compile:anchor": "hardhat compile",
         "deploy:anchor-amoy": "hardhat run scripts/deploy-anchor.cjs --network polygonAmoy",
         "deploy:anchor-local": "hardhat run scripts/deploy-anchor-local.cjs --network localhost",
-        "anchor:bootstrap-wallet": "node scripts/ensure-anchor-wallet.cjs"
+        "anchor:bootstrap-wallet": "node scripts/ensure-anchor-wallet.cjs",
+        "fix:merge-ghada": "ts-node --transpile-only src/utils/fix-ghada-duplicate.ts"
     },
     "prisma": {
         "seed": "ts-node --transpile-only prisma/seed.ts"

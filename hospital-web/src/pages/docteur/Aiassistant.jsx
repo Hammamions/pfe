@@ -19,7 +19,6 @@ import { Progress } from '../../components/ui/progress';
 import { Select, SelectContent, SelectItem, SelectTrigger, cn } from '../../components/ui/select';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '../../components/ui/tabs';
 import { Textarea } from '../../components/ui/textarea';
-import { aiSuggestions } from '../../data/doctorMockData';
 import api from '../../lib/api';
 
 const PRESCRIPTION_QUEUE_KEY = 'hospital_ai_prescription_queue';
@@ -47,7 +46,6 @@ export default function AIAssistantPage() {
     const [llmDiagnoses, setLlmDiagnoses] = useState(null);
     const [llmTreatments, setLlmTreatments] = useState(null);
     const [diagRagSources, setDiagRagSources] = useState([]);
-    const [useStaticDiagDemo, setUseStaticDiagDemo] = useState(false);
     const [assistantTab, setAssistantTab] = useState('voice');
 
     useEffect(() => {
@@ -110,19 +108,13 @@ export default function AIAssistantPage() {
     }, [selectedPatientId]);
 
     const appendTreatmentToPrescription = (treatment) => {
-        if (!selectedPatientId) {
-            setDiagFeedback({
-                type: 'error',
-                text: 'Sélectionnez d’abord un patient dans la liste « Patient destinataire ».'
-            });
-            return;
-        }
         try {
-            let payload = { patientId: selectedPatientId, meds: [] };
+            const targetPatientId = selectedPatientId || 'draft';
+            let payload = { patientId: targetPatientId, meds: [] };
             const raw = sessionStorage.getItem(PRESCRIPTION_QUEUE_KEY);
             if (raw) {
                 const parsed = JSON.parse(raw);
-                if (String(parsed.patientId) === String(selectedPatientId) && Array.isArray(parsed.meds)) {
+                if (String(parsed.patientId) === String(targetPatientId) && Array.isArray(parsed.meds)) {
                     payload = parsed;
                 }
             }
@@ -136,7 +128,7 @@ export default function AIAssistantPage() {
             sessionStorage.setItem(PRESCRIPTION_QUEUE_KEY, JSON.stringify(payload));
             setDiagFeedback({
                 type: 'success',
-                text: `${treatment.medicament} ajouté à l’ordonnance en cours. Ouvrez « Ordonnances » pour vérifier et enregistrer.`
+                text: `${treatment.medicament} ajouté à l’ordonnance en cours.`
             });
         } catch {
             setDiagFeedback({ type: 'error', text: 'Impossible d’ajouter le médicament (stockage local).' });
@@ -289,6 +281,7 @@ export default function AIAssistantPage() {
                 notes: transcription
             });
             setSummary(data.summary || '');
+            setClinicalInput(data.summary || '');
             setSummaryRagSources(Array.isArray(data.ragSources) ? data.ragSources : []);
         } catch (e) {
             const msg =
@@ -315,7 +308,6 @@ export default function AIAssistantPage() {
         setLlmTreatments(null);
         setDiagRagSources([]);
         try {
-            // 2. FIX THIS URL: Must start with /professionals
             const { data } = await api.post('/professionals/assistant/diagnostic', {
                 clinicalText: text
             });
@@ -341,18 +333,8 @@ export default function AIAssistantPage() {
         setDiagRagSources([]);
     };
 
-    const displayDiagnoses =
-        llmDiagnoses && llmDiagnoses.length
-            ? llmDiagnoses
-            : useStaticDiagDemo
-                ? aiSuggestions.diagnoses
-                : [];
-    const displayTreatments =
-        llmTreatments && llmTreatments.length
-            ? llmTreatments
-            : useStaticDiagDemo
-                ? aiSuggestions.treatments
-                : [];
+    const displayDiagnoses = llmDiagnoses && llmDiagnoses.length ? llmDiagnoses : [];
+    const displayTreatments = llmTreatments && llmTreatments.length ? llmTreatments : [];
 
     const handleCopy = (text) => {
         navigator.clipboard.writeText(text);
@@ -379,19 +361,20 @@ export default function AIAssistantPage() {
                 {
                     patientId: Number(selectedPatientId),
                     summary,
-                    sendSecure: sendSecure === true
+                    sendSecure: true,
+                    notifyPatient: shouldNotifyPatient === true
                 },
                 { headers: { 'Content-Type': 'application/json' } }
             );
-            if (sendSecure === true) {
-                setSendSuccessNote(
-                    'Envoi réussi : le patient reçoit une notification et le PDF apparaît sous Documents (synchro en quelques secondes).'
-                );
-                sendSuccessTimerRef.current = setTimeout(() => {
-                    setSendSuccessNote('');
-                    sendSuccessTimerRef.current = null;
-                }, 120000);
-            }
+            setSendSuccessNote(
+                shouldNotifyPatient
+                    ? 'Envoi réussi : le patient reçoit une notification et le PDF apparaît sous Documents (synchro en quelques secondes).'
+                    : 'Compte rendu sauvegardé dans le dossier patient.'
+            );
+            sendSuccessTimerRef.current = setTimeout(() => {
+                setSendSuccessNote('');
+                sendSuccessTimerRef.current = null;
+            }, 120000);
         } catch (e) {
             const msg = e?.response?.data?.error || 'Erreur lors de la sauvegarde du compte rendu.';
             setActionError(msg);
@@ -543,10 +526,6 @@ export default function AIAssistantPage() {
                     <Card>
                         <CardHeader>
                             <CardTitle>Génération de résumé</CardTitle>
-                            <CardDescription>
-                                Compte rendu structuré à partir des notes (dictée ou saisie), enrichi par la base
-                                documentaire (RAG) et le modèle configuré sur le serveur.
-                            </CardDescription>
                         </CardHeader>
                         <CardContent className="space-y-4">
                             <div>
@@ -567,7 +546,7 @@ export default function AIAssistantPage() {
                                 className="w-full"
                             >
                                 <Sparkles className="w-4 h-4 mr-2" />
-                                {summaryLoading ? 'Génération en cours…' : 'Générer le compte rendu (IA + RAG)'}
+                                {summaryLoading ? 'Génération en cours…' : 'Générer le compte rendu'}
                             </Button>
 
                             {actionError ? (
@@ -598,64 +577,74 @@ export default function AIAssistantPage() {
                             )}
 
                             {summary && (
-                                <div className="space-y-2">
-                                    <div className="flex items-center justify-between">
-                                        <label className="text-sm font-medium text-gray-900">
-                                            Compte rendu généré
-                                        </label>
+                                <div className="rounded-xl border border-indigo-100 shadow-sm overflow-hidden">
+                                    <div className="flex items-center justify-between px-4 py-3"
+                                        style={{ background: 'linear-gradient(135deg, #4f46e5 0%, #7c3aed 100%)' }}>
+                                        <div className="flex items-center gap-2">
+                                            <FileText className="w-4 h-4 text-white/90" />
+                                            <span className="text-sm font-semibold text-white tracking-wide">
+                                                Compte rendu généré
+                                            </span>
+                                        </div>
                                         <Button
                                             variant="ghost"
                                             size="sm"
+                                            className="text-white/90 hover:text-white hover:bg-white/15 border border-white/20 rounded-lg text-xs px-3 h-8"
                                             onClick={() => handleCopy(summary)}
                                         >
                                             {copied ? (
                                                 <>
-                                                    <Check className="w-4 h-4 mr-2" />
-                                                    Copié
+                                                    <Check className="w-3.5 h-3.5 mr-1.5" />
+                                                    Copié !
                                                 </>
                                             ) : (
                                                 <>
-                                                    <Copy className="w-4 h-4 mr-2" />
+                                                    <Copy className="w-3.5 h-3.5 mr-1.5" />
                                                     Copier
                                                 </>
                                             )}
                                         </Button>
                                     </div>
-                                    <Textarea
-                                        readOnly
-                                        value={summary}
-                                        rows={12}
-                                        className="resize-y border-green-200 bg-green-50 text-sm text-gray-900 selection:bg-green-200"
-                                        spellCheck={false}
-                                    />
-                                    {patientSelectBlock}
-                                    <div className="flex gap-2">
-                                        <Button
-                                            variant="outline"
-                                            className="flex-1"
-                                            disabled={actionBusy || !summary.trim() || !selectedPatientId}
-                                            onClick={() => void handleSaveReport(false)}
-                                        >
-                                            <FileText className="w-4 h-4 mr-2" />
-                                            Sauvegarder dans le dossier
-                                        </Button>
-                                        <Button
-                                            variant="outline"
-                                            className="flex-1"
-                                            disabled={actionBusy || !summary.trim() || !selectedPatientId}
-                                            onClick={() => void handleSaveReport(true)}
-                                        >
-                                            {actionBusy ? 'Envoi…' : 'Envoyer au patient'}
-                                        </Button>
+                                    <div className="p-4 bg-gradient-to-b from-slate-50 to-white">
+                                        <Textarea
+                                            readOnly
+                                            value={summary}
+                                            rows={10}
+                                            className="resize-y border-slate-200 bg-white text-sm text-gray-800 leading-relaxed rounded-lg shadow-inner focus:ring-2 focus:ring-indigo-200"
+                                            spellCheck={false}
+                                            style={{ fontFamily: "'Inter', 'Segoe UI', sans-serif", lineHeight: '1.7' }}
+                                        />
                                     </div>
-                                    {sendSuccessNote ? (
-                                        <div
-                                            role="status"
-                                            className="space-y-2 rounded-md border border-emerald-200 bg-emerald-50 px-3 py-2 text-sm text-emerald-900"
-                                        >
-                                            <p>{sendSuccessNote}</p>
+                                    <div className="px-4 pb-4 bg-white space-y-3">
+                                        {patientSelectBlock}
+                                        <div className="flex gap-3">
+                                            <Button
+                                                className="flex-1 bg-indigo-600 text-white hover:bg-indigo-700 rounded-lg h-10 text-sm font-medium shadow-sm"
+                                                disabled={actionBusy || !summary.trim() || !selectedPatientId}
+                                                onClick={() => void handleSaveReport(false)}
+                                            >
+                                                <FileText className="w-4 h-4 mr-2" />
+                                                Sauvegarder
+                                            </Button>
+                                            <Button
+                                                variant="outline"
+                                                className="flex-1 border-indigo-200 text-indigo-700 hover:bg-indigo-50 rounded-lg h-10 text-sm font-medium"
+                                                disabled={actionBusy || !summary.trim() || !selectedPatientId}
+                                                onClick={() => void handleSaveReport(true)}
+                                            >
+                                                {actionBusy ? 'Envoi…' : 'Envoyer au patient'}
+                                            </Button>
                                         </div>
-                                    ) : null}
+                                        {sendSuccessNote ? (
+                                            <div
+                                                role="status"
+                                                className="flex items-center gap-2 rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-2.5 text-sm text-emerald-800"
+                                            >
+                                                <Check className="w-4 h-4 text-emerald-600 flex-shrink-0" />
+                                                <p>{sendSuccessNote}</p>
+                                            </div>
+                                        ) : null}
+                                    </div>
                                 </div>
                             )}
                         </CardContent>
@@ -672,7 +661,6 @@ export default function AIAssistantPage() {
                             </CardDescription>
                         </CardHeader>
                         <CardContent className="space-y-6">
-                            {patientSelectBlock}
                             {diagFeedback ? (
                                 <div
                                     className={`rounded-md border px-3 py-2 text-sm ${diagFeedback.type === 'success'
@@ -708,30 +696,13 @@ export default function AIAssistantPage() {
                                 <div className="mb-3 flex flex-wrap gap-2">
                                     <Button
                                         type="button"
-                                        variant="outline"
-                                        size="sm"
-                                        disabled={!transcription.trim()}
-                                        onClick={() => setClinicalInput(transcription)}
-                                    >
-                                        Importer les notes (vocales)
-                                    </Button>
-                                    <Button
-                                        type="button"
                                         className="bg-indigo-600 outline-none text-white hover:bg-indigo-700"
                                         size="sm"
                                         disabled={diagLoading}
-                                        onClick={() => void handleRunDiagnosticIa(true)}
+                                        onClick={() => void handleRunDiagnosticIa()}
                                     >
                                         <Sparkles className="w-4 h-4 mr-2" />
-                                        {diagLoading ? 'Analyse...' : 'Analyser (IA simulée)'}
-                                    </Button>
-                                    <Button
-                                        type="button"
-                                        variant="secondary"
-                                        size="sm"
-                                        onClick={handleLoadStaticDiagDemo}
-                                    >
-                                        Exemple statique direct
+                                        {diagLoading ? 'Analyse...' : 'Analyser'}
                                     </Button>
                                 </div>
                                 {diagApiError ? (
@@ -742,35 +713,6 @@ export default function AIAssistantPage() {
                                         {diagApiError}
                                     </div>
                                 ) : null}
-                                <label className="text-sm font-medium text-gray-900 mb-2 block">
-                                    Raccourcis (cliquer pour ajouter)
-                                </label>
-                                <div className="flex flex-wrap gap-2 mb-3">
-                                    {aiSuggestions.symptoms.map((symptom) => (
-                                        <Badge
-                                            key={symptom}
-                                            variant="secondary"
-                                            className="cursor-pointer hover:bg-blue-100"
-                                            role="button"
-                                            tabIndex={0}
-                                            onClick={() =>
-                                                setClinicalInput((prev) =>
-                                                    prev ? `${prev}, ${symptom}` : symptom
-                                                )
-                                            }
-                                            onKeyDown={(ev) => {
-                                                if (ev.key === 'Enter' || ev.key === ' ') {
-                                                    ev.preventDefault();
-                                                    setClinicalInput((prev) =>
-                                                        prev ? `${prev}, ${symptom}` : symptom
-                                                    );
-                                                }
-                                            }}
-                                        >
-                                            {symptom}
-                                        </Badge>
-                                    ))}
-                                </div>
                             </div>
 
                             {diagRagSources.length > 0 ? (
@@ -794,11 +736,6 @@ export default function AIAssistantPage() {
                             <div>
                                 <h3 className="text-sm font-medium text-gray-900 mb-3">
                                     Diagnostics suggérés
-                                    {useStaticDiagDemo && !llmDiagnoses?.length ? (
-                                        <span className="ml-2 text-xs font-normal text-gray-500">
-                                            (démonstration statique)
-                                        </span>
-                                    ) : null}
                                     {llmDiagnoses?.length ? (
                                         <span className="ml-2 text-xs font-normal text-indigo-600">
                                             (IA)
@@ -807,8 +744,7 @@ export default function AIAssistantPage() {
                                 </h3>
                                 {!displayDiagnoses.length ? (
                                     <p className="text-sm text-gray-600">
-                                        Lancez l’analyse IA ou chargez l’exemple statique pour afficher des
-                                        hypothèses.
+                                        Lancez l’analyse IA pour afficher des hypothèses.
                                     </p>
                                 ) : null}
                                 <div className="space-y-3">
@@ -943,6 +879,6 @@ export default function AIAssistantPage() {
                     </Card>
                 </TabsContent>
             </Tabs>
-        </div>
+        </div >
     );
 }

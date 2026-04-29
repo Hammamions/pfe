@@ -1,18 +1,15 @@
 import { Feather } from '@expo/vector-icons';
 import * as FileSystem from 'expo-file-system';
-import { sha256 } from 'js-sha256';
 import { LinearGradient } from 'expo-linear-gradient';
 import * as Print from 'expo-print';
-import { Stack } from 'expo-router';
+import { Stack, useFocusEffect } from 'expo-router';
 import * as Sharing from 'expo-sharing';
-import QRCode from 'react-native-qrcode-svg';
+import { sha256 } from 'js-sha256';
 import { useCallback, useEffect, useState } from 'react';
-import { useFocusEffect } from 'expo-router';
 import { useTranslation } from 'react-i18next';
 import {
     Alert,
     Dimensions,
-    I18nManager,
     Image,
     Modal,
     Platform,
@@ -25,6 +22,7 @@ import {
     TouchableOpacity,
     View
 } from 'react-native';
+import QRCode from 'react-native-qrcode-svg';
 import { patientPastel, screenPastelGradient, theme } from '../theme';
 import { useApp } from './AppContext';
 import HeaderSidebar from './components/HeaderSidebar';
@@ -413,17 +411,7 @@ const Documents = () => {
 
     const deleteDocument = (doc) => {
         if (!doc) return;
-        const title = t('deleteQuestion');
-        const message = t('deleteConfirmDocument');
-        const run = () => void executeDeleteDocument(doc);
-        if (Platform.OS === 'web' && typeof window !== 'undefined') {
-            if (window.confirm(`${title}\n\n${message}`)) run();
-            return;
-        }
-        Alert.alert(title, message, [
-            { text: t('cancel'), style: 'cancel' },
-            { text: t('delete'), style: 'destructive', onPress: run }
-        ]);
+        executeDeleteDocument(doc);
     };
 
     const handleDownload = async (doc) => {
@@ -1240,7 +1228,6 @@ const styles = StyleSheet.create({
         marginBottom: 30,
         paddingHorizontal: 20,
     },
-    /** Espacement vertical entre cartes document (web + natif). */
     docCardsStack: {
         gap: 16,
         marginTop: 4,

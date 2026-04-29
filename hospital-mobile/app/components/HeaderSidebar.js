@@ -2,7 +2,7 @@ import { Feather } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
 import { useCallback } from 'react';
 import { useTranslation } from 'react-i18next';
-import { Alert, Image, Platform, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import { Alert, Platform, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { dashboardVibe, patientPastel, theme } from '../../theme';
 import { useApp } from '../AppContext';
 
@@ -52,14 +52,12 @@ export default function HeaderSidebar({
     return (
         <>
             {showHeader && (heroHeader ? (
-                <View style={[styles.headerHero, { flexDirection: isRTL ? 'row-reverse' : 'row' }]}>
-                    <View style={[styles.headerHeroBrand, isRTL && { alignItems: 'flex-end' }]}>
+                <View style={[styles.headerHero, { flexDirection: isRTL ? 'row-reverse' : 'row', alignItems: 'center' }]}>
+                    {typeof onHeroLogoutPress === 'function' ? (
+                        <View style={{ width: 44 }} />
+                    ) : null}
+                    <View style={[styles.headerHeroBrand, { alignItems: 'center', paddingRight: 0 }]}>
                         <View style={[styles.brandRow, isRTL && styles.brandRowRtl]}>
-                            <Image
-                                source={require('../../assets/logo.png')}
-                                style={styles.brandLogo}
-                                resizeMode="contain"
-                            />
                             <Text style={styles.headerHeroTitle}>{brandTitle}</Text>
                         </View>
                         {brandSubtitle != null ? (
@@ -91,11 +89,6 @@ export default function HeaderSidebar({
                     </TouchableOpacity>
                     <View style={styles.headerCenter}>
                         <View style={[styles.brandRow, isRTL && styles.brandRowRtl]}>
-                            <Image
-                                source={require('../../assets/logo.png')}
-                                style={styles.brandLogoSmall}
-                                resizeMode="contain"
-                            />
                             <Text style={styles.headerTitle}>{brandTitle}</Text>
                         </View>
                         {subtitle !== null && (
@@ -106,32 +99,32 @@ export default function HeaderSidebar({
                 </View>
             ))}
             {showBottomTabs && (
-            <View pointerEvents="box-none" style={styles.bottomTabsWrap}>
-                <View style={[styles.bottomTabs, isRTL && styles.bottomTabsRtl]}>
-                    {tabs.map((tab) => {
-                        const isActive = activeScreen === tab.key;
-                        return (
-                            <TouchableOpacity
-                                key={tab.key}
-                                style={[styles.bottomTabItem, isActive && styles.bottomTabItemActive]}
-                                onPress={() => {
-                                    if (!isActive) router.replace(tab.route);
-                                }}
-                                activeOpacity={0.9}
-                            >
-                                <Feather
-                                    name={tab.icon}
-                                    size={18}
-                                    color={isActive ? patientPastel.primaryDeep : '#94a3b8'}
-                                />
-                                <Text style={[styles.bottomTabLabel, isActive && styles.bottomTabLabelActive]} numberOfLines={1}>
-                                    {tab.label}
-                                </Text>
-                            </TouchableOpacity>
-                        );
-                    })}
+                <View pointerEvents="box-none" style={styles.bottomTabsWrap}>
+                    <View style={[styles.bottomTabs, isRTL && styles.bottomTabsRtl]}>
+                        {tabs.map((tab) => {
+                            const isActive = activeScreen === tab.key;
+                            return (
+                                <TouchableOpacity
+                                    key={tab.key}
+                                    style={[styles.bottomTabItem, isActive && styles.bottomTabItemActive]}
+                                    onPress={() => {
+                                        if (!isActive) router.replace(tab.route);
+                                    }}
+                                    activeOpacity={0.9}
+                                >
+                                    <Feather
+                                        name={tab.icon}
+                                        size={18}
+                                        color={isActive ? patientPastel.primaryDeep : '#94a3b8'}
+                                    />
+                                    <Text style={[styles.bottomTabLabel, isActive && styles.bottomTabLabelActive]} numberOfLines={1}>
+                                        {tab.label}
+                                    </Text>
+                                </TouchableOpacity>
+                            );
+                        })}
+                    </View>
                 </View>
-            </View>
             )}
         </>
     );

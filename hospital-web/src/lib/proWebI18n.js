@@ -46,8 +46,8 @@ const STR = {
         manageAll: 'Tout gérer',
         badgeNew: 'Nouveau RDV',
         badgeDoctor: 'Médecin',
-        badgeCancel: 'Annulation',
-        badgeReschedule: 'Report',
+        badgeCancel: 'Annuler',
+        badgeReschedule: 'Reporter',
         treat: 'Traiter',
         noRequests: 'Aucune demande à traiter',
 

@@ -1284,7 +1284,12 @@ router.post('/consultation-reports', authenticateProfessional, async (req: AuthR
 
         const dossier = await prisma.dossierMedical.upsert({
             where: { patientId: patient.id },
-            create: { patientId: patient.id },
+            create: {
+                patientId: patient.id,
+                // Required list fields in Prisma schema must be initialized.
+                allergies: [],
+                historiqueMedical: []
+            },
             update: {}
         });
 

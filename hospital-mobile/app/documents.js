@@ -178,6 +178,68 @@ function formatSlashDate(raw) {
     return s || '—';
 }
 
+function buildOrdonnancePdfHtml({ doc, patient, t, isRTL }) {
+    const p = patient || {};
+    const issuer = (doc?.issuerName || doc?.doctor || doc?.praticien || '').trim();
+    const doctorLine = stripDrPrefix(issuer) || t('notSpecified');
+    const specialty = (doc?.medecinSpecialite || '').trim() || '—';
+    const orderNo = (doc?.medecinNumeroOrdre || '').trim() || '—';
+    const fn = (p.firstName || p.prenom || '').trim();
+    const ln = (p.lastName || p.nom || '').trim();
+    const patientName = `${fn} ${ln}`.trim() || '—';
+    const birthRaw = p.birthDate || p.dateNaissance || '';
+    const birthDisplay = birthRaw ? formatSlashDate(birthRaw) : '—';
+    const ssn = (p.socialSecurity || p.numSecuriteSociale || '').trim() || '—';
+    const issueSlash = formatSlashDate(doc?.createdAt || doc?.date || null);
+    const contenuNorm = normalizeOrdonnanceContenu(doc?.ordonnanceContenu);
+    const ordFingerprint = sha256(String(contenuNorm || ''));
+    const qrSrc = `https://api.qrserver.com/v1/create-qr-code/?size=140x140&data=${encodeURIComponent(ordFingerprint)}`;
+    const dir = isRTL ? 'rtl' : 'ltr';
+    const align = isRTL ? 'right' : 'left';
+
+    const medHtml = ordonnanceHtmlFromContenu(doc?.ordonnanceContenu);
+
+    return `
+        <html>
+        <body style="font-family: Arial, sans-serif; padding: 28px; color: #0f172a;" dir="${dir}">
+            <div style="border:1px solid #d1d5db; border-radius: 10px; padding: 22px; min-height: 92vh;">
+                <div style="text-align:${align};">
+                    <div style="font-size: 22px; font-weight: 700; letter-spacing: 0.4px; text-transform: uppercase;">
+                        ${escapeHtml(t('prescriptionCardTitle'))}
+                    </div>
+                    <div style="font-size: 19px; font-weight: 600; margin-top: 6px;">
+                        ${escapeHtml(doctorLine)}
+                    </div>
+                    <div style="font-size: 14px; color:#475569; margin-top: 2px;">${escapeHtml(specialty)}</div>
+                    <div style="font-size: 14px; color:#475569; margin-top: 2px;">
+                        ${escapeHtml(t('prescriptionOrderLabel'))} ${escapeHtml(orderNo)}
+                    </div>
+                </div>
+
+                <hr style="border:none; border-top:1px solid #d1d5db; margin: 16px 0 14px;" />
+
+                <div style="text-align:${align}; font-size: 14px;">
+                    <div><strong>${escapeHtml(t('prescriptionPatientLabel'))}</strong> ${escapeHtml(patientName)}</div>
+                    <div style="margin-top: 6px; color:#475569;">${escapeHtml(t('prescriptionBornLabel'))} ${escapeHtml(birthDisplay)}</div>
+                    <div style="margin-top: 4px; color:#475569;">${escapeHtml(t('prescriptionSsnLabel'))} ${escapeHtml(ssn)}</div>
+                    <div style="margin-top: 8px; color:#334155;">${escapeHtml(t('prescriptionDateOn'))} ${escapeHtml(issueSlash)}</div>
+                </div>
+
+                <div style="margin-top: 18px; line-height: 1.6; text-align:${align};">
+                    ${medHtml.startsWith('<li') ? `<ol style="margin: 0; padding-${isRTL ? 'right' : 'left'}: 22px;">${medHtml}</ol>` : medHtml}
+                </div>
+
+                <hr style="border:none; border-top:1px solid #d1d5db; margin: 18px 0 10px;" />
+
+                <div style="display:flex; justify-content:${isRTL ? 'flex-start' : 'flex-end'};">
+                    <img src="${qrSrc}" width="90" height="90" alt="qr" style="border: 1px solid #e2e8f0; padding: 6px; border-radius: 8px;" />
+                </div>
+            </div>
+        </body>
+        </html>
+    `;
+}
+
 
 function OrdonnancePatientCard({ doc, patient, t, isRTL }) {
     const p = patient || {};
@@ -486,7 +548,9 @@ const Documents = () => {
                 bodyInner = `<p>Le patient s'est présenté ce jour pour un suivi régulier. L'état général est bon, pas de signes cliniques d'infection. Pression artérielle à 120/80 mmHg. Le traitement actuel est bien toléré et doit être poursuivi sans modification.</p>`;
             }
 
-            const htmlContent = `
+            const htmlContent = doc.category === 'ordonnance'
+                ? buildOrdonnancePdfHtml({ doc, patient, t, isRTL })
+                : `
                 <html>
                 <body style="font-family: Arial, sans-serif; padding: 40px; color: #333;" dir="${isRTL ? 'rtl' : 'ltr'}">
                     <div style="border-bottom: 2px solid #ccc; padding-bottom: 20px; margin-bottom: 20px; text-align: ${isRTL ? 'right' : 'left'};">

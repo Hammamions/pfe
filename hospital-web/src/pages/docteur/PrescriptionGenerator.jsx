@@ -63,7 +63,7 @@ async function buildOrdonnancePdfWithQr(opts) {
 
         if (med.instructions) {
             doc.setFont('helvetica', 'italic');
-            doc.text(`Note: ${med.instructions}`, 25, yPos);
+            doc.text(`${med.instructions}`, 25, yPos);
             yPos += 5;
         }
         yPos += 5;
@@ -80,21 +80,17 @@ async function buildOrdonnancePdfWithQr(opts) {
         yPos += splitNotes.length * 5;
     }
 
-    yPos = Math.max(yPos + 20, 240);
-
     const qrSize = 28;
     const qrX = 210 - 18 - qrSize;
+    const pageHeight = 297; // A4 height in mm for jsPDF default
+    const qrY = pageHeight - 18 - qrSize; // fixed bottom-right placement
     const pngDataUrl = await QRCode.toDataURL(qrHex, {
         width: 160,
         margin: 1,
         errorCorrectionLevel: 'M'
     });
 
-    doc.addImage(pngDataUrl, 'PNG', qrX, yPos, qrSize, qrSize);
-    doc.setFontSize(5);
-    doc.setTextColor(60, 60, 60);
-    doc.text(qrHex.substring(0, 32), qrX, yPos + qrSize + 4);
-    doc.text(qrHex.substring(32), qrX, yPos + qrSize + 7);
+    doc.addImage(pngDataUrl, 'PNG', qrX, qrY, qrSize, qrSize);
 
     return doc;
 }

@@ -515,14 +515,13 @@ const resources = {
             noAppointmentSelected: "Aucun rendez-vous sélectionné",
             notSpecified: "Non spécifié",
 
-            // Satisfaction
             satisfactionTitle: 'Votre Avis Compte',
             satisfactionSubtitle: 'Aidez-nous à améliorer nos services',
             howWasExperience: 'Comment a été votre expérience ?',
             ratingInstructions: 'Choisissez une couleur selon votre ressenti (du rouge au vert).',
             ratingLevel1: 'Très insatisfait',
             ratingLevel2: 'Insatisfait',
-            ratingLevel3: 'Correct',
+            ratingLevel3: 'neutre',
             ratingLevel4: 'Satisfait',
             ratingLevel5: 'Très satisfait',
             ratingPickRequired: 'Veuillez choisir une couleur (votre ressenti) avant d’envoyer.',
@@ -1001,14 +1000,13 @@ const resources = {
             bornOn: 'تاريخ الميلاد',
             saveChanges: 'حفظ التعديلات',
 
-            // Satisfaction
             satisfactionTitle: 'رأيك يهمنا',
             satisfactionSubtitle: 'ساعدنا في تحسين خدماتنا',
             howWasExperience: 'كيف كانت تجربتك؟',
             ratingInstructions: 'اختر لوناً يعبّر عن رأيك (من الأحمر إلى الأخضر).',
             ratingLevel1: 'غير راضٍ جداً',
             ratingLevel2: 'غير راضٍ',
-            ratingLevel3: 'مقبول',
+            ratingLevel3:'عادي',
             ratingLevel4: 'راضٍ',
             ratingLevel5: 'راضٍ جداً',
             ratingPickRequired: 'يرجى اختيار لون يعبّر عن رأيك قبل الإرسال.',
@@ -1548,14 +1546,13 @@ const resources = {
             noAppointmentSelected: "No appointment selected",
             notSpecified: "Not specified",
 
-            // Satisfaction
             satisfactionTitle: 'Your opinion matters',
             satisfactionSubtitle: 'Help us improve our services',
             howWasExperience: 'How was your experience?',
             ratingInstructions: 'Choose a colour that matches how you feel (red to green).',
             ratingLevel1: 'Very dissatisfied',
             ratingLevel2: 'Dissatisfied',
-            ratingLevel3: 'OK',
+            ratingLevel3: ' In between',
             ratingLevel4: 'Satisfied',
             ratingLevel5: 'Very satisfied',
             ratingPickRequired: 'Please choose a colour that reflects how you feel before sending.',

@@ -9,7 +9,7 @@ import {
     Search,
     User
 } from 'lucide-react';
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { Badge } from '../../components/ui/badge';
 import { Button } from '../../components/ui/button';
@@ -93,10 +93,31 @@ export default function PatientFilesPage() {
     );
 
     const visibleDocuments = selectedPatient
-        ? (selectedPatient.documents || []).filter((d) => d.urlFichier && String(d.urlFichier).trim())
+        ? (selectedPatient.documents || []).filter((d) => {
+            const hasUrl = d.urlFichier && String(d.urlFichier).trim();
+            if (!hasUrl) return false;
+            const typeLower = String(d.type || '').toLowerCase();
+            const titleLower = String(d.titre || '').toLowerCase();
+            // Garde uniquement pièces jointes RDV + ordonnances (pas les comptes rendus).
+            if (typeLower === 'ordonnance') return true;
+            if (typeLower.includes('pièce jointe') || typeLower.includes('piece jointe')) return true;
+            if (titleLower.includes('compte rendu de consultation')) return false;
+            if (typeLower === 'secure_medical') return false;
+            return false;
+        })
         : [];
 
     const antecedentsVisible = filterAntecedentsForDisplay(selectedPatient?.antecedents || []);
+    const sortedConsultations = useMemo(() => {
+        const list = Array.isArray(selectedPatient?.consultations)
+            ? [...selectedPatient.consultations]
+            : [];
+        return list.sort((a, b) => {
+            const aTime = new Date(a?.date || 0).getTime();
+            const bTime = new Date(b?.date || 0).getTime();
+            return bTime - aTime;
+        });
+    }, [selectedPatient?.consultations]);
 
     return (
         <div className="space-y-6">
@@ -330,9 +351,9 @@ export default function PatientFilesPage() {
                                     </Button>
                                 </div>
 
-                                {selectedPatient.consultations.length > 0 ? (
+                                {sortedConsultations.length > 0 ? (
                                     <div className="space-y-4">
-                                        {selectedPatient.consultations.map((consultation) => (
+                                        {sortedConsultations.map((consultation) => (
                                             <Card key={consultation.id}>
                                                 <CardHeader>
                                                     <div className="flex items-start justify-between">

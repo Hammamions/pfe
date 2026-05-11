@@ -1,0 +1,158 @@
+[33mcommit 59224685087e0a961679a151391063ef7f7f9588[m[33m ([m[1;36mHEAD[m[33m -> [m[1;32mmaster[m[33m)[m
+Author: imen <imenmakhbouche@gmail.com>
+Date:   Thu Apr 30 12:58:04 2026 +0100
+
+    save local changes
+
+[1mdiff --git a/.gitignore b/.gitignore[m
+[1mnew file mode 100644[m
+[1mindex 000000000..3c3629e64[m
+[1m--- /dev/null[m
+[1m+++ b/.gitignore[m
+[36m@@ -0,0 +1 @@[m
+[32m+[m[32mnode_modules[m
+[1mdiff --git a/hospital-backend/uploads/rdv-attachments/1777325181712-5556032586dba93e.pdf b/hospital-backend/uploads/rdv-attachments/1777325181712-5556032586dba93e.pdf[m
+[1mnew file mode 100644[m
+[1mindex 000000000..8d54e65aa[m
+[1m--- /dev/null[m
+[1m+++ b/hospital-backend/uploads/rdv-attachments/1777325181712-5556032586dba93e.pdf[m
+[36m@@ -0,0 +1,29 @@[m
+[32m+[m[32m                 ORDONNANCE MÉDICALE[m
+[32m+[m
+[32m+[m[32mDr. ons hammami                                              Le 22/04/2026[m
+[32m+[m[32mNeurologie[m
+[32m+[m[32mN° Ordre: —[m
+[32m+[m
+[32m+[m[32mPatient:[m
+[32m+[m
+[32m+[m[32mcyrin makhbouche[m
+[32m+[m[32mNé(e) le: 1999-04-01[m
+[32m+[m[32mN° Sécu: 1234A[m
+[32m+[m
+[32m+[m[32mPrescriptions:[m
+[32m+[m
+[32m+[m[32m1. Loratadine 10 mg/jour[m
+[32m+[m[32m    1 fois par jour pendant au moins 2 semaines[m
+[32m+[m[32m    Note: Indication : traitement des symptômes allergiques[m
+[32m+[m
+[32m+[m[32m2. Nasal spray corticostéroïde 1 spray nasale par jour[m
+[32m+[m[32m    1 fois par jour pendant au moins 2 semaines[m
+[32m+[m[32m    Note: Indication : traitement de la rhinite allergique[m
+[32m+[m
+[32m+[m[32m3. dolipran 500mg[m
+[32m+[m[32m    2j pendant 7j[m
+[32m+[m[32m    Note: pendant le repas[m
+[32m+[m
+[32m+[m[32m                                                             a59f3fb0cee64c248b5fa35d71085247[m
+[32m+[m[32m                                                             377aa045c991280cc0a5984ff5ec5b33[m
+[32m+[m[32m[m
+[1mdiff --git a/hospital-backend/uploads/rdv-attachments/1777325318198-d2ca18e4d72b4e06.pdf b/hospital-backend/uploads/rdv-attachments/1777325318198-d2ca18e4d72b4e06.pdf[m
+[1mnew file mode 100644[m
+[1mindex 000000000..8d54e65aa[m
+[1m--- /dev/null[m
+[1m+++ b/hospital-backend/uploads/rdv-attachments/1777325318198-d2ca18e4d72b4e06.pdf[m
+[36m@@ -0,0 +1,29 @@[m
+[32m+[m[32m                 ORDONNANCE MÉDICALE[m
+[32m+[m
+[32m+[m[32mDr. ons hammami                                              Le 22/04/2026[m
+[32m+[m[32mNeurologie[m
+[32m+[m[32mN° Ordre: —[m
+[32m+[m
+[32m+[m[32mPatient:[m
+[32m+[m
+[32m+[m[32mcyrin makhbouche[m
+[32m+[m[32mNé(e) le: 1999-04-01[m
+[32m+[m[32mN° Sécu: 1234A[m
+[32m+[m
+[32m+[m[32mPrescriptions:[m
+[32m+[m
+[32m+[m[32m1. Loratadine 10 mg/jour[m
+[32m+[m[32m    1 fois par jour pendant au moins 2 semaines[m
+[32m+[m[32m    Note: Indication : traitement des symptômes allergiques[m
+[32m+[m
+[32m+[m[32m2. Nasal spray corticostéroïde 1 spray nasale par jour[m
+[32m+[m[32m    1 fois par jour pendant au moins 2 semaines[m
+[32m+[m[32m    Note: Indication : traitement de la rhinite allergique[m
+[32m+[m
+[32m+[m[32m3. dolipran 500mg[m
+[32m+[m[32m    2j pendant 7j[m
+[32m+[m[32m    Note: pendant le repas[m
+[32m+[m
+[32m+[m[32m                                                             a59f3fb0cee64c248b5fa35d71085247[m
+[32m+[m[32m                                                             377aa045c991280cc0a5984ff5ec5b33[m
+[32m+[m[32m[m
+[1mdiff --git a/hospital-backend/uploads/rdv-attachments/1777484400618-b119d941d2d94c19.pdf b/hospital-backend/uploads/rdv-attachments/1777484400618-b119d941d2d94c19.pdf[m
+[1mnew file mode 100644[m
+[1mindex 000000000..8d54e65aa[m
+[1m--- /dev/null[m
+[1m+++ b/hospital-backend/uploads/rdv-attachments/1777484400618-b119d941d2d94c19.pdf[m
+[36m@@ -0,0 +1,29 @@[m
+[32m+[m[32m                 ORDONNANCE MÉDICALE[m
+[32m+[m
+[32m+[m[32mDr. ons hammami                                              Le 22/04/2026[m
+[32m+[m[32mNeurologie[m
+[32m+[m[32mN° Ordre: —[m
+[32m+[m
+[32m+[m[32mPatient:[m
+[32m+[m
+[32m+[m[32mcyrin makhbouche[m
+[32m+[m[32mNé(e) le: 1999-04-01[m
+[32m+[m[32mN° Sécu: 1234A[m
+[32m+[m
+[32m+[m[32mPrescriptions:[m
+[32m+[m
+[32m+[m[32m1. Loratadine 10 mg/jour[m
+[32m+[m[32m    1 fois par jour pendant au moins 2 semaines[m
+[32m+[m[32m    Note: Indication : traitement des symptômes allergiques[m
+[32m+[m
+[32m+[m[32m2. Nasal spray corticostéroïde 1 spray nasale par jour[m
+[32m+[m[32m    1 fois par jour pendant au moins 2 semaines[m
+[32m+[m[32m    Note: Indication : traitement de la rhinite allergique[m
+[32m+[m
+[32m+[m[32m3. dolipran 500mg[m
+[32m+[m[32m    2j pendant 7j[m
+[32m+[m[32m    Note: pendant le repas[m
+[32m+[m
+[32m+[m[32m                                                             a59f3fb0cee64c248b5fa35d71085247[m
+[32m+[m[32m                                                             377aa045c991280cc0a5984ff5ec5b33[m
+[32m+[m[32m[m
+[1mdiff --git a/hospital-mobile/android/.gradle/8.9/dependencies-accessors/63bfea9ebd7ffa1cdafd0ae8ce62aa3c210042bd/classes/org/gradle/accessors/dm/LibrariesForReactAndroidLibs$AndroidPluginAccessors.class b/hospital-mobile/android/.gradle/8.9/dependencies-accessors/63bfea9ebd7ffa1cdafd0ae8ce62aa3c210042bd/classes/org/gradle/accessors/dm/LibrariesForReactAndroidLibs$AndroidPluginAccessors.class[m
+[1mnew file mode 100644[m
+[1mindex 000000000..2c535a6a5[m
+Binary files /dev/null and b/hospital-mobile/android/.gradle/8.9/dependencies-accessors/63bfea9ebd7ffa1cdafd0ae8ce62aa3c210042bd/classes/org/gradle/accessors/dm/LibrariesForReactAndroidLibs$AndroidPluginAccessors.class differ
+[1mdiff --git a/hospital-mobile/android/.gradle/8.9/dependencies-accessors/63bfea9ebd7ffa1cdafd0ae8ce62aa3c210042bd/classes/org/gradle/accessors/dm/LibrariesForReactAndroidLibs$AndroidxAppcompatLibraryAccessors.class b/hospital-mobile/android/.gradle/8.9/dependencies-accessors/63bfea9ebd7ffa1cdafd0ae8ce62aa3c210042bd/classes/org/gradle/accessors/dm/LibrariesForReactAndroidLibs$AndroidxAppcompatLibraryAccessors.class[m
+[1mnew file mode 100644[m
+[1mindex 000000000..8d408bbb7[m
+Binary files /dev/null and b/hospital-mobile/android/.gradle/8.9/dependencies-accessors/63bfea9ebd7ffa1cdafd0ae8ce62aa3c210042bd/classes/org/gradle/accessors/dm/LibrariesForReactAndroidLibs$AndroidxAppcompatLibraryAccessors.class differ
+[1mdiff --git a/hospital-mobile/android/.gradle/8.9/dependencies-accessors/63bfea9ebd7ffa1cdafd0ae8ce62aa3c210042bd/classes/org/gradle/accessors/dm/LibrariesForReactAndroidLibs$AndroidxLibraryAccessors.class b/hospital-mobile/android/.gradle/8.9/dependencies-accessors/63bfea9ebd7ffa1cdafd0ae8ce62aa3c210042bd/classes/org/gradle/accessors/dm/LibrariesForReactAndroidLibs$AndroidxLibraryAccessors.class[m
+[1mnew file mode 100644[m
+[1mindex 000000000..387af7f53[m
+Binary files /dev/null and b/hospital-mobile/android/.gradle/8.9/dependencies-accessors/63bfea9ebd7ffa1cdafd0ae8ce62aa3c210042bd/classes/org/gradle/accessors/dm/LibrariesForReactAndroidLibs$AndroidxLibraryAccessors.class differ
+[1mdiff --git a/hospital-mobile/android/.gradle/8.9/dependencies-accessors/63bfea9ebd7ffa1cdafd0ae8ce62aa3c210042bd/classes/org/gradle/accessors/dm/LibrariesForReactAndroidLibs$AndroidxTestLibraryAccessors.class b/hospital-mobile/android/.gradle/8.9/dependencies-accessors/63bfea9ebd7ffa1cdafd0ae8ce62aa3c210042bd/classes/org/gradle/accessors/dm/LibrariesForReactAndroidLibs$AndroidxTestLibraryAccessors.class[m
+[1mnew file mode 100644[m
+[1mindex 000000000..84a8b0992[m
+Binary files /dev/null and b/hospital-mobile/android/.gradle/8.9/dependencies-accessors/63bfea9ebd7ffa1cdafd0ae8ce62aa3c210042bd/classes/org/gradle/accessors/dm/LibrariesForReactAndroidLibs$AndroidxTestLibraryAccessors.class differ
+[1mdiff --git a/hospital-mobile/android/.gradle/8.9/dependencies-accessors/63bfea9ebd7ffa1cdafd0ae8ce62aa3c210042bd/classes/org/gradle/accessors/dm/LibrariesForReactAndroidLibs$AndroidxVersionAccessors.class b/hospital-mobile/android/.gradle/8.9/dependencies-accessors/63bfea9ebd7ffa1cdafd0ae8ce62aa3c210042bd/classes/org/gradle/accessors/dm/LibrariesForReactAndroidLibs$AndroidxVersionAccessors.class[m
+[1mnew file mode 100644[m
+[1mindex 000000000..e51b5be0a[m
+Binary files /dev/null and b/hospital-mobile/android/.gradle/8.9/dependencies-accessors/63bfea9ebd7ffa1cdafd0ae8ce62aa3c210042bd/classes/org/gradle/accessors/dm/LibrariesForReactAndroidLibs$AndroidxVersionAccessors.class differ
+[1mdiff --git a/hospital-mobile/android/.gradle/8.9/dependencies-accessors/63bfea9ebd7ffa1cdafd0ae8ce62aa3c210042bd/classes/org/gradle/accessors/dm/LibrariesForReactAndroidLibs$BinaryCompatibilityPluginAccessors.class b/hospital-mobile/android/.gradle/8.9/dependencies-accessors/63bfea9ebd7ffa1cdafd0ae8ce62aa3c210042bd/classes/org/gradle/accessors/dm/LibrariesForReactAndroidLibs$BinaryCompatibilityPluginAccessors.class[m
+[1mnew file mode 100644[m
+[1mindex 000000000..40dec8a50[m
+Binary files /dev/null and b/hospital-mobile/android/.gradle/8.9/dependencies-accessors/63bfea9ebd7ffa1cdafd0ae8ce62aa3c210042bd/classes/org/gradle/accessors/dm/LibrariesForReactAndroidLibs$BinaryCompatibilityPluginAccessors.class differ
+[1mdiff --git a/hospital-mobile/android/.gradle/8.9/dependencies-accessors/63bfea9ebd7ffa1cdafd0ae8ce62aa3c210042bd/classes/org/gradle/accessors/dm/LibrariesForReactAndroidLibs$BinaryCompatibilityVersionAccessors.class b/hospital-mobile/android/.gradle/8.9/dependencies-accessors/63bfea9ebd7ffa1cdafd0ae8ce62aa3c210042bd/classes/org/gradle/accessors/dm/LibrariesForReactAndroidLibs$BinaryCompatibilityVersionAccessors.class[m
+[1mnew file mode 100644[m
+[1mindex 000000000..90aa782f1[m
+Binary files /dev/null and b/hospital-mobile/android/.gradle/8.9/dependencies-accessors/63bfea9ebd7ffa1cdafd0ae8ce62aa3c210042bd/classes/org/gradle/accessors/dm/LibrariesForReactAndroidLibs$BinaryCompatibilityVersionAccessors.class differ
+[1mdiff --git a/hospital-mobile/android/.gradle/8.9/dependencies-accessors/63bfea9ebd7ffa1cdafd0ae8ce62aa3c210042bd/classes/org/gradle/accessors/dm/LibrariesForReactAndroidLibs$BinaryPluginAccessors.class b/hospital-mobile/android/.gradle/8.9/dependencies-accessors/63bfea9ebd7ffa1cdafd0ae8ce62aa3c210042bd/classes/org/gradle/accessors/dm/LibrariesForReactAndroidLibs$BinaryPluginAccessors.class[m
+[1mnew file mode 100644[m
+[1mindex 000000000..2f9ca8bd8[m
+Binary files /dev/null and b/hospital-mobile/android/.gradle/8.9/dependencies-accessors/63bfea9ebd7ffa1cdafd0ae8ce62aa3c210042bd/classes/org/gradle/accessors/dm/LibrariesForReactAndroidLibs$BinaryPluginAccessors.class differ
+[1mdiff --git a/hospital-mobile/android/.gradle/8.9/dependencies-accessors/63bfea9ebd7ffa1cdafd0ae8ce62aa3c210042bd/classes/org/gradle/accessors/dm/LibrariesForReactAndroidLibs$BinaryVersionAccessors.class b/hospital-mobile/android/.gradle/8.9/dependencies-accessors/63bfea9ebd7ffa1cdafd0ae8ce62aa3c210042bd/classes/org/gradle/accessors/dm/LibrariesForReactAndroidLibs$BinaryVersionAccessors.class[m
+[1mnew file mode 100644[m
+[1mindex 000000000..740315b60[m
+Binary files /dev/null and b/hospital-mobile/android/.gradle/8.9/dependencies-accessors/63bfea9ebd7ffa1cdafd0ae8ce62aa3c210042bd/classes/org/gradle/accessors/dm/LibrariesForReactAndroidLibs$BinaryVersionAccessors.class differ
+[1mdiff --git a/hospital-mobile/android/.gradle/8.9/dependencies-accessors/63bfea9ebd7ffa1cdafd0ae8ce62aa3c210042bd/classes/org/gradle/accessors/dm/LibrariesForReactAndroidLibs$BundleAccessors.class b/hospital-mobile/android/.gradle/8.9/dependencies-accessors/63bfea9ebd7ffa1cdafd0ae8ce62aa3c210042bd/classes/org/gradle/accessors/dm/LibrariesForReactAndroidLibs$BundleAccessors.class[m
+[1mnew file mode 100644[m
+[1mindex 000000000..a8167632c[m
+Binary files /dev/null and b/hospital-mobile/android/.g

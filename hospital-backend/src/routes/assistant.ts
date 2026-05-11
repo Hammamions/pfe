@@ -16,6 +16,61 @@ const SYSTEM_TUNISIA =
     "Lorsque tu suggères des traitements, fournis UNIQUEMENT le nom commercial exact disponible en Tunisie (ex: Doliprane, Augmentin, Gripex). NE MENTIONNE JAMAIS le nom du laboratoire de fabrication (comme Pfizer, Sanofi, Tunis Pharma, etc.). " +
     'Si des extraits de documents sont fournis, privilégie-les pour les faits factuels ; sinon reste prudent et général.';
 
+const TUNISIA_MED_BRANDS = [
+    'Doliprane',
+    'Efferalgan',
+    'Dafalgan',
+    'Augmentin',
+    'Clamoxyl',
+    'Zithromax',
+    'Klavox',
+    'Ventoline',
+    'Seretide',
+    'Pulmicort',
+    'Nasonex',
+    'Flixonase',
+    'Xyzall',
+    'Aerius',
+    'Claritin',
+    'Zyrtec',
+    'Spasfon',
+    'Meteospasmyl',
+    'Smecta',
+    'Ultra Levure',
+    'Motilium',
+    'Primperan',
+    'Adol',
+    'Nurofen',
+    'Biseptine'
+] as const;
+
+function cleanMedicationLabel(raw: string): string {
+    return raw
+        .replace(/\(([^)]*laboratoire[^)]*|[^)]*pharma[^)]*|[^)]*sanofi[^)]*|[^)]*pfizer[^)]*)\)/gi, '')
+        .replace(/\b(laboratoire|lab\.?|pharma|industries pharmaceutiques)\b.*$/i, '')
+        .replace(/\s+/g, ' ')
+        .trim();
+}
+
+function normalizeForMatch(s: string): string {
+    return s
+        .normalize('NFD')
+        .replace(/[\u0300-\u036f]/g, '')
+        .toLowerCase()
+        .replace(/[^a-z0-9 ]+/g, ' ')
+        .replace(/\s+/g, ' ')
+        .trim();
+}
+
+function isKnownTunisiaBrand(medication: string): boolean {
+    const normalized = normalizeForMatch(medication);
+    if (!normalized) return false;
+    return TUNISIA_MED_BRANDS.some((brand) => {
+        const b = normalizeForMatch(brand);
+        return normalized === b || normalized.startsWith(`${b} `);
+    });
+}
+
 function chunksToSources(chunks: RagChunk[]): { file: string; excerpt: string }[] {
     return chunks.map((c) => ({
         file: c.source,
@@ -63,8 +118,9 @@ function parseDiagnosticPayload(raw: string): DiagnosticPayload {
 
     const treatments = treatmentsRaw.map((t) => {
         const o = t as Record<string, unknown>;
+        const medicamentRaw = String(o.medicament || o.nom || '').trim() || '—';
         return {
-            medicament: String(o.medicament || o.nom || '').trim() || '—',
+            medicament: cleanMedicationLabel(medicamentRaw),
             dosage: String(o.dosage || '').trim() || '—',
             frequence: String(o.frequence || o.frequence_administration || '').trim() || '—',
             duree: String(o.duree || '').trim() || '—',
@@ -154,7 +210,10 @@ router.post('/diagnostic', authenticateMedecin, async (req: AuthRequest, res: Re
             '{"medicament":"string","dosage":"string","frequence":"string","duree":"string","indication":"string"}' +
             ']}\n' +
             'Propose 2 à 5 hypothèses diagnostiques ordonnées par probabilité (entier 0-100). ' +
-            'Les traitements sont des pistes générales à valider (posologies indicatives). IMPORTANT : Fournis les noms commerciaux des médicaments connus au marché tunisien.';
+            'Les traitements sont des pistes générales à valider (posologies indicatives). IMPORTANT : ' +
+            'choisis UNIQUEMENT des noms commerciaux figurant dans cette liste de référence tunisienne: ' +
+            `${TUNISIA_MED_BRANDS.join(', ')}. ` +
+            'N’utilise aucun nom de laboratoire et ne propose pas de médicament hors de cette liste.';
 
         const { content, model } = await chatCompletion(
             [
@@ -181,6 +240,8 @@ router.post('/diagnostic', authenticateMedecin, async (req: AuthRequest, res: Re
                 ragSources: chunksToSources(chunks)
             });
         }
+
+        payload.treatments = payload.treatments.filter((t) => isKnownTunisiaBrand(t.medicament));
 
         return res.json({
             ...payload,

@@ -161,13 +161,6 @@ async function buildConsultationSecurePdf(summary: string): Promise<Buffer> {
         const qrSize = 140;
         const qrX = 595 - margin - qrSize;
         const qrY = 52;
-        page.drawText('Empreinte SHA-256 du fichier PDF (scannable) :', {
-            x: qrX,
-            y: qrY + qrSize + 22,
-            size: 9,
-            font,
-            maxWidth: qrSize + 30
-        });
         const png = await QRCode.toBuffer(qrData, {
             type: 'png',
             width: 160,
@@ -176,8 +169,6 @@ async function buildConsultationSecurePdf(summary: string): Promise<Buffer> {
         });
         const qrImage = await doc.embedPng(png);
         page.drawImage(qrImage, { x: qrX, y: qrY, width: qrSize, height: qrSize });
-        page.drawText(qrData.slice(0, 32), { x: qrX, y: qrY - 6, size: 6, font });
-        page.drawText(qrData.slice(32), { x: qrX, y: qrY - 14, size: 6, font });
 
         return Buffer.from(await doc.save());
     };
@@ -837,6 +828,18 @@ router.get('/doctor-waiting-room', authenticateProfessional, async (req: AuthReq
                 source: string;
             }>
         >();
+        const ordonnancesByPatient = new Map<
+            number,
+            Array<{
+                id: string;
+                titre: string;
+                type: string;
+                urlFichier: string | null;
+                createdAt: Date;
+                source: string;
+                praticien: string | null;
+            }>
+        >();
         if (patientIds.length > 0) {
             const rdvsWithDocFlag = await prisma.rendezVous.findMany({
                 where: {
@@ -875,6 +878,32 @@ router.get('/doctor-waiting-room', authenticateProfessional, async (req: AuthReq
                 list.push(row);
                 rdvAttachmentsByPatient.set(rdv.patientId, list);
             }
+
+            const ordonnances = await prisma.ordonnance.findMany({
+                where: { patientId: { in: patientIds } },
+                orderBy: { createdAt: 'desc' },
+                include: {
+                    medecin: {
+                        include: { utilisateur: true }
+                    }
+                }
+            });
+            for (const ord of ordonnances) {
+                const row = {
+                    id: `ordonnance-${ord.id}`,
+                    titre: 'Ordonnance',
+                    type: 'ordonnance',
+                    urlFichier: ord.urlPdf || null,
+                    createdAt: ord.createdAt,
+                    source: 'ordonnance',
+                    praticien: ord.medecin?.utilisateur
+                        ? `Dr. ${ord.medecin.utilisateur.prenom || ''} ${ord.medecin.utilisateur.nom || ''}`.trim()
+                        : null
+                };
+                const list = ordonnancesByPatient.get(ord.patientId) || [];
+                list.push(row);
+                ordonnancesByPatient.set(ord.patientId, list);
+            }
         }
 
         return res.json(waiting.map((apt: any) => {
@@ -910,9 +939,21 @@ router.get('/doctor-waiting-room', authenticateProfessional, async (req: AuthReq
                     `Dr. ${apt.medecin?.utilisateur?.prenom || ''} ${apt.medecin?.utilisateur?.nom || ''}`.trim()
                 ),
                 documents: [
-                    ...(apt.patient.dossierMedical?.documents || []),
-                    ...(rdvAttachmentsByPatient.get(apt.patientId) || [])
-                ]
+                    ...((apt.patient.dossierMedical?.documents || []).filter((doc) => {
+                        const typeLower = String(doc?.type || '').toLowerCase();
+                        const titleLower = String(doc?.titre || '').toLowerCase();
+                        // Exclure les comptes rendus sécurisés de consultation de cet onglet.
+                        if (typeLower === 'secure_medical') return false;
+                        if (titleLower.includes('compte rendu de consultation')) return false;
+                        return true;
+                    })),
+                    ...(rdvAttachmentsByPatient.get(apt.patientId) || []),
+                    ...(ordonnancesByPatient.get(apt.patientId) || [])
+                ].sort((a: any, b: any) => {
+                    const aTime = new Date(a?.rdvDate || a?.createdAt || 0).getTime();
+                    const bTime = new Date(b?.rdvDate || b?.createdAt || 0).getTime();
+                    return bTime - aTime;
+                })
             });
         }
         ));
@@ -1284,7 +1325,12 @@ router.post('/consultation-reports', authenticateProfessional, async (req: AuthR
 
         const dossier = await prisma.dossierMedical.upsert({
             where: { patientId: patient.id },
-            create: { patientId: patient.id },
+            create: {
+                patientId: patient.id,
+                // Required list fields in Prisma schema must be initialized.
+                allergies: [],
+                historiqueMedical: []
+            },
             update: {}
         });
 

@@ -1,0 +1,44 @@
+Reference locale Tunisie — Noms commerciaux de medicaments (liste de travail pour aide a la decision).
+
+Antalgiques / antipyretiques:
+- Doliprane
+- Efferalgan
+- Dafalgan
+- Adol
+- Nurofen
+
+Antibiotiques frequents:
+- Augmentin
+- Clamoxyl
+- Zithromax
+- Klavox
+
+Respiratoire / ORL:
+- Ventoline
+- Seretide
+- Pulmicort
+- Nasonex
+- Flixonase
+
+Allergologie:
+- Xyzall
+- Aerius
+- Claritin
+- Zyrtec
+
+Digestif:
+- Spasfon
+- Meteospasmyl
+- Smecta
+- Ultra Levure
+- Motilium
+- Primperan
+
+Antiseptique:
+- Biseptine
+
+Regles d'usage:
+- Utiliser le nom commercial local.
+- Eviter les noms de laboratoire.
+- Valider contre-indications, interactions, age, grossesse, allaitement, insuffisance renale/hepatique.
+- Ceci reste une aide: decision finale medicale obligatoire.

@@ -303,7 +303,6 @@ export default function AIAssistantPage() {
 
         setDiagApiError('');
         setDiagLoading(true);
-        setUseStaticDiagDemo(false);
         setLlmDiagnoses(null);
         setLlmTreatments(null);
         setDiagRagSources([]);
@@ -323,14 +322,6 @@ export default function AIAssistantPage() {
         } finally {
             setDiagLoading(false);
         }
-    };
-
-    const handleLoadStaticDiagDemo = () => {
-        setDiagApiError('');
-        setUseStaticDiagDemo(true);
-        setLlmDiagnoses(null);
-        setLlmTreatments(null);
-        setDiagRagSources([]);
     };
 
     const displayDiagnoses = llmDiagnoses && llmDiagnoses.length ? llmDiagnoses : [];
@@ -356,18 +347,21 @@ export default function AIAssistantPage() {
                 clearTimeout(sendSuccessTimerRef.current);
                 sendSuccessTimerRef.current = null;
             }
+
+            const notifyPatientFlag = sendSecure === true;
+
             const { data } = await api.post(
                 '/professionals/consultation-reports',
                 {
                     patientId: Number(selectedPatientId),
                     summary,
-                    sendSecure: true,
-                    notifyPatient: shouldNotifyPatient === true
+                    sendSecure: !!sendSecure,
+                    notifyPatient: notifyPatientFlag
                 },
                 { headers: { 'Content-Type': 'application/json' } }
             );
             setSendSuccessNote(
-                shouldNotifyPatient
+                notifyPatientFlag
                     ? 'Envoi réussi : le patient reçoit une notification et le PDF apparaît sous Documents (synchro en quelques secondes).'
                     : 'Compte rendu sauvegardé dans le dossier patient.'
             );

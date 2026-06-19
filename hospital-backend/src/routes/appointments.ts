@@ -66,26 +66,28 @@ router.get('/', authenticatePatient, async (req: AuthRequest, res: Response) => 
         if (!patient) return res.status(404).json({ error: 'Patient non trouvé' });
 
         const now = new Date();
-        const startOfDay = new Date(now); startOfDay.setHours(0, 0, 0, 0);
         const threshold = new Date(now.getTime() - (30 * 60 * 1000));
         const overdue = await prisma.rendezVous.findMany({
             where: {
                 patientId: patient.id,
-                date: { gte: startOfDay, lte: threshold },
+                date: { lte: threshold },
                 statut: { in: ['CONFIRME', 'EN_COURS'] as any }
             },
             include: {
                 patient: {
                     include: {
-                        salleAttente: {
-                            where: { joinedAt: { gte: startOfDay } }
-                        }
+                        salleAttente: true
                     }
                 }
             }
         });
         for (const apt of overdue) {
-            const isPresent = apt.patient.salleAttente.some(sa => sa.presenceStatus === 'PRESENT');
+            const aptDayStart = new Date(apt.date); aptDayStart.setHours(0, 0, 0, 0);
+            const aptDayEnd = new Date(aptDayStart); aptDayEnd.setDate(aptDayEnd.getDate() + 1);
+            const isPresent = apt.patient.salleAttente.some(
+                sa => sa.presenceStatus === 'PRESENT' &&
+                      sa.joinedAt >= aptDayStart && sa.joinedAt < aptDayEnd
+            );
             if (isPresent) continue;
             await prisma.rendezVous.update({
                 where: { id: apt.id },

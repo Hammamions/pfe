@@ -1,12 +1,12 @@
-import { Response, Router } from 'express';
 import bcrypt from 'bcryptjs';
+import { Response, Router } from 'express';
 import fs from 'fs';
 import os from 'os';
 import { prisma } from '../lib/prisma';
 import { authenticateAdmin, AuthRequest } from '../middleware/auth';
-import { normalizeSpecialty } from '../utils/specialty';
 import { formatAppointmentCalendarDateKey, formatAppointmentTime } from '../utils/appointmentDisplay';
 import { sendAccountCredentialsEmail } from '../utils/mail';
+import { normalizeSpecialty } from '../utils/specialty';
 
 const router = Router();
 
@@ -236,10 +236,9 @@ router.get('/monthly-stats', authenticateAdmin, async (_req: AuthRequest, res: R
             })
         ]);
 
-        const satisfactionRate = Math.max(
-            0,
-            Math.min(100, Math.round(((feedbackAggregate._avg.note ?? 0) / 5) * 100))
-        );
+        const satisfactionRate = feedbackAggregate._avg.note != null
+            ? Math.max(0, Math.min(100, Math.round((feedbackAggregate._avg.note / 5) * 100)))
+            : null;
 
         return res.json({
             consultations,
@@ -467,12 +466,12 @@ router.get('/subadmins', authenticateAdmin, async (req: AuthRequest, res: Respon
             },
             where: search
                 ? {
-                      OR: [
-                          { utilisateur: { nom: { contains: search, mode: 'insensitive' } } },
-                          { utilisateur: { prenom: { contains: search, mode: 'insensitive' } } },
-                          { utilisateur: { email: { contains: search, mode: 'insensitive' } } }
-                      ]
-                  }
+                    OR: [
+                        { utilisateur: { nom: { contains: search, mode: 'insensitive' } } },
+                        { utilisateur: { prenom: { contains: search, mode: 'insensitive' } } },
+                        { utilisateur: { email: { contains: search, mode: 'insensitive' } } }
+                    ]
+                }
                 : undefined
         });
 
@@ -653,24 +652,24 @@ router.put('/subadmins/:utilisateurId', authenticateAdmin, async (req: AuthReque
                 ...(prenom !== undefined ? { prenom } : {}),
                 ...(specialty !== undefined
                     ? {
-                          sousAdmin: {
-                              update: {
-                                  specialite: normalizeSpecialty(specialty) || null,
-                                  ...(phone !== undefined ? { phone: phone || null } : {}),
-                                  ...(status !== undefined ? { status: status || 'actif' } : {}),
-                                  ...(permissions !== undefined ? { permissions } : {})
-                              }
-                          }
-                      }
+                        sousAdmin: {
+                            update: {
+                                specialite: normalizeSpecialty(specialty) || null,
+                                ...(phone !== undefined ? { phone: phone || null } : {}),
+                                ...(status !== undefined ? { status: status || 'actif' } : {}),
+                                ...(permissions !== undefined ? { permissions } : {})
+                            }
+                        }
+                    }
                     : {
-                          sousAdmin: {
-                              update: {
-                                  ...(phone !== undefined ? { phone: phone || null } : {}),
-                                  ...(status !== undefined ? { status: status || 'actif' } : {}),
-                                  ...(permissions !== undefined ? { permissions } : {})
-                              }
-                          }
-                      })
+                        sousAdmin: {
+                            update: {
+                                ...(phone !== undefined ? { phone: phone || null } : {}),
+                                ...(status !== undefined ? { status: status || 'actif' } : {}),
+                                ...(permissions !== undefined ? { permissions } : {})
+                            }
+                        }
+                    })
             },
             include: { sousAdmin: true }
         });
@@ -727,12 +726,12 @@ router.get('/patients', authenticateAdmin, async (req: AuthRequest, res: Respons
             },
             where: search
                 ? {
-                      OR: [
-                          { utilisateur: { nom: { contains: search, mode: 'insensitive' } } },
-                          { utilisateur: { prenom: { contains: search, mode: 'insensitive' } } },
-                          { utilisateur: { email: { contains: search, mode: 'insensitive' } } }
-                      ]
-                  }
+                    OR: [
+                        { utilisateur: { nom: { contains: search, mode: 'insensitive' } } },
+                        { utilisateur: { prenom: { contains: search, mode: 'insensitive' } } },
+                        { utilisateur: { email: { contains: search, mode: 'insensitive' } } }
+                    ]
+                }
                 : undefined,
             orderBy: { utilisateur: { nom: 'asc' } }
         });
@@ -1041,22 +1040,22 @@ router.put('/doctors/:medecinId', authenticateAdmin, async (req: AuthRequest, re
             }),
             specialty !== undefined
                 ? prisma.medecin.update({
-                      where: { id: medecinId },
-                      data: {
-                          specialite: String(specialty).trim(),
-                          ...(phone !== undefined ? { phone } : {}),
-                          ...(address !== undefined ? { address } : {}),
-                          ...(licenseNumber !== undefined ? { licenseNumber } : {})
-                      }
-                  })
+                    where: { id: medecinId },
+                    data: {
+                        specialite: String(specialty).trim(),
+                        ...(phone !== undefined ? { phone } : {}),
+                        ...(address !== undefined ? { address } : {}),
+                        ...(licenseNumber !== undefined ? { licenseNumber } : {})
+                    }
+                })
                 : prisma.medecin.update({
-                      where: { id: medecinId },
-                      data: {
-                          ...(phone !== undefined ? { phone } : {}),
-                          ...(address !== undefined ? { address } : {}),
-                          ...(licenseNumber !== undefined ? { licenseNumber } : {})
-                      }
-                  })
+                    where: { id: medecinId },
+                    data: {
+                        ...(phone !== undefined ? { phone } : {}),
+                        ...(address !== undefined ? { address } : {}),
+                        ...(licenseNumber !== undefined ? { licenseNumber } : {})
+                    }
+                })
         ]);
 
         if (status !== undefined) {

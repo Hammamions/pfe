@@ -1,4 +1,4 @@
-import { Activity, Clock, GripVertical, Users } from 'lucide-react';
+import { Activity, AlertCircle, CheckCircle2, ChevronLeft, ChevronRight, Clock, GripVertical, Info, Users, X } from 'lucide-react';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { Badge } from '../../components/ui/badge';
 import { Button } from '../../components/ui/button';
@@ -6,6 +6,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '../..
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '../../components/ui/dialog';
 import { Input } from '../../components/ui/input';
 import { Label } from '../../components/ui/label';
+import { CalendarPopover } from '../../components/ui/MiniCalendar';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '../../components/ui/tabs';
 import api from '../../lib/api';
 import { calendarDateKeyInTz } from '../../lib/appointmentTz';
@@ -87,7 +88,24 @@ export default function DoctorAgendaPage() {
     const [isDragConfirmOpen, setIsDragConfirmOpen] = useState(false);
     const [pendingMove, setPendingMove] = useState(null);
     const [banner, setBanner] = useState(null);
+    const [bannerVisible, setBannerVisible] = useState(false);
     const [dragSubmitting, setDragSubmitting] = useState(false);
+    const bannerTimerRef = useRef(null);
+
+    useEffect(() => {
+        if (bannerTimerRef.current) clearTimeout(bannerTimerRef.current);
+        if (banner) {
+            requestAnimationFrame(() => setBannerVisible(true));
+            const delay = banner.type === 'error' ? 6000 : 4000;
+            bannerTimerRef.current = setTimeout(() => {
+                setBannerVisible(false);
+                setTimeout(() => setBanner(null), 350);
+            }, delay);
+        } else {
+            setBannerVisible(false);
+        }
+        return () => { if (bannerTimerRef.current) clearTimeout(bannerTimerRef.current); };
+    }, [banner]);
 
     const refetchAgenda = useCallback(async () => {
         setAgendaLoading(true);
@@ -289,31 +307,54 @@ export default function DoctorAgendaPage() {
     const waitingCountLabel = waitingLoading
         ? '…'
         : liveWaitingRoom.length === 0
-          ? L('docAgenda_waitingPatients0')
-          : liveWaitingRoom.length === 1
-            ? L('docAgenda_waitingPatients1')
-            : L('docAgenda_waitingPatientsMany').replace('{n}', String(liveWaitingRoom.length));
+            ? L('docAgenda_waitingPatients0')
+            : liveWaitingRoom.length === 1
+                ? L('docAgenda_waitingPatients1')
+                : L('docAgenda_waitingPatientsMany').replace('{n}', String(liveWaitingRoom.length));
 
     return (
         <div className="space-y-6" dir={lang === 'ar' ? 'rtl' : 'ltr'}>
             {banner && (
                 <div
                     role="status"
-                    className={`rounded-xl border px-4 py-3 text-sm font-medium ${
-                        banner.type === 'success'
-                            ? 'border-emerald-200 bg-emerald-50 text-emerald-900'
-                            : banner.type === 'error'
-                              ? 'border-rose-200 bg-rose-50 text-rose-900'
-                              : 'border-indigo-200 bg-indigo-50 text-indigo-900'
-                    }`}
+                    style={{
+                        position: 'fixed',
+                        bottom: '1.5rem',
+                        right: '1.5rem',
+                        zIndex: 9999,
+                        maxWidth: '26rem',
+                        transform: bannerVisible ? 'translateY(0)' : 'translateY(calc(100% + 2rem))',
+                        opacity: bannerVisible ? 1 : 0,
+                        transition: 'transform 0.35s cubic-bezier(.32,1.2,.54,1), opacity 0.3s ease',
+                        pointerEvents: 'auto',
+                    }}
+                    className={`flex items-start gap-3 rounded-2xl border px-4 py-3.5 text-sm font-medium shadow-xl backdrop-blur-sm ${banner.type === 'success'
+                        ? 'border-emerald-200 bg-emerald-50/95 text-emerald-900 shadow-emerald-500/15'
+                        : banner.type === 'error'
+                            ? 'border-rose-200 bg-rose-50/95 text-rose-900 shadow-rose-500/20'
+                            : 'border-indigo-200 bg-indigo-50/95 text-indigo-900 shadow-indigo-500/15'
+                        }`}
                 >
-                    {banner.text}
+                    <span className="mt-0.5 shrink-0">
+                        {banner.type === 'success' && <CheckCircle2 className="h-5 w-5 text-emerald-600" />}
+                        {banner.type === 'error' && <AlertCircle className="h-5 w-5 text-rose-600" />}
+                        {banner.type === 'info' && <Info className="h-5 w-5 text-indigo-600" />}
+                    </span>
+                    <span className="flex-1 leading-snug">{banner.text}</span>
                     <button
                         type="button"
-                        className="ms-3 text-xs font-bold underline opacity-80 hover:opacity-100"
-                        onClick={() => setBanner(null)}
+                        className={`shrink-0 rounded-lg p-1 transition hover:bg-black/5 ${banner.type === 'success'
+                            ? 'text-emerald-700'
+                            : banner.type === 'error'
+                                ? 'text-rose-700'
+                                : 'text-indigo-700'
+                            }`}
+                        onClick={() => {
+                            setBannerVisible(false);
+                            setTimeout(() => setBanner(null), 350);
+                        }}
                     >
-                        OK
+                        <X className="h-4 w-4" />
                     </button>
                 </div>
             )}
@@ -334,21 +375,60 @@ export default function DoctorAgendaPage() {
                 </TabsList>
 
                 <TabsContent value="daily" className="mt-6 space-y-4">
+                    {/* ── Date navigation bar ──────────────────────────────── */}
+                    <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                        {/* Prev / Next day */}
+                        <div className="flex items-center gap-2">
+                            <button
+                                type="button"
+                                onClick={() => setSelectedDate((d) => addDaysToDateInput(d, -1))}
+                                className="flex h-9 w-9 items-center justify-center rounded-xl border border-indigo-200/80 bg-white text-indigo-600 shadow-sm hover:border-indigo-400 hover:bg-indigo-50 transition"
+                                aria-label="Jour précédent"
+                            >
+                                <ChevronLeft className="h-4 w-4" />
+                            </button>
+                            <CalendarPopover value={selectedDate} onChange={setSelectedDate} />
+                            <button
+                                type="button"
+                                onClick={() => setSelectedDate((d) => addDaysToDateInput(d, 1))}
+                                className="flex h-9 w-9 items-center justify-center rounded-xl border border-indigo-200/80 bg-white text-indigo-600 shadow-sm hover:border-indigo-400 hover:bg-indigo-50 transition"
+                                aria-label="Jour suivant"
+                            >
+                                <ChevronRight className="h-4 w-4" />
+                            </button>
+                        </div>
+
+                        {/* Week day chips */}
+                        <div className="flex items-center gap-1 overflow-x-auto pb-1">
+                            {getWeekDateInputs(selectedDate).map((iso, idx) => {
+                                const [y, m, d] = iso.split('-').map(Number);
+                                const isActive = iso === selectedDate;
+                                const dayNames = ['Lu', 'Ma', 'Me', 'Je', 'Ve', 'Sa', 'Di'];
+                                return (
+                                    <button
+                                        key={iso}
+                                        type="button"
+                                        onClick={() => setSelectedDate(iso)}
+                                        className={`flex min-w-[3rem] flex-col items-center rounded-xl border px-2.5 py-1.5 text-[11px] font-semibold transition-all ${isActive
+                                                ? 'border-indigo-400 bg-gradient-to-br from-sky-400 via-indigo-500 to-violet-500 text-white shadow-md shadow-indigo-400/30'
+                                                : 'border-indigo-100 bg-white text-indigo-800 hover:border-indigo-300 hover:bg-indigo-50'
+                                            }`}
+                                    >
+                                        <span className="text-[10px] font-medium opacity-80">{dayNames[idx]}</span>
+                                        <span className="text-[14px] font-bold leading-tight">{d}</span>
+                                    </button>
+                                );
+                            })}
+                        </div>
+                    </div>
+
                     <Card className="border-indigo-100/70 shadow-md shadow-indigo-500/5">
                         <CardHeader>
-                            <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
-                                <div>
-                                    <CardTitle className="text-indigo-950">
-                                        {L('docAgenda_planningDay')} {formatDateFr(selectedDate)}
-                                    </CardTitle>
-                                    <CardDescription>{L('docAgenda_daySubtitle')}</CardDescription>
-                                </div>
-                                <input
-                                    type="date"
-                                    value={selectedDate}
-                                    onChange={(e) => setSelectedDate(e.target.value)}
-                                    className="rounded-xl border border-indigo-200/80 bg-white px-3 py-2 text-sm shadow-sm"
-                                />
+                            <div className="flex flex-col gap-1">
+                                <CardTitle className="text-indigo-950">
+                                    {L('docAgenda_planningDay')} {formatDateFr(selectedDate)}
+                                </CardTitle>
+                                <CardDescription>{L('docAgenda_daySubtitle')}</CardDescription>
                             </div>
                         </CardHeader>
                         <CardContent>
@@ -358,114 +438,113 @@ export default function DoctorAgendaPage() {
                                     <p className="text-sm">{L('docAgenda_loadingAgenda')}</p>
                                 </div>
                             ) : (
-                            <div className="space-y-2">
-                                {timeSlots.map((time) => {
-                                    const hourKey = time.split(':')[0];
-                                    const hourAppointments = appointmentsByHour[hourKey] || [];
-                                    return (
-                                        <div
-                                            key={time}
-                                            role="presentation"
-                                            className="flex items-start gap-4 rounded-2xl border border-slate-200/80 bg-white/90 p-3 transition hover:border-indigo-200/60"
-                                            onDragOver={(e) => {
-                                                e.preventDefault();
-                                                e.dataTransfer.dropEffect = 'move';
-                                            }}
-                                            onDrop={(e) => proposeDrop(e, selectedDate, hourKey)}
-                                        >
-                                            <div className="w-20 shrink-0 pt-2 text-sm font-semibold text-indigo-900/70">
-                                                {time}
-                                            </div>
-                                            {hourAppointments.length > 0 ? (
-                                                <div
-                                                    className="grid flex-1 grid-cols-1 gap-2 md:grid-cols-2"
-                                                    onDragOver={(e) => {
-                                                        e.preventDefault();
-                                                        e.dataTransfer.dropEffect = 'move';
-                                                    }}
-                                                    onDrop={(e) => proposeDrop(e, selectedDate, hourKey)}
-                                                >
-                                                    {hourAppointments.map((appointment) => (
-                                                        <div
-                                                            key={appointment.id}
-                                                            role="button"
-                                                            tabIndex={0}
-                                                            draggable
-                                                            title={L('docAgenda_dragAria')}
-                                                            onDragStart={(e) => {
-                                                                e.stopPropagation();
-                                                                onDragStartAppointment(e, appointment);
-                                                            }}
-                                                            onDragEnd={(e) => {
-                                                                e.stopPropagation();
-                                                                onDragEnd();
-                                                            }}
-                                                            onClick={() => handleRescheduleClick(appointment)}
-                                                            onKeyDown={(e) => {
-                                                                if (e.key === 'Enter' || e.key === ' ')
-                                                                    handleRescheduleClick(appointment);
-                                                            }}
-                                                            className={aptCardClass}
-                                                        >
-                                                            <div className="flex min-w-0 items-center gap-3">
-                                                                <div
-                                                                    className="flex min-h-[3rem] min-w-[2.75rem] shrink-0 items-center justify-center rounded-xl border border-indigo-100/70 bg-indigo-50/60 text-indigo-500 shadow-inner transition group-hover:border-indigo-200 group-hover:bg-indigo-100/70"
-                                                                    aria-hidden
-                                                                >
-                                                                    <GripVertical className="h-5 w-5" strokeWidth={2} />
-                                                                </div>
-                                                                <div
-                                                                    className={`h-10 w-1 shrink-0 rounded-full ${
-                                                                        appointment.rescheduleStatus === 'pending'
+                                <div className="space-y-2">
+                                    {timeSlots.map((time) => {
+                                        const hourKey = time.split(':')[0];
+                                        const hourAppointments = appointmentsByHour[hourKey] || [];
+                                        return (
+                                            <div
+                                                key={time}
+                                                role="presentation"
+                                                className="flex items-start gap-4 rounded-2xl border border-slate-200/80 bg-white/90 p-3 transition hover:border-indigo-200/60"
+                                                onDragOver={(e) => {
+                                                    e.preventDefault();
+                                                    e.dataTransfer.dropEffect = 'move';
+                                                }}
+                                                onDrop={(e) => proposeDrop(e, selectedDate, hourKey)}
+                                            >
+                                                <div className="w-20 shrink-0 pt-2 text-sm font-semibold text-indigo-900/70">
+                                                    {time}
+                                                </div>
+                                                {hourAppointments.length > 0 ? (
+                                                    <div
+                                                        className="grid flex-1 grid-cols-1 gap-2 md:grid-cols-2"
+                                                        onDragOver={(e) => {
+                                                            e.preventDefault();
+                                                            e.dataTransfer.dropEffect = 'move';
+                                                        }}
+                                                        onDrop={(e) => proposeDrop(e, selectedDate, hourKey)}
+                                                    >
+                                                        {hourAppointments.map((appointment) => (
+                                                            <div
+                                                                key={appointment.id}
+                                                                role="button"
+                                                                tabIndex={0}
+                                                                draggable
+                                                                title={L('docAgenda_dragAria')}
+                                                                onDragStart={(e) => {
+                                                                    e.stopPropagation();
+                                                                    onDragStartAppointment(e, appointment);
+                                                                }}
+                                                                onDragEnd={(e) => {
+                                                                    e.stopPropagation();
+                                                                    onDragEnd();
+                                                                }}
+                                                                onClick={() => handleRescheduleClick(appointment)}
+                                                                onKeyDown={(e) => {
+                                                                    if (e.key === 'Enter' || e.key === ' ')
+                                                                        handleRescheduleClick(appointment);
+                                                                }}
+                                                                className={aptCardClass}
+                                                            >
+                                                                <div className="flex min-w-0 items-center gap-3">
+                                                                    <div
+                                                                        className="flex min-h-[3rem] min-w-[2.75rem] shrink-0 items-center justify-center rounded-xl border border-indigo-100/70 bg-indigo-50/60 text-indigo-500 shadow-inner transition group-hover:border-indigo-200 group-hover:bg-indigo-100/70"
+                                                                        aria-hidden
+                                                                    >
+                                                                        <GripVertical className="h-5 w-5" strokeWidth={2} />
+                                                                    </div>
+                                                                    <div
+                                                                        className={`h-10 w-1 shrink-0 rounded-full ${appointment.rescheduleStatus === 'pending'
                                                                             ? 'bg-amber-500'
                                                                             : 'bg-indigo-500'
-                                                                    }`}
-                                                                />
-                                                                <div className="min-w-0">
-                                                                    <div className="flex flex-wrap items-center gap-2">
-                                                                        <h4 className="truncate font-semibold text-indigo-950">
-                                                                            {appointment.patient.prenom}{' '}
-                                                                            {appointment.patient.nom}
-                                                                        </h4>
-                                                                        {appointment.rescheduleStatus === 'pending' && (
-                                                                            <Badge
-                                                                                variant="outline"
-                                                                                className="border-amber-200 bg-amber-50 text-xs text-amber-800"
-                                                                            >
-                                                                                Report demandé
-                                                                            </Badge>
-                                                                        )}
+                                                                            }`}
+                                                                    />
+                                                                    <div className="min-w-0">
+                                                                        <div className="flex flex-wrap items-center gap-2">
+                                                                            <h4 className="truncate font-semibold text-indigo-950">
+                                                                                {appointment.patient.prenom}{' '}
+                                                                                {appointment.patient.nom}
+                                                                            </h4>
+                                                                            {appointment.rescheduleStatus === 'pending' && (
+                                                                                <Badge
+                                                                                    variant="outline"
+                                                                                    className="border-amber-200 bg-amber-50 text-xs text-amber-800"
+                                                                                >
+                                                                                    Report demandé
+                                                                                </Badge>
+                                                                            )}
+                                                                        </div>
+                                                                        <p className="truncate text-sm text-slate-600">
+                                                                            {sanitizeMotif(appointment.motif) || L('docAgenda_waitingConsultation')}
+                                                                        </p>
+                                                                        <p className="mt-0.5 text-xs text-slate-500">
+                                                                            Salle {appointment.salle}
+                                                                        </p>
                                                                     </div>
-                                                                    <p className="truncate text-sm text-slate-600">
-                                                                        {sanitizeMotif(appointment.motif) || L('docAgenda_waitingConsultation')}
-                                                                    </p>
-                                                                    <p className="mt-0.5 text-xs text-slate-500">
-                                                                        Salle {appointment.salle}
-                                                                    </p>
                                                                 </div>
+                                                                <Badge variant="outline" className="shrink-0 capitalize">
+                                                                    {appointment.statut}
+                                                                </Badge>
                                                             </div>
-                                                            <Badge variant="outline" className="shrink-0 capitalize">
-                                                                {appointment.statut}
-                                                            </Badge>
-                                                        </div>
-                                                    ))}
-                                                </div>
-                                            ) : (
-                                                <div
-                                                    className="min-h-[3rem] flex-1 rounded-xl border border-dashed border-slate-200/90 bg-slate-50/50 px-3 py-4 text-sm text-slate-400 transition hover:border-indigo-200 hover:bg-indigo-50/30"
-                                                    onDragOver={(e) => {
-                                                        e.preventDefault();
-                                                        e.dataTransfer.dropEffect = 'move';
-                                                    }}
-                                                    onDrop={(e) => proposeDrop(e, selectedDate, hourKey)}
-                                                >
-                                                    {L('docAgenda_available')}
-                                                </div>
-                                            )}
-                                        </div>
-                                    );
-                                })}
-                            </div>
+                                                        ))}
+                                                    </div>
+                                                ) : (
+                                                    <div
+                                                        className="min-h-[3rem] flex-1 rounded-xl border border-dashed border-slate-200/90 bg-slate-50/50 px-3 py-4 text-sm text-slate-400 transition hover:border-indigo-200 hover:bg-indigo-50/30"
+                                                        onDragOver={(e) => {
+                                                            e.preventDefault();
+                                                            e.dataTransfer.dropEffect = 'move';
+                                                        }}
+                                                        onDrop={(e) => proposeDrop(e, selectedDate, hourKey)}
+                                                    >
+                                                        {L('docAgenda_available')}
+                                                    </div>
+                                                )}
+                                            </div>
+                                        );
+                                    })}
+                                </div>
                             )}
                         </CardContent>
                     </Card>
@@ -484,105 +563,104 @@ export default function DoctorAgendaPage() {
                                     <p className="text-sm">{L('docAgenda_loadingAgenda')}</p>
                                 </div>
                             ) : (
-                            <div className="overflow-x-auto">
-                                <div className="min-w-[800px]">
-                                    <div className="mb-2 grid grid-cols-8 gap-2">
-                                        <div className="text-sm font-semibold text-indigo-900/60">
-                                            {L('docAgenda_timeCol')}
-                                        </div>
-                                        {daysOfWeek.map((day, di) => (
-                                            <div
-                                                key={day}
-                                                className="text-center text-sm font-semibold text-indigo-950"
-                                            >
-                                                <div>{day}</div>
-                                                <div className="text-[10px] font-normal text-slate-500">
-                                                    {formatDateFr(weekDates[di])}
+                                <div className="overflow-x-auto">
+                                    <div className="min-w-[800px]">
+                                        <div className="mb-2 grid grid-cols-8 gap-2">
+                                            <div className="text-sm font-semibold text-indigo-900/60">
+                                                {L('docAgenda_timeCol')}
+                                            </div>
+                                            {daysOfWeek.map((day, di) => (
+                                                <div
+                                                    key={day}
+                                                    className="text-center text-sm font-semibold text-indigo-950"
+                                                >
+                                                    <div>{day}</div>
+                                                    <div className="text-[10px] font-normal text-slate-500">
+                                                        {formatDateFr(weekDates[di])}
+                                                    </div>
                                                 </div>
+                                            ))}
+                                        </div>
+                                        {timeSlots.map((time) => (
+                                            <div key={time} className="mb-1 grid grid-cols-8 gap-2">
+                                                <div className="py-2 text-sm text-indigo-900/70">{time}</div>
+                                                {daysOfWeek.map((day, idx) => {
+                                                    const dayDate = weekDates[idx];
+                                                    const hourKey = time.split(':')[0];
+                                                    const slotAppointments =
+                                                        weeklyAppointmentsByDayHour[`${dayDate}-${hourKey}`] || [];
+                                                    const hasAppointment = slotAppointments.length > 0;
+                                                    const canDropHere = workingDays[idx];
+                                                    return (
+                                                        <div
+                                                            key={`${day}-${time}`}
+                                                            className={`min-h-[3.25rem] rounded-xl border p-2 text-xs transition ${hasAppointment
+                                                                ? 'border-indigo-200 bg-gradient-to-br from-indigo-50 to-violet-50/50'
+                                                                : canDropHere
+                                                                    ? 'border-slate-200/80 bg-slate-50/50 hover:border-indigo-200'
+                                                                    : 'cursor-not-allowed border-slate-100 bg-slate-100/80 opacity-60'
+                                                                }`}
+                                                            onDragOver={
+                                                                canDropHere
+                                                                    ? (e) => {
+                                                                        e.preventDefault();
+                                                                        e.dataTransfer.dropEffect = 'move';
+                                                                    }
+                                                                    : undefined
+                                                            }
+                                                            onDrop={
+                                                                canDropHere
+                                                                    ? (e) => proposeDrop(e, dayDate, hourKey)
+                                                                    : undefined
+                                                            }
+                                                        >
+                                                            {hasAppointment && (
+                                                                <div
+                                                                    draggable
+                                                                    title={L('docAgenda_dragAria')}
+                                                                    onDragStart={(e) => {
+                                                                        e.stopPropagation();
+                                                                        onDragStartAppointment(e, slotAppointments[0]);
+                                                                    }}
+                                                                    onDragEnd={(e) => {
+                                                                        e.stopPropagation();
+                                                                        onDragEnd();
+                                                                    }}
+                                                                    className="touch-none cursor-grab space-y-1 rounded-lg py-0.5 active:cursor-grabbing"
+                                                                >
+                                                                    <div className="flex items-start gap-1.5">
+                                                                        <div
+                                                                            className="mt-0.5 flex min-h-[2.25rem] min-w-[1.75rem] shrink-0 items-center justify-center rounded-lg border border-indigo-100/80 bg-white/70 text-indigo-500 shadow-sm"
+                                                                            aria-hidden
+                                                                        >
+                                                                            <GripVertical className="h-4 w-4" strokeWidth={2} />
+                                                                        </div>
+                                                                        <div className="min-w-0 font-medium text-indigo-950">
+                                                                            <span className="block truncate">
+                                                                                {slotAppointments[0]?.patient?.prenom}{' '}
+                                                                                {slotAppointments[0]?.patient?.nom}
+                                                                            </span>
+                                                                        </div>
+                                                                    </div>
+                                                                    {slotAppointments.length > 1 && (
+                                                                        <div className="text-[10px] text-indigo-700">
+                                                                            +{slotAppointments.length - 1}
+                                                                        </div>
+                                                                    )}
+                                                                </div>
+                                                            )}
+                                                            {!hasAppointment && canDropHere && (
+                                                                <div className="flex h-full min-h-[2.5rem] items-center justify-center text-[10px] text-slate-400">
+                                                                    {L('docAgenda_available')}
+                                                                </div>
+                                                            )}
+                                                        </div>
+                                                    );
+                                                })}
                                             </div>
                                         ))}
                                     </div>
-                                    {timeSlots.map((time) => (
-                                        <div key={time} className="mb-1 grid grid-cols-8 gap-2">
-                                            <div className="py-2 text-sm text-indigo-900/70">{time}</div>
-                                            {daysOfWeek.map((day, idx) => {
-                                                const dayDate = weekDates[idx];
-                                                const hourKey = time.split(':')[0];
-                                                const slotAppointments =
-                                                    weeklyAppointmentsByDayHour[`${dayDate}-${hourKey}`] || [];
-                                                const hasAppointment = slotAppointments.length > 0;
-                                                const canDropHere = workingDays[idx];
-                                                return (
-                                                    <div
-                                                        key={`${day}-${time}`}
-                                                        className={`min-h-[3.25rem] rounded-xl border p-2 text-xs transition ${
-                                                            hasAppointment
-                                                                ? 'border-indigo-200 bg-gradient-to-br from-indigo-50 to-violet-50/50'
-                                                                : canDropHere
-                                                                  ? 'border-slate-200/80 bg-slate-50/50 hover:border-indigo-200'
-                                                                  : 'cursor-not-allowed border-slate-100 bg-slate-100/80 opacity-60'
-                                                        }`}
-                                                        onDragOver={
-                                                            canDropHere
-                                                                ? (e) => {
-                                                                      e.preventDefault();
-                                                                      e.dataTransfer.dropEffect = 'move';
-                                                                  }
-                                                                : undefined
-                                                        }
-                                                        onDrop={
-                                                            canDropHere
-                                                                ? (e) => proposeDrop(e, dayDate, hourKey)
-                                                                : undefined
-                                                        }
-                                                    >
-                                                        {hasAppointment && (
-                                                            <div
-                                                                draggable
-                                                                title={L('docAgenda_dragAria')}
-                                                                onDragStart={(e) => {
-                                                                    e.stopPropagation();
-                                                                    onDragStartAppointment(e, slotAppointments[0]);
-                                                                }}
-                                                                onDragEnd={(e) => {
-                                                                    e.stopPropagation();
-                                                                    onDragEnd();
-                                                                }}
-                                                                className="touch-none cursor-grab space-y-1 rounded-lg py-0.5 active:cursor-grabbing"
-                                                            >
-                                                                <div className="flex items-start gap-1.5">
-                                                                    <div
-                                                                        className="mt-0.5 flex min-h-[2.25rem] min-w-[1.75rem] shrink-0 items-center justify-center rounded-lg border border-indigo-100/80 bg-white/70 text-indigo-500 shadow-sm"
-                                                                        aria-hidden
-                                                                    >
-                                                                        <GripVertical className="h-4 w-4" strokeWidth={2} />
-                                                                    </div>
-                                                                    <div className="min-w-0 font-medium text-indigo-950">
-                                                                        <span className="block truncate">
-                                                                            {slotAppointments[0]?.patient?.prenom}{' '}
-                                                                            {slotAppointments[0]?.patient?.nom}
-                                                                        </span>
-                                                                    </div>
-                                                                </div>
-                                                                {slotAppointments.length > 1 && (
-                                                                    <div className="text-[10px] text-indigo-700">
-                                                                        +{slotAppointments.length - 1}
-                                                                    </div>
-                                                                )}
-                                                            </div>
-                                                        )}
-                                                        {!hasAppointment && canDropHere && (
-                                                            <div className="flex h-full min-h-[2.5rem] items-center justify-center text-[10px] text-slate-400">
-                                                                {L('docAgenda_available')}
-                                                            </div>
-                                                        )}
-                                                    </div>
-                                                );
-                                            })}
-                                        </div>
-                                    ))}
                                 </div>
-                            </div>
                             )}
                         </CardContent>
                     </Card>

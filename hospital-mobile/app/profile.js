@@ -9,6 +9,17 @@ import { useApp } from './AppContext';
 import CustomCalendar from './components/CustomCalendar';
 import HeaderSidebar from './components/HeaderSidebar';
 
+const renderMarkdownBold = (text) => {
+    if (!text) return null;
+    const parts = text.split(/(\*\*.*?\*\*)/g);
+    return parts.map((part, index) => {
+        if (part.startsWith('**') && part.endsWith('**')) {
+            return <Text key={index} style={{ fontWeight: 'bold' }}>{part.slice(2, -2)}</Text>;
+        }
+        return <Text key={index}>{part}</Text>;
+    });
+};
+
 const { width } = Dimensions.get('window');
 
 const isRawConsultationReportEntry = (entry) => {
@@ -323,42 +334,6 @@ const Profile = () => {
                             )}
                         </View>
                     </View>
-
-                    {!isEditing && consultationRows.length > 0 ? (
-                        <View style={[styles.infoField, { marginTop: 14 }]}>
-                            <Text style={[styles.infoLabel, { marginBottom: 8 }, isRTL && { textAlign: 'right' }]}>
-                                {t('consultationReportsSection')}
-                            </Text>
-                            <Text
-                                style={[
-                                    styles.sectionSubtitle,
-                                    { marginBottom: 10, fontSize: 12 },
-                                    isRTL && { textAlign: 'right' }
-                                ]}
-                            >
-                                {t('consultationReportsSecureHint')}
-                            </Text>
-                            {consultationRows.map((row) => (
-                                <View
-                                    key={row.id}
-                                    style={[
-                                        styles.tagHistory,
-                                        { alignSelf: 'stretch', marginBottom: 8, paddingVertical: 10, paddingHorizontal: 12 }
-                                    ]}
-                                >
-                                    <Text selectable style={[styles.tagHistoryText, { lineHeight: 20 }]}>
-                                        {(row.dateStr ? `${row.dateStr} · ` : '') + (row.doctor ? `${row.doctor} · ` : '')}
-                                        {row.secure ? t('consultationReportsSecureLabel') : row.preview || t('consultationReportsNoPreview')}
-                                    </Text>
-                                </View>
-                            ))}
-                            <TouchableOpacity onPress={() => router.push('/documents')} activeOpacity={0.85}>
-                                <Text style={[styles.linkToDocuments, isRTL && { textAlign: 'right' }]}>
-                                    {t('consultationReportsOpenDocuments')} →
-                                </Text>
-                            </TouchableOpacity>
-                        </View>
-                    ) : null}
                 </View>
 
                 <View style={styles.card}>
@@ -506,7 +481,7 @@ const Profile = () => {
                     </View>
                 </View>
             </Modal>
-        </SafeAreaView>
+        </SafeAreaView >
     );
 };
 

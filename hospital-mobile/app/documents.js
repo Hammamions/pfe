@@ -1,6 +1,8 @@
 import { Feather } from '@expo/vector-icons';
 import * as FileSystem from 'expo-file-system';
+import { StorageAccessFramework } from 'expo-file-system';
 import { LinearGradient } from 'expo-linear-gradient';
+// expo-media-library removed — using expo-sharing instead (already installed)
 import * as Print from 'expo-print';
 import { Stack, useFocusEffect } from 'expo-router';
 import * as Sharing from 'expo-sharing';
@@ -48,6 +50,17 @@ function resolveDeletePathId(doc) {
         if (!Number.isNaN(n)) return `ord_${n}`;
     }
     return rawStr;
+}
+
+async function getQrDataUri(data) {
+    if (!data) return null;
+    try {
+        const QRCodeLib = await import('qrcode');
+        return await QRCodeLib.toDataURL(data, { width: 150, margin: 1 });
+    } catch (e) {
+        console.warn('[QR] getQrDataUri failed', e);
+        return null;
+    }
 }
 
 const RADIOLOGY_TYPES = new Set(['echographie', 'irm', 'scanner', 'radiographie']);
@@ -143,19 +156,22 @@ function ordonnanceHtmlFromContenu(contenu) {
     const normalized = normalizeOrdonnanceContenu(contenu);
     if (!normalized) return '<p style="color:#64748b">—</p>';
     const { items, notes, plain } = getOrdonnanceMedicationsAndNotes(normalized);
+    let html = '';
     if (items && items.length > 0) {
-        return items.map((m, i) => {
+        const listItems = items.map((m, i) => {
             const nom = escapeHtml(m.nom || '');
             const dosage = escapeHtml(m.dosage || '');
             const freq = escapeHtml(m.frequence || '');
             const duree = escapeHtml(m.duree || '');
             const instr = m.instructions ? escapeHtml(m.instructions) : '';
-            return `<li style="margin-bottom:15px;"><strong>${i + 1}. ${nom} ${dosage}</strong><br/>${freq}${freq && duree ? ' · ' : ''}${duree}${instr ? `<br/><em>${instr}</em>` : ''}</li>`;
+            return `<li style="margin-bottom:15px;"><strong>${nom} ${dosage}</strong><br/>${freq}${freq && duree ? ' · ' : ''}${duree}${instr ? `<br/><em>${instr}</em>` : ''}</li>`;
         }).join('');
+        html += `<ol style="margin: 0; padding-left: 20px;">${listItems}</ol>`;
     }
     if (notes) {
-        return `<p style="white-space:pre-wrap">${escapeHtml(notes)}</p>`;
+        html += `<div style="margin-top:20px;"><strong>Notes:</strong><br/><p style="white-space:pre-wrap; margin-top:5px;">${escapeHtml(notes)}</p></div>`;
     }
+    if (html) return html;
     return `<pre style="white-space:pre-wrap;font-family:inherit">${escapeHtml(plain || '')}</pre>`;
 }
 
@@ -178,7 +194,7 @@ function formatSlashDate(raw) {
     return s || '—';
 }
 
-function buildOrdonnancePdfHtml({ doc, patient, t, isRTL }) {
+function buildOrdonnancePdfHtml({ doc, patient, t, isRTL, qrDataUri }) {
     const p = patient || {};
     const issuer = (doc?.issuerName || doc?.doctor || doc?.praticien || '').trim();
     const doctorLine = stripDrPrefix(issuer) || t('notSpecified');
@@ -193,7 +209,7 @@ function buildOrdonnancePdfHtml({ doc, patient, t, isRTL }) {
     const issueSlash = formatSlashDate(doc?.createdAt || doc?.date || null);
     const contenuNorm = normalizeOrdonnanceContenu(doc?.ordonnanceContenu);
     const ordFingerprint = sha256(String(contenuNorm || ''));
-    const qrSrc = `https://api.qrserver.com/v1/create-qr-code/?size=140x140&data=${encodeURIComponent(ordFingerprint)}`;
+    const qrSrc = qrDataUri;
     const dir = isRTL ? 'rtl' : 'ltr';
     const align = isRTL ? 'right' : 'left';
 
@@ -201,7 +217,7 @@ function buildOrdonnancePdfHtml({ doc, patient, t, isRTL }) {
 
     return `
         <html>
-        <body style="font-family: Arial, sans-serif; padding: 28px; color: #0f172a;" dir="${dir}">
+        <body style="font-family: sans-serif; padding: 28px; color: #0f172a;">
             <div style="border:1px solid #d1d5db; border-radius: 10px; padding: 22px; min-height: 92vh;">
                 <div style="text-align:${align};">
                     <div style="font-size: 22px; font-weight: 700; letter-spacing: 0.4px; text-transform: uppercase;">
@@ -226,13 +242,13 @@ function buildOrdonnancePdfHtml({ doc, patient, t, isRTL }) {
                 </div>
 
                 <div style="margin-top: 18px; line-height: 1.6; text-align:${align};">
-                    ${medHtml.startsWith('<li') ? `<ol style="margin: 0; padding-${isRTL ? 'right' : 'left'}: 22px;">${medHtml}</ol>` : medHtml}
+                    ${medHtml}
                 </div>
 
                 <hr style="border:none; border-top:1px solid #d1d5db; margin: 18px 0 10px;" />
 
                 <div style="display:flex; justify-content:${isRTL ? 'flex-start' : 'flex-end'};">
-                    <img src="${qrSrc}" width="90" height="90" alt="qr" style="border: 1px solid #e2e8f0; padding: 6px; border-radius: 8px;" />
+                    ${qrSrc ? `<img src="${qrSrc}" width="90" height="90" alt="qr" style="border: 1px solid #e2e8f0; padding: 6px; border-radius: 8px;" />` : ''}
                 </div>
             </div>
         </body>
@@ -262,7 +278,7 @@ function OrdonnancePatientCard({ doc, patient, t, isRTL }) {
 
     return (
         <View style={styles.prescriptionCard}>
-            <Text style={[styles.prescriptionTitleCaps, { textAlign }]}>{t('prescriptionCardTitle')}</Text>
+            <Text style={[styles.prescriptionTitleCaps, { textAlign: 'auto' }]}>{t('prescriptionCardTitle')}</Text>
             <Text style={[styles.prescriptionDoctorName, { textAlign }]}>{doctorLine}</Text>
             <Text style={[styles.prescriptionMutedLine, { textAlign }]}>{specialty}</Text>
             <Text style={[styles.prescriptionMutedLine, { textAlign }]}>
@@ -306,7 +322,7 @@ function OrdonnancePatientCard({ doc, patient, t, isRTL }) {
                 ) : plain ? (
                     <Text style={[styles.prescriptionMedBody, { textAlign }]}>{plain}</Text>
                 ) : (
-                    <Text style={[styles.prescriptionMutedLine, { textAlign }]}>—</Text>
+                    <Text style={[styles.prescriptionMutedLine, { textAlign: 'auto' }]}>—</Text>
                 )}
                 {items && items.length > 0 && notes ? (
                     <Text style={[styles.prescriptionMedNote, { textAlign, marginTop: 4 }]}>{notes}</Text>
@@ -548,8 +564,14 @@ const Documents = () => {
                 bodyInner = `<p>Le patient s'est présenté ce jour pour un suivi régulier. L'état général est bon, pas de signes cliniques d'infection. Pression artérielle à 120/80 mmHg. Le traitement actuel est bien toléré et doit être poursuivi sans modification.</p>`;
             }
 
+            const qrData = isOrdonnanceDoc(doc)
+                ? sha256(String(normalizeOrdonnanceContenu(doc.ordonnanceContenu) || ''))
+                : (doc.isSecureDocument && doc.publicId ? `${API_URL}/api/verify/document?t=${doc.publicId}` : `${doc.id}-${doc.date}`);
+
+            const qrDataUri = await getQrDataUri(qrData);
+
             const htmlContent = doc.category === 'ordonnance'
-                ? buildOrdonnancePdfHtml({ doc, patient, t, isRTL })
+                ? buildOrdonnancePdfHtml({ doc, patient, t, isRTL, qrDataUri })
                 : `
                 <html>
                 <body style="font-family: Arial, sans-serif; padding: 40px; color: #333;" dir="${isRTL ? 'rtl' : 'ltr'}">
@@ -558,7 +580,7 @@ const Documents = () => {
                         <p style="color: #64748b; margin: 5px 0 0 0;">REF: DOC-${doc.id}</p>
                     </div>
                     
-                    <div style="text-align: center; margin: 40px 0;">
+                    <div style="text-align: center; margin: 40px 0;" dir="auto">
                         <h2 style="font-size: 24px; color: #000; margin-bottom: 5px;">${t(doc.title)}</h2>
                         <p style="color: #64748b; font-size: 16px;">${t('issuedBy')} ${getIssuerName(doc) || t('notSpecified')}</p>
                     </div>
@@ -586,6 +608,11 @@ const Documents = () => {
                         ${bodyInner}
                     </div>
 
+                    <div style="margin-top: 40px; display: flex; justify-content: ${isRTL ? 'flex-start' : 'flex-end'}; border-top: 1px solid #e2e8f0; padding-top: 20px;">
+                        <div style="text-align: center;">
+                            ${qrDataUri ? `<img src="${qrDataUri}" width="100" height="100" style="border: 1px solid #e2e8f0; padding: 5px; border-radius: 5px;" />` : ''}
+                        </div>
+                    </div>
                 </body>
                 </html>
             `;
@@ -609,15 +636,73 @@ const Documents = () => {
                 }
             } else {
                 const { uri } = await Print.printToFileAsync({ html: htmlContent });
-                if (await Sharing.isAvailableAsync()) {
-                    await Sharing.shareAsync(uri);
-                } else {
-                    alert('Sharing is not available on your device');
+
+                // Better sanitization for fileName
+                const rawName = `${t(doc.category) || 'Document'}_${doc.date || Date.now()}`;
+                const fileName = `${rawName.replace(/[^a-z0-9]/gi, '_')}.pdf`;
+
+                try {
+                    if (Platform.OS === 'android') {
+                        if (StorageAccessFramework) {
+                            const directoryUri = await AsyncStorage.getItem('saf_directory_uri');
+
+                            let targetUri = directoryUri;
+                            if (!targetUri) {
+                                const permissions = await StorageAccessFramework.requestDirectoryPermissionsAsync();
+                                if (permissions.granted) {
+                                    targetUri = permissions.directoryUri;
+                                    await AsyncStorage.setItem('saf_directory_uri', targetUri);
+                                }
+                            }
+
+                            if (targetUri) {
+                                try {
+                                    const fileUri = await StorageAccessFramework.createFileAsync(targetUri, fileName, 'application/pdf');
+                                    const content = await FileSystem.readAsStringAsync(uri, { encoding: FileSystem.EncodingType.Base64 });
+                                    await FileSystem.writeAsStringAsync(fileUri, content, { encoding: FileSystem.EncodingType.Base64 });
+                                    if (Platform.OS !== 'web') Alert.alert(t('success'), t('downloadSuccess') || 'Document enregistré avec succès');
+                                    return;
+                                } catch (safErr) {
+                                    console.warn('SAF write failed, falling back to share', safErr);
+                                }
+                            }
+                        }
+                    }
+
+                    // Fallback to Sharing (for iOS, Web fallback, or if SAF fails/denied)
+                    const cacheDir = FileSystem.cacheDirectory || FileSystem.documentDirectory;
+                    if (!cacheDir) {
+                        // Extreme fallback: use the original URI from Print.printToFileAsync
+                        if (await Sharing.isAvailableAsync()) {
+                            await Sharing.shareAsync(uri, {
+                                mimeType: 'application/pdf',
+                                dialogTitle: t('downloadSuccess') || 'Télécharger / Partager'
+                            });
+                        }
+                        return;
+                    }
+
+                    const niceUri = cacheDir.endsWith('/') ? `${cacheDir}${fileName}` : `${cacheDir}/${fileName}`;
+                    try {
+                        await FileSystem.copyAsync({ from: uri, to: niceUri });
+                        if (await Sharing.isAvailableAsync()) {
+                            await Sharing.shareAsync(niceUri, {
+                                mimeType: 'application/pdf',
+                                dialogTitle: t('downloadSuccess') || 'Télécharger / Partager'
+                            });
+                        }
+                    } catch (copyErr) {
+                        console.warn('Copy failed, sharing original uri', copyErr);
+                        await Sharing.shareAsync(uri);
+                    }
+                } catch (e) {
+                    console.warn('Download/Share failed', e);
+                    Alert.alert(t('error'), `${t('downloadError') || 'Impossible d\'enregistrer le fichier'}\n\nDet: ${e.message || String(e)}`);
                 }
             }
         } catch (error) {
             console.error("Error generating PDF:", error);
-            alert("Error downloading document");
+            Alert.alert(t('error'), `Error downloading document: ${error.message || String(error)}`);
         }
     };
 

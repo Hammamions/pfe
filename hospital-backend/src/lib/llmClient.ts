@@ -112,3 +112,60 @@ export async function chatCompletion(
     const model = (data as { model?: string }).model || cfg.model;
     return { content: content.trim(), model };
 }
+
+export async function transcribeAudio(
+    fileBuffer: Buffer,
+    fileName: string
+): Promise<string> {
+    const cfg = getLlmConfig();
+    if (!cfg) {
+        throw new Error('LLM_API_KEY manquant dans la configuration serveur.');
+    }
+
+    const apiKey = cfg.apiKey;
+    console.log('Transcription Debug:', {
+        url: `https://api.groq.com/openai/v1/audio/transcriptions`,
+        keyLength: apiKey.length,
+        keyPrefix: apiKey.substring(0, 7)
+    });
+
+    // L'API Groq Transcription utilise du multipart/form-data
+    const formData = new FormData();
+    // Correction pour Node.js : Buffer vers Uint8Array vers Blob
+    const blob = new Blob([new Uint8Array(fileBuffer)], { type: 'audio/webm' });
+    formData.append('file', blob, fileName);
+    formData.append('model', 'whisper-large-v3');
+    formData.append('language', 'fr');
+    formData.append('response_format', 'json');
+
+    const url = `https://api.groq.com/openai/v1/audio/transcriptions`;
+    const res = await fetch(url, {
+        method: 'POST',
+        headers: {
+            Authorization: `Bearer ${apiKey}`
+        },
+        body: formData
+    });
+
+    const rawText = await res.text();
+    console.log('Groq Response Status:', res.status);
+    console.log('Groq Response Body:', rawText);
+
+    let data: unknown;
+    try {
+        data = JSON.parse(rawText) as unknown;
+    } catch {
+        throw new Error(`Réponse Transcription non JSON (HTTP ${res.status}): ${rawText.slice(0, 200)}`);
+    }
+
+    if (!res.ok) {
+        throw new Error(formatLlmHttpError(res.status, data, rawText));
+    }
+
+    const text = (data as { text?: string }).text;
+    if (typeof text !== 'string') {
+        throw new Error('Réponse Transcription vide ou invalide.');
+    }
+
+    return text.trim();
+}

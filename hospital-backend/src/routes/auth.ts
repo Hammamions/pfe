@@ -228,8 +228,8 @@ router.put('/profile', async (req: Request, res: Response) => {
                         historiqueMerged !== undefined
                             ? historiqueMerged
                             : Array.isArray(history)
-                              ? history
-                              : [],
+                                ? history
+                                : [],
                     contactUrgenceNom: emergencyContact?.name,
                     contactUrgenceRelation: emergencyContact?.relation,
                     contactUrgenceTelephone: emergencyContact?.phone,
@@ -339,12 +339,10 @@ router.post('/forgot-password', async (req: Request, res: Response) => {
         if (!user) return res.status(404).json({ error: 'Aucun compte associé à cet email' });
 
         const resetToken = jwt.sign({ email: user.email }, JWT_SECRET, { expiresIn: '1h' });
-      
+
         const resetBase = (
             process.env.FRONTEND_PUBLIC_URL ||
-            process.env.BACKEND_PUBLIC_URL ||
-            process.env.API_PUBLIC_URL ||
-            'http://localhost:4000'
+            'http://localhost:5173'
         ).replace(/\/$/, '');
         const resetLink = `${resetBase}/reset-password?token=${encodeURIComponent(resetToken)}`;
         await sendResetEmail(user.email, resetLink);

@@ -1,5 +1,5 @@
 
-const TZ = process.env.APPOINTMENT_DISPLAY_TZ || 'Europe/Paris';
+const TZ = process.env.APPOINTMENT_DISPLAY_TZ || Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC';
 
 export function getAppointmentDisplayTimeZone(): string {
     return TZ;

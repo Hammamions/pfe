@@ -1,6 +1,5 @@
 import { Feather } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
-import AsyncStorage from './utils/storage';
 import { Stack, useRouter } from 'expo-router';
 import { useEffect, useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
@@ -25,6 +24,7 @@ import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context'
 import { authCardShadow, authTheme, dashboardVibe, screenPastelGradient } from '../theme';
 import { useApp } from './AppContext';
 import { getApiBaseUrl } from './utils/apiBase';
+import AsyncStorage from './utils/storage';
 
 const { width: INIT_W } = Dimensions.get('window');
 
@@ -40,9 +40,9 @@ const LOGIN_CARD_BORDER = 'rgba(165, 180, 252, 0.5)';
 const LOGIN_INPUT_BORDER = 'rgba(191, 219, 254, 0.95)';
 
 const LANGUAGES = [
-    { code: 'fr', label: 'Français', flag: '🇫🇷' },
-    { code: 'ar', label: 'العربية', flag: '🇹🇳' },
-    { code: 'en', label: 'English', flag: '🇬🇧' },
+    { code: 'fr', label: 'Français' },
+    { code: 'ar', label: 'العربية' },
+    { code: 'en', label: 'English' },
 ];
 
 function useResponsiveScale() {
@@ -144,11 +144,11 @@ const Login = () => {
             const data = await res.json();
             if (!res.ok) {
                 if (data.error === 'Email non trouvé') {
-                    setFormErrors({ email: data.error });
+                    setFormErrors({ email: t('emailNotFound') });
                 } else if (data.error === 'Mot de passe incorrect') {
-                    setFormErrors({ password: data.error });
+                    setFormErrors({ password: t('passwordIncorrect') });
                 } else if (data.error === 'Email ou mot de passe incorrect') {
-                    setFormErrors({ email: ' ', password: data.error });
+                    setFormErrors({ email: ' ', password: t('passwordIncorrect') });
                 } else {
                     setFormErrors({ email: data.error || t('loginFailed'), password: ' ' });
                 }
@@ -167,7 +167,7 @@ const Login = () => {
             if (data.token) await syncAllData(data.token);
             router.replace('/dashboard');
         } catch (e) {
-            Alert.alert(t('error'), 'Impossible de se connecter au serveur.');
+            Alert.alert(t('error'), t('noServerContact'));
         } finally {
             setLoading(false);
         }
@@ -184,7 +184,7 @@ const Login = () => {
         }
 
         if (!errors.password && !validatePassword(formData.password)) {
-            errors.password = 'Le mot de passe doit contenir au moins 8 caractères, incluant des lettres et des chiffres.';
+            errors.password = t('passwordComplexity');
         }
 
         if (Object.keys(errors).length > 0) {
@@ -206,7 +206,7 @@ const Login = () => {
             });
         } catch (e) {
             console.error('Navigation error:', e);
-            Alert.alert(t('error'), 'Erreur lors de la navigation.');
+            Alert.alert(t('error'), t('navigationError'));
         }
     };
 
@@ -250,7 +250,7 @@ const Login = () => {
                                                 lang.code === i18n.language && styles.langOptionTextActive,
                                             ]}
                                         >
-                                            {lang.flag} {lang.label}
+                                            {lang.label}
                                         </Text>
                                         {lang.code === i18n.language ? (
                                             <Text style={{ color: C_BTN_C, fontWeight: '800' }}>✓</Text>

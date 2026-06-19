@@ -1,7 +1,6 @@
 import {
     Activity,
     ArrowUp,
-    Calendar,
     CheckCircle2,
     Edit,
     Plus,
@@ -16,9 +15,9 @@ import {
 } from 'lucide-react';
 import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import api from '../../lib/api';
 import { Button } from '../../components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '../../components/ui/card';
+import api from '../../lib/api';
 
 
 const specialties = [
@@ -86,13 +85,10 @@ export default function AdminDashboard() {
     const [isDeleting, setIsDeleting] = useState(false);
 
     const [patientsList, setPatientsList] = useState([]);
-    const [todayAppointments, setTodayAppointments] = useState([]);
     const [overviewStats, setOverviewStats] = useState({
         patientsCount: 0,
         doctorsCount: 0,
-        subAdminsCount: 0,
-        appointmentsTodayCount: 0,
-        appointmentsPendingCount: 0
+        subAdminsCount: 0
     });
     const [activities, setActivities] = useState([]);
 
@@ -154,14 +150,7 @@ export default function AdminDashboard() {
         }
     };
 
-    const refreshTodayAppointments = async () => {
-        try {
-            const res = await api.get('/admin/appointments');
-            setTodayAppointments(Array.isArray(res.data) ? res.data : []);
-        } catch (err) {
-            console.error('Failed to load today appointments:', err);
-        }
-    };
+
 
     const fetchOverviewStats = async () => {
         const response = await api.get('/admin/overview');
@@ -169,9 +158,7 @@ export default function AdminDashboard() {
         setOverviewStats({
             patientsCount: Number(payload.patientsCount ?? 0),
             doctorsCount: Number(payload.doctorsCount ?? 0),
-            subAdminsCount: Number(payload.subAdminsCount ?? 0),
-            appointmentsTodayCount: Number(payload.appointmentsTodayCount ?? 0),
-            appointmentsPendingCount: Number(payload.appointmentsPendingCount ?? 0)
+            subAdminsCount: Number(payload.subAdminsCount ?? 0)
         });
     };
 
@@ -179,7 +166,7 @@ export default function AdminDashboard() {
         refreshDoctors();
         refreshSubAdmins();
         refreshPatients();
-        refreshTodayAppointments();
+
         fetchSystemLogs().catch((err) => {
             console.error('Failed to fetch system logs:', err);
         });
@@ -443,18 +430,7 @@ export default function AdminDashboard() {
             color: "text-blue-600",
             bg: "bg-blue-100"
         },
-        {
-            id: "rdv",
-            title: "RDV aujourd'hui",
-            value: overviewStats.appointmentsTodayCount.toLocaleString(),
-            subtext:
-                overviewStats.appointmentsPendingCount > 0
-                    ? `${overviewStats.appointmentsPendingCount} en attente`
-                    : "Planifiés",
-            icon: Calendar,
-            color: "text-green-600",
-            bg: "bg-green-100"
-        },
+
         {
             id: "subadmins",
             title: "Secrétaires",
@@ -637,7 +613,7 @@ export default function AdminDashboard() {
                 <p className="text-gray-500 mt-2">Vue d'ensemble de la plateforme hospitalière</p>
             </div>
 
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-6">
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
                 {updatedStats.map((stat) => (
                     <Card key={stat.id}
                         onClick={() => {
@@ -764,29 +740,7 @@ export default function AdminDashboard() {
                 </Card>
             )}
 
-            {activeSection === "rdv" && (
-                <Card className="border-gray-200 shadow-sm">
-                    <CardHeader>
-                        <CardTitle>Rendez-vous Aujourd'hui</CardTitle>
-                        <CardDescription>Planning du jour</CardDescription>
-                    </CardHeader>
-                    <CardContent className="space-y-3">
-                        {todayAppointments.map((r) => (
-                            <div
-                                key={r.id}
-                                className="p-4 border rounded-lg flex justify-between"
-                            >
-                                <span>{r.patientName || '-'}</span>
-                                <span>{r.doctor || 'Non assigné'}</span>
-                                <span className="text-gray-500">{r.time}</span>
-                            </div>
-                        ))}
-                        {todayAppointments.length === 0 && (
-                            <p className="text-sm text-gray-500 text-center py-3">Aucun rendez-vous aujourd'hui</p>
-                        )}
-                    </CardContent>
-                </Card>
-            )}
+
 
             {activeSection === "subadmins" && (
                 <Card className="border-gray-200 shadow-sm">
@@ -859,7 +813,7 @@ export default function AdminDashboard() {
 
             <div className="grid grid-cols-1 xl:grid-cols-3 gap-8">
                 <div className="xl:col-span-2 space-y-8">
-                    
+
                     <Card className="border-gray-200 shadow-sm">
                         <CardHeader className="flex flex-row items-center justify-between">
                             <div>

@@ -1,5 +1,4 @@
 import { jsPDF } from 'jspdf';
-import QRCode from 'qrcode';
 import {
     Calendar,
     CheckCircle2,
@@ -10,7 +9,20 @@ import {
     Trash2,
     User
 } from 'lucide-react';
-import { useEffect, useState } from 'react';
+import QRCode from 'qrcode';
+import { useEffect, useRef, useState } from 'react';
+import { Button } from '../../components/ui/button';
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '../../components/ui/card';
+import { Input } from '../../components/ui/input';
+import { Label } from '../../components/ui/label';
+import {
+    Select,
+    SelectContent,
+    SelectItem,
+    SelectTrigger,
+    SelectValue,
+} from '../../components/ui/select';
+import { Textarea } from '../../components/ui/textarea';
 import api from '../../lib/api';
 
 async function sha256HexOfArrayBuffer(buffer) {
@@ -95,18 +107,6 @@ async function buildOrdonnancePdfWithQr(opts) {
     return doc;
 }
 const PRESCRIPTION_QUEUE_KEY = 'hospital_ai_prescription_queue';
-import { Button } from '../../components/ui/button';
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '../../components/ui/card';
-import { Input } from '../../components/ui/input';
-import { Label } from '../../components/ui/label';
-import {
-    Select,
-    SelectContent,
-    SelectItem,
-    SelectTrigger,
-    SelectValue,
-} from '../../components/ui/select';
-import { Textarea } from '../../components/ui/textarea';
 const defaultDoctor = {
     prenom: '',
     nom: '',
@@ -137,6 +137,7 @@ const emptyMedErrors = () => ({
 });
 
 export default function PrescriptionGeneratorPage() {
+    const prescriptionRef = useRef(null);
     const [doctor, setDoctor] = useState(defaultDoctor);
     const [patientOptions, setPatientOptions] = useState([]);
     const [loadPatientsError, setLoadPatientsError] = useState('');
@@ -158,6 +159,7 @@ export default function PrescriptionGeneratorPage() {
     const [medFieldErrors, setMedFieldErrors] = useState(emptyMedErrors);
     const [notesError, setNotesError] = useState('');
     const [formError, setFormError] = useState('');
+    const [qrDataUrl, setQrDataUrl] = useState('');
 
     useEffect(() => {
         try {
@@ -269,10 +271,10 @@ export default function PrescriptionGeneratorPage() {
         const m = currentMed;
         return Boolean(
             (m.nom || '').trim() ||
-                (m.dosage || '').trim() ||
-                (m.frequence || '').trim() ||
-                (m.duree || '').trim() ||
-                (m.instructions || '').trim()
+            (m.dosage || '').trim() ||
+            (m.frequence || '').trim() ||
+            (m.duree || '').trim() ||
+            (m.instructions || '').trim()
         );
     };
 
@@ -393,6 +395,27 @@ export default function PrescriptionGeneratorPage() {
             });
         }
 
+        // Generate QR code for preview
+        (async () => {
+            try {
+                const date = new Date().toLocaleDateString('fr-FR');
+                const seed = JSON.stringify({
+                    meds: allMeds,
+                    notes: notes.trim(),
+                    patient: patient ? {
+                        prenom: patient.patient.prenom,
+                        nom: patient.patient.nom,
+                    } : {},
+                    date
+                });
+                const h = await sha256HexOfArrayBuffer(new TextEncoder().encode(seed).buffer);
+                const url = await QRCode.toDataURL(h, { width: 120, margin: 1 });
+                setQrDataUrl(url);
+            } catch (e) {
+                console.error('QR error:', e);
+            }
+        })();
+
         setShowPreview(true);
     };
 
@@ -481,15 +504,6 @@ export default function PrescriptionGeneratorPage() {
     const handleDownloadPDF = async () => {
         if (!patient) return;
         setFormError('');
-
-        if (currentMedLineIsPartiallyFilled()) {
-            const err = validateMedicationLine(currentMed);
-            setMedFieldErrors(err);
-            if (Object.values(err).some(Boolean)) {
-                setFormError('Complétez le médicament en cours avant export PDF.');
-                return;
-            }
-        }
 
         const extra = currentMedLineIsPartiallyFilled()
             ? [{
@@ -581,7 +595,7 @@ export default function PrescriptionGeneratorPage() {
                                         <SelectContent>
                                             {patientOptions.length === 0 ? (
                                                 <SelectItem value="__empty__" disabled>
-                                                    Aucun patient — un rendez-vous avec vous est requis
+                                                    Aucun patient présent en salle d'attente
                                                 </SelectItem>
                                             ) : (
                                                 patientOptions.map((p) => (
@@ -634,7 +648,7 @@ export default function PrescriptionGeneratorPage() {
                                                 key={index}
                                                 className="p-4 bg-gray-50 rounded-lg border border-gray-200"
                                             >
-                                                <div className="flex items-start justify-between">
+                                                <div className="flex items-start justify-between" dir="auto">
                                                     <div className="flex-1">
                                                         <h4 className="font-semibold text-gray-900">{med.nom}</h4>
                                                         <div className="grid grid-cols-3 gap-2 mt-2 text-sm text-gray-600">
@@ -830,7 +844,7 @@ export default function PrescriptionGeneratorPage() {
                                     </div>
                                 ) : (
                                     <div className="space-y-4">
-                                        <div className="border-2 border-gray-200 rounded-lg p-6 bg-white text-sm">
+                                        <div ref={prescriptionRef} className="border-2 border-gray-200 rounded-lg p-6 bg-white text-sm">
                                             <div className="border-b-2 border-gray-300 pb-4 mb-4">
                                                 <h3 className="font-bold text-lg">ORDONNANCE MÉDICALE</h3>
                                                 <div className="mt-2 text-xs">
@@ -859,12 +873,12 @@ export default function PrescriptionGeneratorPage() {
                                                 </span>
                                             </div>
 
-                                            <div className="mb-4">
+                                            <div className="mb-4" dir="auto">
                                                 <div className="space-y-3">
                                                     {getMedicationsForExport().map((med, index) => (
                                                         <div key={index} className="text-xs">
                                                             <p className="font-semibold">
-                                                                {index + 1}. {med.nom} {med.dosage}
+                                                                {med.nom} {med.dosage}
                                                             </p>
                                                             <p className="ml-4">
                                                                 {med.frequence} pendant {med.duree}
@@ -880,9 +894,17 @@ export default function PrescriptionGeneratorPage() {
                                             </div>
 
                                             {notes && (
-                                                <div className="mb-4 text-xs">
+                                                <div className="mb-4 text-xs" dir="auto">
                                                     <p className="font-semibold">Notes:</p>
-                                                    <p className="whitespace-pre-wrap">{notes}</p>
+                                                    <p className="mt-0.5 whitespace-pre-wrap text-xs text-slate-600" dir="auto">
+                                                        {notes}
+                                                    </p>
+                                                </div>
+                                            )}
+
+                                            {qrDataUrl && (
+                                                <div className="flex justify-end mt-4">
+                                                    <img src={qrDataUrl} alt="QR Code" className="w-20 h-20 border border-gray-100 p-0.5" />
                                                 </div>
                                             )}
                                         </div>

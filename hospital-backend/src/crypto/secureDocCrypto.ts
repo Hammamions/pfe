@@ -15,7 +15,6 @@ export function normalizeSha256Hex(input: string): string | null {
     return s;
 }
 
-/** Message = UTF-8 bytes of the 64-char lowercase hex (no 0x), same as WebCrypto sign over encoded string. */
 export function verifyP256Sha256Signature(params: {
     sha256Hex: string;
     signatureDerBase64: string;

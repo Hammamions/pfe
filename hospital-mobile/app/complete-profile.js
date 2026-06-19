@@ -1,5 +1,4 @@
 import { Ionicons } from '@expo/vector-icons';
-import AsyncStorage from './utils/storage';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Stack, useLocalSearchParams, useRouter } from 'expo-router';
 import { useEffect, useState } from 'react';
@@ -7,8 +6,9 @@ import { useTranslation } from 'react-i18next';
 import { ActivityIndicator, Alert, Modal, SafeAreaView, ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
 import { dashboardVibe, patientPastel, screenPastelGradient, theme } from '../theme';
 import { useApp } from './AppContext';
-import { getApiBaseUrl } from './utils/apiBase';
 import CustomCalendar from './components/CustomCalendar';
+import { getApiBaseUrl } from './utils/apiBase';
+import AsyncStorage from './utils/storage';
 
 const InfoField = ({ label, value, isRTL, t, keyboardType, onChangeText, required = false, error = false, editable = true }) => (
     <View style={styles.infoField}>
@@ -230,7 +230,7 @@ const CompleteProfile = () => {
 
                 if (!res.ok) {
                     const data = await res.json();
-                    throw new Error(data.error || 'Erreur lors de la création du compte.');
+                    throw new Error(data.error || t('serverError'));
                 }
 
                 const data = await res.json();
@@ -257,7 +257,7 @@ const CompleteProfile = () => {
             } else {
                 const token = await AsyncStorage.getItem('token');
                 if (!token) {
-                    Alert.alert(t('error'), 'Session expirée. Veuillez vous reconnecter.');
+                    Alert.alert(t('error'), t('sessionExpired'));
                     router.replace('/login');
                     return;
                 }
@@ -274,7 +274,7 @@ const CompleteProfile = () => {
 
                 const data = await res.json();
                 if (!res.ok) {
-                    throw new Error(data.error || 'Erreur lors de la sauvegarde du profil.');
+                    throw new Error(data.error || t('serverError'));
                 }
 
                 await AsyncStorage.setItem('user', JSON.stringify(data.user));
@@ -285,7 +285,7 @@ const CompleteProfile = () => {
             }
         } catch (error) {
             console.error('Operation error:', error);
-            Alert.alert(t('error'), error.message || 'Impossible de contacter le serveur. Vérifiez votre connexion.');
+            Alert.alert(t('error'), error.message || t('noServerContact'));
         } finally {
             setLoading(false);
         }

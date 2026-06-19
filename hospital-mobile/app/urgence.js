@@ -40,25 +40,24 @@ const Urgence = () => {
 
                 if (response.ok) {
                     console.log('[URGENCE] Call logged to backend');
-                    Alert.alert(t('success'), "Appel d'urgence enregistré.");
+                    Alert.alert(t('success'), t('deleteSuccess'));
                 } else {
                     const errData = await response.json();
                     console.warn('[URGENCE] Backend error:', errData);
-                    Alert.alert(t('error'), "Erreur serveur lors de l'enregistrement.");
+                    Alert.alert(t('error'), t('serverError'));
                 }
             } else {
-                Alert.alert(t('error'), "Session expirée. Veuillez vous reconnecter.");
+                Alert.alert(t('error'), t('sessionExpired'));
             }
         } catch (error) {
             console.warn('[URGENCE] Failed to log call:', error);
-            Alert.alert(t('error'), "Impossible de contacter le serveur.");
+            Alert.alert(t('error'), t('noServerContact'));
         }
     };
 
     const infoList = [
         { label: t('bloodGroup'), value: patient.bloodGroup, color: '#000' },
         { label: t('allergies'), value: patient.allergies?.join(', ') || t('noneF'), color: theme.colors.danger },
-        { label: t('medicalHistory'), value: `${patient.history?.length || 0} ${t('entries')}`, color: '#000' },
     ];
 
     return (

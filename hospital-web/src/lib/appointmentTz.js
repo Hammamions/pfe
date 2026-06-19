@@ -1,4 +1,4 @@
-export const APPOINTMENT_DISPLAY_TZ = 'Europe/Paris';
+export const APPOINTMENT_DISPLAY_TZ = Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC';
 
 export function calendarDateKeyInTz(d, timeZone = APPOINTMENT_DISPLAY_TZ) {
     if (!d) return '';

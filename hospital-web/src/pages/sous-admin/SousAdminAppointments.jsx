@@ -2,9 +2,11 @@ import {
     Activity,
     AlertTriangle,
     Calendar,
+    CheckCircle,
     ChevronLeft,
     ChevronRight,
     Inbox,
+    Play,
     Search,
     Users,
     X
@@ -25,6 +27,8 @@ const SEAT_MAP_STYLES = `
   }
   .animate-pulse-red { animation: pulse-red 2s infinite; }
   .glass-seat { backdrop-filter: blur(8px); background-opacity: 0.8; }
+  .quick-action-btn { transition: all 0.2s cubic-bezier(0.175, 0.885, 0.32, 1.275); }
+  .quick-action-btn:hover { transform: scale(1.2) !important; background: white !important; color: #4f46e5 !important; }
 `;
 
 const HOURS = Array.from({ length: 11 }, (_, i) => (i + 8).toString().padStart(2, '0'));
@@ -106,6 +110,9 @@ function SousAdminAppointmentsContent({ lang }) {
     const [doctors, setDoctors] = useState([]);
     const [loading, setLoading] = useState(true);
     const [busyKey, setBusyKey] = useState(null);
+    const [toastMessage, setToastMessage] = useState(null);
+    const [toastVisible, setToastVisible] = useState(false);
+    const toastTimerRef = useRef(null);
     const fetchInFlight = useRef(false);
     const initialPageLoad = useRef(true);
 
@@ -125,6 +132,7 @@ function SousAdminAppointmentsContent({ lang }) {
     const [calendarMonth, setCalendarMonth] = useState(new Date().getMonth());
     const [calendarYear, setCalendarYear] = useState(new Date().getFullYear());
     const [draggedPatient, setDraggedPatient] = useState(null);
+    const [contextMenu, setContextMenu] = useState(null);
     const [demoPatients, setDemoPatients] = useState([
         { id: 'demo-1', patientName: 'Ahmed Aamri', time: '09:00', doctor: 'Dr. Hadj', status: 'CONFIRME', presenceStatus: null, isUrgent: false },
         { id: 'demo-2', patientName: 'Ghada Bagane', time: '09:30', doctor: 'Dr. Messaoud', status: 'CONFIRME', presenceStatus: null, isUrgent: true },
@@ -226,6 +234,21 @@ function SousAdminAppointmentsContent({ lang }) {
         };
     }, [selectedDate]);
 
+    useEffect(() => {
+        if (toastTimerRef.current) clearTimeout(toastTimerRef.current);
+        if (toastMessage) {
+            requestAnimationFrame(() => setToastVisible(true));
+            const delay = toastMessage.type === 'error' ? 5000 : 3500;
+            toastTimerRef.current = setTimeout(() => {
+                setToastVisible(false);
+                setTimeout(() => setToastMessage(null), 350);
+            }, delay);
+        } else {
+            setToastVisible(false);
+        }
+        return () => { if (toastTimerRef.current) clearTimeout(toastTimerRef.current); };
+    }, [toastMessage]);
+
     const sortedRequests = useMemo(() => {
         const safeApts = Array.isArray(appointments) ? appointments.filter(Boolean) : [];
         const fromApts = safeApts.filter((a) =>
@@ -289,16 +312,13 @@ function SousAdminAppointmentsContent({ lang }) {
     }, [appointments, waitingRoom]);
 
     const expectedToday = useMemo(() => {
-        const base = todayWaiting.filter(p => p.presenceStatus !== 'PRESENT' && p.status !== 'EN_COURS');
-        if (todayWaiting.length === 0) return demoPatients.filter(p => p.presenceStatus !== 'PRESENT');
-        return base;
-    }, [todayWaiting, demoPatients]);
+        return todayWaiting.filter(p => p.presenceStatus !== 'PRESENT' && p.status !== 'EN_COURS');
+    }, [todayWaiting]);
 
     const presentToday = useMemo(() => {
-        const base = todayWaiting.filter(p => p.presenceStatus === 'PRESENT' || p.status === 'EN_COURS');
-        if (todayWaiting.length === 0) return demoPatients.filter(p => p.presenceStatus === 'PRESENT' || p.status === 'EN_COURS');
-        return base;
-    }, [todayWaiting, demoPatients]);
+        return todayWaiting.filter(p => p.presenceStatus === 'PRESENT' || p.status === 'EN_COURS');
+    }, [todayWaiting]);
+
 
     const doctorAvailability = (d) => {
         if (!d) return 'Indisponible';
@@ -434,15 +454,18 @@ function SousAdminAppointmentsContent({ lang }) {
             } catch (err) {
                 console.error("Planify error:", err);
                 const backendMessage = err?.response?.data?.error || '';
+                let errorMsg;
                 if (backendMessage.toLowerCase().includes('médecin')) {
-                    setPlanificationError("Le médecin est occupé ou indisponible à cette heure. Choisissez un autre créneau.");
+                    errorMsg = "Le médecin est occupé ou indisponible à cette heure. Choisissez un autre créneau.";
                 } else if (backendMessage.toLowerCase().includes('salle')) {
-                    setPlanificationError("La salle est déjà occupée à cette heure. Sélectionnez une autre salle ou un autre créneau.");
+                    errorMsg = "La salle est déjà occupée à cette heure. Sélectionnez une autre salle ou un autre créneau.";
                 } else if (err?.response?.status === 409) {
-                    setPlanificationError("Un autre patient est déjà planifié sur ce créneau. Merci de choisir une autre heure.");
+                    errorMsg = "Un autre patient est déjà planifié sur ce créneau. Merci de choisir une autre heure.";
                 } else {
-                    setPlanificationError("Impossible de planifier ce rendez-vous pour le moment. Réessayez.");
+                    errorMsg = "Impossible de planifier ce rendez-vous pour le moment. Réessayez.";
                 }
+                setPlanificationError(errorMsg);
+                setToastMessage({ type: 'error', text: errorMsg });
             }
         });
     };
@@ -786,15 +809,19 @@ function SousAdminAppointmentsContent({ lang }) {
                                                                 <button
                                                                     key={doc.id}
                                                                     onClick={() => {
+                                                                        if (!isDisp) {
+                                                                            setToastMessage({ type: 'error', text: `Dr. ${doc.prenom} ${doc.nom} est actuellement ${av.toLowerCase()}. Veuillez choisir un autre médecin.` });
+                                                                            return;
+                                                                        }
                                                                         setSelectedDoctorId(doc.id);
                                                                         setCurrentStep(3);
                                                                     }}
-                                                                    className={`p-4 rounded-2xl border text-left transition-all ${selectedDoctorId === doc.id ? 'border-indigo-600 bg-indigo-50/50 ring-1 ring-indigo-600' : 'border-slate-100 bg-white hover:border-indigo-200'}`}
+                                                                    className={`p-4 rounded-2xl border text-left transition-all ${!isDisp ? 'opacity-60 cursor-not-allowed border-slate-100 bg-slate-50' : selectedDoctorId === doc.id ? 'border-indigo-600 bg-indigo-50/50 ring-1 ring-indigo-600' : 'border-slate-100 bg-white hover:border-indigo-200'}`}
                                                                 >
                                                                     <div className="font-black text-indigo-950 text-sm">{doc.prenom} {doc.nom}</div>
                                                                     <div className="text-[10px] text-slate-500 uppercase mt-1">{doc.specialite}</div>
-                                                                    <div className={`mt-3 inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full text-[8px] font-black uppercase ${isDisp ? 'bg-emerald-100 text-emerald-700' : 'bg-slate-100 text-slate-600'}`}>
-                                                                        <div className={`w-1 h-1 rounded-full ${isDisp ? 'bg-emerald-500' : 'bg-slate-400'}`} />
+                                                                    <div className={`mt-3 inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full text-[8px] font-black uppercase ${isDisp ? 'bg-emerald-100 text-emerald-700' : 'bg-rose-100 text-rose-700'}`}>
+                                                                        <div className={`w-1 h-1 rounded-full ${isDisp ? 'bg-emerald-500' : 'bg-rose-500'}`} />
                                                                         {av}
                                                                     </div>
                                                                 </button>
@@ -934,9 +961,9 @@ function SousAdminAppointmentsContent({ lang }) {
 
                                                     return (
                                                         <div key={`left-${i}`} className="flex flex-col items-center gap-2.5">
-                                                            <button
+                                                            <div
                                                                 onClick={() => p && setSelectedSeat(isSelected ? null : p)}
-                                                                className={`group relative w-12 h-14 rounded-2xl transition-all duration-500 ease-out ${!p ? 'bg-slate-50 border-none' : 'bg-indigo-600 shadow-xl shadow-indigo-200'} ${isSelected ? 'scale-110 z-20 shadow-2xl' : 'hover:scale-110 hover:-translate-y-1'}`}
+                                                                className={`group relative w-12 h-14 rounded-2xl transition-all duration-500 ease-out cursor-pointer ${!p ? 'bg-slate-50 border-none' : 'bg-indigo-600 shadow-xl shadow-indigo-200'} ${isSelected ? 'scale-110 z-20 shadow-2xl' : 'hover:scale-110 hover:-translate-y-1'}`}
                                                             >
                                                                 <div className={`absolute inset-x-2 top-2 h-7 rounded-xl transition-all duration-300 ${!p ? 'bg-slate-200/20' : 'bg-indigo-500/50'}`} />
                                                                 <div className="absolute inset-0 flex items-center justify-center pt-3">
@@ -944,13 +971,26 @@ function SousAdminAppointmentsContent({ lang }) {
                                                                         <path strokeLinecap="round" strokeLinejoin="round" d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
                                                                     </svg>
                                                                 </div>
-                                                                {isUrgent && (
-                                                                    <div className="absolute -top-2 -right-2 w-5 h-5 bg-gradient-to-tr from-rose-500 to-rose-400 rounded-lg flex items-center justify-center z-10 shadow-md shadow-rose-200 border border-white animate-pulse-red">
-                                                                        <AlertTriangle className="w-3 h-3 text-white" />
+                                                                {/* Urgency Toggle Icon */}
+                                                                <div
+                                                                    onClick={(e) => { e.stopPropagation(); p && handleTacticalUpdate(p.id, { isUrgent: !p.isUrgent }); }}
+                                                                    className={`absolute -top-2 -right-2 w-6 h-6 rounded-lg flex items-center justify-center z-20 shadow-md border-2 border-white transition-all transform hover:scale-125 active:scale-95 cursor-pointer ${isUrgent ? 'bg-gradient-to-tr from-rose-600 to-rose-400 text-white animate-pulse-red' : 'bg-slate-100/80 text-slate-400 opacity-0 group-hover:opacity-100'}`}
+                                                                >
+                                                                    <AlertTriangle className="w-3.5 h-3.5" />
+                                                                </div>
+
+                                                                {/* Call/Exit Toggle Icon */}
+                                                                {p && (
+                                                                    <div
+                                                                        onClick={(e) => { e.stopPropagation(); isEnCours ? handleCheckout(p.id) : handleStartConsultation(p.id); }}
+                                                                        className={`absolute -bottom-2 -left-2 w-6 h-6 rounded-lg flex items-center justify-center z-20 shadow-md border-2 border-white transition-all transform hover:scale-125 active:scale-95 cursor-pointer ${isEnCours ? 'bg-emerald-500 text-white' : 'bg-indigo-600 text-white opacity-0 group-hover:opacity-100'}`}
+                                                                    >
+                                                                        {isEnCours ? <CheckCircle className="w-3.5 h-3.5" /> : <Play className="w-3.5 h-3.5 ml-0.5" />}
                                                                     </div>
                                                                 )}
+
                                                                 {isEnCours && <span className="absolute bottom-1 right-1 w-2 h-2 bg-emerald-400 rounded-full ring-2 ring-indigo-600 shadow-sm" />}
-                                                            </button>
+                                                            </div>
                                                             {p && (
                                                                 <div className="flex flex-col items-center">
                                                                     <span className={`text-[7px] font-black uppercase tracking-widest transition-colors ${isSelected ? 'text-indigo-600' : 'text-indigo-950/40'}`}>
@@ -964,13 +1004,7 @@ function SousAdminAppointmentsContent({ lang }) {
                                             </div>
                                         </div>
 
-                                        <div className="hidden xl:flex flex-col items-center justify-between py-12 px-4 opacity-30 h-full self-stretch">
-                                            <div className="w-[1px] flex-1 bg-gradient-to-b from-transparent via-indigo-200 to-transparent" />
-                                            <div className="my-6 p-2 rounded-full border border-indigo-100 bg-white">
-                                                <div className="w-1.5 h-1.5 rounded-full bg-indigo-400 animate-pulse" />
-                                            </div>
-                                            <div className="w-[1px] flex-1 bg-gradient-to-t from-transparent via-indigo-200 to-transparent" />
-                                        </div>
+
 
                                         <div className="flex-1 space-y-8 w-full max-w-[450px]">
                                             <div className="flex items-center justify-between px-4">
@@ -985,9 +1019,9 @@ function SousAdminAppointmentsContent({ lang }) {
 
                                                     return (
                                                         <div key={`right-${i}`} className="flex flex-col items-center gap-2.5">
-                                                            <button
+                                                            <div
                                                                 onClick={() => p && setSelectedSeat(isSelected ? null : p)}
-                                                                className={`group relative w-12 h-14 rounded-2xl transition-all duration-500 ease-out ${!p ? 'bg-slate-50 border-none' : 'bg-indigo-600 shadow-xl shadow-indigo-200'} ${isSelected ? 'scale-110 z-20 shadow-2xl' : 'hover:scale-110 hover:-translate-y-1'}`}
+                                                                className={`group relative w-12 h-14 rounded-2xl transition-all duration-500 ease-out cursor-pointer ${!p ? 'bg-slate-50 border-none' : 'bg-indigo-600 shadow-xl shadow-indigo-200'} ${isSelected ? 'scale-110 z-20 shadow-2xl' : 'hover:scale-110 hover:-translate-y-1'}`}
                                                             >
                                                                 <div className={`absolute inset-x-2 top-2 h-7 rounded-xl transition-all duration-300 ${!p ? 'bg-slate-200/20' : 'bg-indigo-500/50'}`} />
                                                                 <div className="absolute inset-0 flex items-center justify-center pt-3">
@@ -995,13 +1029,26 @@ function SousAdminAppointmentsContent({ lang }) {
                                                                         <path strokeLinecap="round" strokeLinejoin="round" d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
                                                                     </svg>
                                                                 </div>
-                                                                {isUrgent && (
-                                                                    <div className="absolute -top-2 -right-2 w-5 h-5 bg-gradient-to-tr from-rose-500 to-rose-400 rounded-lg flex items-center justify-center z-10 shadow-md shadow-rose-200 border border-white animate-pulse-red">
-                                                                        <AlertTriangle className="w-3 h-3 text-white" />
+                                                                {/* Urgency Toggle Icon */}
+                                                                <div
+                                                                    onClick={(e) => { e.stopPropagation(); p && handleTacticalUpdate(p.id, { isUrgent: !p.isUrgent }); }}
+                                                                    className={`absolute -top-2 -right-2 w-6 h-6 rounded-lg flex items-center justify-center z-20 shadow-md border-2 border-white transition-all transform hover:scale-125 active:scale-95 cursor-pointer ${isUrgent ? 'bg-gradient-to-tr from-rose-600 to-rose-400 text-white animate-pulse-red' : 'bg-slate-100/80 text-slate-400 opacity-0 group-hover:opacity-100'}`}
+                                                                >
+                                                                    <AlertTriangle className="w-3.5 h-3.5" />
+                                                                </div>
+
+                                                                {/* Call/Exit Toggle Icon */}
+                                                                {p && (
+                                                                    <div
+                                                                        onClick={(e) => { e.stopPropagation(); isEnCours ? handleCheckout(p.id) : handleStartConsultation(p.id); }}
+                                                                        className={`absolute -bottom-2 -left-2 w-6 h-6 rounded-lg flex items-center justify-center z-20 shadow-md border-2 border-white transition-all transform hover:scale-125 active:scale-95 cursor-pointer ${isEnCours ? 'bg-emerald-500 text-white' : 'bg-indigo-600 text-white opacity-0 group-hover:opacity-100'}`}
+                                                                    >
+                                                                        {isEnCours ? <CheckCircle className="w-3.5 h-3.5" /> : <Play className="w-3.5 h-3.5 ml-0.5" />}
                                                                     </div>
                                                                 )}
+
                                                                 {isEnCours && <span className="absolute bottom-1 right-1 w-2 h-2 bg-emerald-400 rounded-full ring-2 ring-indigo-600 shadow-sm" />}
-                                                            </button>
+                                                            </div>
                                                             {p && (
                                                                 <div className="flex flex-col items-center">
                                                                     <span className={`text-[7px] font-black uppercase tracking-widest transition-colors ${isSelected ? 'text-indigo-600' : 'text-indigo-950/40'}`}>
@@ -1043,11 +1090,6 @@ function SousAdminAppointmentsContent({ lang }) {
                                                             <span className="text-[10px] font-bold text-slate-400 uppercase truncate">{p.doctor}</span>
                                                         </div>
                                                     </div>
-                                                    {p.isUrgent && (
-                                                        <div className="absolute top-4 right-4 h-6 w-6 rounded-xl bg-gradient-to-tr from-rose-500 to-rose-400 flex items-center justify-center shadow-md shadow-rose-200 animate-pulse-red">
-                                                            <AlertTriangle className="w-3.5 h-3.5 text-white" />
-                                                        </div>
-                                                    )}
                                                 </div>
 
                                                 <div className="mt-5 flex gap-2">
@@ -1126,6 +1168,46 @@ function SousAdminAppointmentsContent({ lang }) {
                     </TabsContent>
                 </Tabs>
             </Card>
+
+            {toastMessage && (
+                <div
+                    role="status"
+                    style={{
+                        position: 'fixed',
+                        bottom: '1.5rem',
+                        right: '1.5rem',
+                        zIndex: 9999,
+                        maxWidth: '26rem',
+                        transform: toastVisible ? 'translateY(0)' : 'translateY(calc(100% + 2rem))',
+                        opacity: toastVisible ? 1 : 0,
+                        transition: 'transform 0.35s cubic-bezier(.32,1.2,.54,1), opacity 0.3s ease',
+                        pointerEvents: 'auto',
+                    }}
+                    className={`flex items-start gap-3 rounded-2xl border px-4 py-3.5 text-sm font-medium shadow-xl backdrop-blur-sm ${toastMessage.type === 'success'
+                        ? 'border-emerald-200 bg-emerald-50/95 text-emerald-900 shadow-emerald-500/15'
+                        : toastMessage.type === 'error'
+                            ? 'border-rose-200 bg-rose-50/95 text-rose-900 shadow-rose-500/20'
+                            : 'border-indigo-200 bg-indigo-50/95 text-indigo-900 shadow-indigo-500/15'
+                        }`}
+                >
+                    <span className="mt-0.5 shrink-0">
+                        {toastMessage.type === 'success' && <CheckCircle2 className="h-5 w-5 text-emerald-600" />}
+                        {toastMessage.type === 'error' && <AlertCircle className="h-5 w-5 text-rose-600" />}
+                    </span>
+                    <span className="flex-1 leading-snug">{toastMessage.text}</span>
+                    <button
+                        type="button"
+                        className={`shrink-0 rounded-lg p-1 transition hover:bg-black/5 ${toastMessage.type === 'error' ? 'text-rose-700' : 'text-emerald-700'
+                            }`}
+                        onClick={() => {
+                            setToastVisible(false);
+                            setTimeout(() => setToastMessage(null), 350);
+                        }}
+                    >
+                        <X className="h-4 w-4" />
+                    </button>
+                </div>
+            )}
         </div>
     );
 }

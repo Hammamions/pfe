@@ -293,13 +293,11 @@ async function autoCloseAbsentAppointments(params: {
     saId?: number;
 }) {
     const now = new Date();
-    const startOfDay = new Date(now); startOfDay.setHours(0, 0, 0, 0);
-    const endOfDay = new Date(now); endOfDay.setHours(23, 59, 59, 999);
     const threshold = new Date(now.getTime() - (30 * 60 * 1000));
 
     const candidates = await prisma.rendezVous.findMany({
         where: {
-            date: { gte: startOfDay, lte: threshold },
+            date: { lte: threshold },
             statut: { in: ['CONFIRME', 'EN_COURS'] as any },
             ...(params.isSousAdmin && params.saId ? { sousAdminId: params.saId } : {})
         },
@@ -307,16 +305,19 @@ async function autoCloseAbsentAppointments(params: {
             patient: {
                 include: {
                     utilisateur: true,
-                    salleAttente: {
-                        where: { joinedAt: { gte: startOfDay, lte: endOfDay } }
-                    }
+                    salleAttente: true
                 }
             }
         }
     });
 
     for (const apt of candidates) {
-        const hasPresentEntry = apt.patient.salleAttente.some(sa => sa.presenceStatus === 'PRESENT');
+        const aptDayStart = new Date(apt.date); aptDayStart.setHours(0, 0, 0, 0);
+        const aptDayEnd = new Date(aptDayStart); aptDayEnd.setDate(aptDayEnd.getDate() + 1);
+        const hasPresentEntry = apt.patient.salleAttente.some(
+            sa => sa.presenceStatus === 'PRESENT' &&
+                sa.joinedAt >= aptDayStart && sa.joinedAt < aptDayEnd
+        );
         if (hasPresentEntry) continue;
 
         await prisma.rendezVous.update({
@@ -327,7 +328,7 @@ async function autoCloseAbsentAppointments(params: {
         await prisma.salleAttente.deleteMany({
             where: {
                 patientId: apt.patientId,
-                joinedAt: { gte: startOfDay, lte: endOfDay },
+                joinedAt: { gte: aptDayStart, lt: aptDayEnd },
                 ...(apt.sousAdminId ? { sousAdminId: apt.sousAdminId } : {})
             }
         });
@@ -1187,20 +1188,50 @@ router.get('/prescription-patients', authenticateProfessional, async (req: AuthR
         const medecin = await prisma.medecin.findUnique({ where: { utilisateurId: req.userId } });
         if (!medecin) return res.status(404).json({ error: 'Médecin non trouvé' });
 
-        const rdvs = await prisma.rendezVous.findMany({
-            where: { medecinId: medecin.id },
+        const now = new Date();
+        const todayKey = formatAppointmentCalendarDateKey(now);
+        const looseStart = new Date(now.getTime() - 14 * 24 * 60 * 60 * 1000);
+        const looseEnd = new Date(now.getTime() + 14 * 24 * 60 * 60 * 1000);
+
+        // Fetch today's confirmed/in-progress appointments for this doctor
+        const appointmentsRaw = await prisma.rendezVous.findMany({
+            where: {
+                medecinId: medecin.id,
+                statut: { in: ['CONFIRME', 'EN_COURS'] as any },
+                date: { gte: looseStart, lte: looseEnd }
+            },
             include: {
                 patient: {
                     include: {
                         utilisateur: true,
-                        dossierMedical: true
+                        dossierMedical: true,
+                        salleAttente: {
+                            where: { joinedAt: { gte: looseStart, lte: looseEnd } }
+                        }
                     }
                 }
             },
-            orderBy: { date: 'desc' },
-            take: 500
+            orderBy: { date: 'asc' }
         });
 
+        // Keep only today's appointments
+        const todayAppointments = appointmentsRaw.filter(
+            (apt) => formatAppointmentCalendarDateKey(apt.date) === todayKey
+        );
+
+        // Keep only patients physically present (same logic as doctor-waiting-room)
+        const presentAppointments = todayAppointments.filter((apt: any) => {
+            const inProgress = (apt.statut as any) === 'EN_COURS';
+            const hasPresentTag = /\[PRESENT:1\]/.test(apt.motif || '');
+            const hasPresentInQueue = (apt.patient?.salleAttente || []).some(
+                (sa: { presenceStatus: string; joinedAt: Date }) =>
+                    sa.presenceStatus === 'PRESENT' &&
+                    formatAppointmentCalendarDateKey(new Date(sa.joinedAt)) === todayKey
+            );
+            return inProgress || hasPresentTag || hasPresentInQueue;
+        });
+
+        // Deduplicate by patient (one entry per patient)
         const byPatient = new Map<number, {
             id: string;
             patientId: number;
@@ -1215,7 +1246,7 @@ router.get('/prescription-patients', authenticateProfessional, async (req: AuthR
             allergies: string[];
         }>();
 
-        for (const apt of rdvs) {
+        for (const apt of presentAppointments) {
             const pid = apt.patientId;
             if (byPatient.has(pid)) continue;
             const u = apt.patient.utilisateur;

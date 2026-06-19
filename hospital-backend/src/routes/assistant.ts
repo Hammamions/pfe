@@ -1,5 +1,6 @@
 import { Response, Router } from 'express';
-import { chatCompletion } from '../lib/llmClient';
+import multer from 'multer';
+import { chatCompletion, transcribeAudio } from '../lib/llmClient';
 import {
     formatRagContextForPrompt,
     retrieveRelevantChunks,
@@ -8,6 +9,10 @@ import {
 import { authenticateMedecin, AuthRequest } from '../middleware/auth';
 
 const router = Router();
+const upload = multer({
+    storage: multer.memoryStorage(),
+    limits: { fileSize: 10 * 1024 * 1024 } // 10MB limit
+});
 
 const SYSTEM_TUNISIA =
     "Tu es un assistant d'aide à la décision médicale pour des médecins en Tunisie. " +
@@ -17,31 +22,10 @@ const SYSTEM_TUNISIA =
     'Si des extraits de documents sont fournis, privilégie-les pour les faits factuels ; sinon reste prudent et général.';
 
 const TUNISIA_MED_BRANDS = [
-    'Doliprane',
-    'Efferalgan',
-    'Dafalgan',
-    'Augmentin',
-    'Clamoxyl',
-    'Zithromax',
-    'Klavox',
-    'Ventoline',
-    'Seretide',
-    'Pulmicort',
-    'Nasonex',
-    'Flixonase',
-    'Xyzall',
-    'Aerius',
-    'Claritin',
-    'Zyrtec',
-    'Spasfon',
-    'Meteospasmyl',
-    'Smecta',
-    'Ultra Levure',
-    'Motilium',
-    'Primperan',
-    'Adol',
-    'Nurofen',
-    'Biseptine'
+    'Doliprane', 'Efferalgan', 'Dafalgan', 'Augmentin', 'Clamoxyl', 'Zithromax', 'Klavox',
+    'Ventoline', 'Seretide', 'Pulmicort', 'Nasonex', 'Flixonase', 'Xyzall', 'Aerius',
+    'Claritin', 'Zyrtec', 'Spasfon', 'Meteospasmyl', 'Smecta', 'Ultra Levure', 'Motilium',
+    'Primperan', 'Adol', 'Nurofen', 'Biseptine'
 ] as const;
 
 function cleanMedicationLabel(raw: string): string {
@@ -130,6 +114,20 @@ function parseDiagnosticPayload(raw: string): DiagnosticPayload {
 
     return { diagnoses, treatments };
 }
+
+router.post('/transcribe', authenticateMedecin, upload.single('audio'), async (req: AuthRequest, res: Response) => {
+    try {
+        if (!req.file) {
+            return res.status(400).json({ error: 'Fichier audio manquant.' });
+        }
+        const text = await transcribeAudio(req.file.buffer, req.file.originalname || 'recording.webm');
+        return res.json({ text });
+    } catch (e) {
+        console.error('[assistant/transcribe]', e);
+        const msg = e instanceof Error ? e.message : 'Erreur lors de la transcription';
+        return res.status(502).json({ error: msg });
+    }
+});
 
 router.post('/summary', authenticateMedecin, async (req: AuthRequest, res: Response) => {
     try {

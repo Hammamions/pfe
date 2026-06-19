@@ -1,52 +1,34 @@
-import Constants from 'expo-constants';
 import { Stack } from 'expo-router';
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { Alert, Platform, SafeAreaView, ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
-import ColorMoodRating from './components/ColorMoodRating';
+import { Alert, SafeAreaView, ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
 import { patientPastel, theme } from '../theme';
+import { useApp } from './AppContext';
+import ColorMoodRating from './components/ColorMoodRating';
 import HeaderSidebar from './components/HeaderSidebar';
-
-let AsyncStorage;
-try {
-    AsyncStorage = require('@react-native-async-storage/async-storage').default;
-} catch (e) {
-    AsyncStorage = { getItem: async () => null };
-}
-
-const getApiBaseUrl = () => {
-    const hostUri =
-        Constants?.expoConfig?.hostUri ||
-        Constants?.manifest2?.extra?.expoGo?.debuggerHost ||
-        Constants?.manifest?.debuggerHost;
-    if (hostUri) {
-        const host = String(hostUri).split(':')[0];
-        return `http://${host}:4000/api`;
-    }
-    if (Platform.OS === 'android') return 'http://10.0.2.2:4000/api';
-    return 'http://localhost:4000/api';
-};
+import AsyncStorage from './utils/storage';
 
 export default function Feedback() {
     const { t, i18n } = useTranslation();
     const isRTL = i18n.language === 'ar';
+    const { API_URL } = useApp();
     const [rating, setRating] = useState(0);
     const [comment, setComment] = useState('');
     const [loading, setLoading] = useState(false);
     const [items, setItems] = useState([]);
-    const API_BASE_URL = useMemo(() => getApiBaseUrl(), []);
 
     const loadFeedbacks = async () => {
         try {
             const token = await AsyncStorage.getItem('token');
             if (!token) return;
-            const response = await fetch(`${API_BASE_URL}/feedback`, {
+            const response = await fetch(`${API_URL}/api/feedback`, {
                 headers: { Authorization: `Bearer ${token}` }
             });
             if (!response.ok) return;
             const data = await response.json();
             setItems(Array.isArray(data) ? data : []);
-        } catch {
+        } catch (e) {
+            console.warn('[FEEDBACK] Error loading feedbacks:', e);
         }
     };
 
@@ -63,15 +45,13 @@ export default function Feedback() {
         try {
             const token = await AsyncStorage.getItem('token');
             const payload = { note: rating, commentaire: comment.trim() };
+
             if (!token) {
-                setItems((prev) => [{ id: Date.now(), note: rating, commentaire: comment.trim(), createdAt: new Date().toISOString() }, ...prev]);
-                setRating(0);
-                setComment('');
-                Alert.alert(t('feedbackSentTitle'), t('feedbackSentSubtitle'));
+                Alert.alert(t('error'), "Session expirée. Veuillez vous reconnecter.");
                 return;
             }
 
-            const response = await fetch(`${API_BASE_URL}/feedback`, {
+            const response = await fetch(`${API_URL}/api/feedback`, {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json',
@@ -88,7 +68,8 @@ export default function Feedback() {
             setRating(0);
             setComment('');
             Alert.alert(t('feedbackSentTitle'), t('feedbackSentSubtitle'));
-        } catch {
+        } catch (e) {
+            console.warn('[FEEDBACK] Error submitting feedback:', e);
             Alert.alert(t('error'), t('feedbackError'));
         } finally {
             setLoading(false);

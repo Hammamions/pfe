@@ -1,28 +1,28 @@
-import dotenv from 'dotenv';
-import path from 'path';
 import cors from 'cors';
+import dotenv from 'dotenv';
 import express, { Request, Response } from 'express';
-import fs from 'fs'; 
-
-dotenv.config({ path: path.join(__dirname, '../.env') });
+import fs from 'fs';
+import path from 'path';
+import { prisma } from './lib/prisma';
+import adminRouter from './routes/admin';
 import appointmentsRouter from './routes/appointments';
+import assistantRouter from './routes/assistant';
 import authRouter from './routes/auth';
 import feedbackRouter from './routes/feedback';
 import guidanceRouter from './routes/guidance';
 import medicalDocumentsRouter from './routes/medical-documents';
 import patientsRouter from './routes/patients';
-import assistantRouter from './routes/assistant';
 import professionalsRouter from './routes/professionals';
-import adminRouter from './routes/admin';
+import secureDocumentsRouter from './routes/secure-documents';
 import sousAdminRouter from './routes/sous-admin';
 import urgenceRouter from './routes/urgence';
-import secureDocumentsRouter from './routes/secure-documents';
 import verifyDocumentRouter from './routes/verify-document';
-import { prisma } from './lib/prisma';
 import {
     tickAwaitingConsultationReminders,
     tickPreVisitPresenceAsk
 } from './utils/appointmentReminderRunner';
+
+dotenv.config({ path: path.join(__dirname, '../.env') });
 
 
 const app = express();
@@ -57,7 +57,9 @@ app.use((req, _res, next) => {
 });
 
 app.use((req, res, next) => {
-    if (req.method !== 'GET') console.log('Body:', JSON.stringify(req.body, null, 2));
+    if (req.method !== 'GET') {
+        console.log(`[${new Date().toISOString()}] ${req.method} ${req.url} - Body:`, JSON.stringify(req.body, null, 2));
+    }
     next();
 });
 
@@ -83,6 +85,23 @@ app.use('/api/admin', adminRouter);
 
 
 app.use('/api/sous-admin', sousAdminRouter);
+
+// Global Error Handler
+app.use((err: any, req: Request, res: Response, next: any) => {
+    const status = err.status || 500;
+    console.error(`[FATAL ERROR] ${new Date().toISOString()} ${req.method} ${req.url}`);
+    console.error('Message:', err.message);
+    console.error('Stack:', err.stack);
+
+    res.status(status).json({
+        error: 'Internal Server Error',
+        message: err.message,
+        path: req.url,
+        timestamp: new Date().toISOString(),
+        // Only show stack in development
+        stack: process.env.NODE_ENV === 'production' ? undefined : err.stack
+    });
+});
 app.get('/reset-password', (req: Request, res: Response) => {
     const raw = req.query.token;
     const tokenStr = typeof raw === 'string' ? raw : Array.isArray(raw) ? raw[0] : '';
@@ -160,4 +179,19 @@ app.listen(listenPort, '0.0.0.0', () => {
     };
     runRdvTicks();
     setInterval(runRdvTicks, 60_000);
+
+    // Purge notifications older than 7 days
+    const purgeOldNotifications = async () => {
+        try {
+            const sevenDaysAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000);
+            const { count } = await prisma.notification.deleteMany({
+                where: { createdAt: { lt: sevenDaysAgo } }
+            });
+            if (count > 0) console.log(`[purge-notifs] Supprimé ${count} notification(s) de plus de 7 jours`);
+        } catch (e) {
+            console.error('[purge-notifs]', e);
+        }
+    };
+    purgeOldNotifications();
+    setInterval(purgeOldNotifications, 60 * 60 * 1000); // toutes les heures
 });

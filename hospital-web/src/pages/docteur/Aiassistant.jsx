@@ -47,6 +47,9 @@ export default function AIAssistantPage() {
     const [llmTreatments, setLlmTreatments] = useState(null);
     const [diagRagSources, setDiagRagSources] = useState([]);
     const [assistantTab, setAssistantTab] = useState('voice');
+    const [isTranscribing, setIsTranscribing] = useState(false);
+    const mediaRecorderRef = useRef(null);
+    const audioChunksRef = useRef([]);
 
     useEffect(() => {
         let mounted = true;
@@ -90,13 +93,11 @@ export default function AIAssistantPage() {
     useEffect(() => {
         return () => {
             if (sendSuccessTimerRef.current) clearTimeout(sendSuccessTimerRef.current);
-            try {
-                speechRecognitionRef.current?.abort();
-            } catch {
+            if (mediaRecorderRef.current && isRecording) {
+                mediaRecorderRef.current.stop();
             }
-            speechRecognitionRef.current = null;
         };
-    }, []);
+    }, [isRecording]);
 
     const selectedPatientLabel = useMemo(
         () => patients.find((p) => p.id === selectedPatientId)?.label || 'Aucun patient',
@@ -183,88 +184,68 @@ export default function AIAssistantPage() {
         </div>
     );
 
-    const stopVoiceRecognition = () => {
+    const handleToggleVoiceRecording = async () => {
+        if (isRecording) {
+            if (mediaRecorderRef.current) {
+                mediaRecorderRef.current.stop();
+                setIsRecording(false);
+            }
+            return;
+        }
+
         try {
-            speechRecognitionRef.current?.stop();
-        } catch {
-            try {
-                speechRecognitionRef.current?.abort();
-            } catch {
+            setVoiceBanner('');
+            const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+            const mediaRecorder = new MediaRecorder(stream);
+            mediaRecorderRef.current = mediaRecorder;
+            audioChunksRef.current = [];
+
+            mediaRecorder.ondataavailable = (event) => {
+                if (event.data.size > 0) {
+                    audioChunksRef.current.push(event.data);
+                }
+            };
+
+            mediaRecorder.onstop = async () => {
+                const audioBlob = new Blob(audioChunksRef.current, { type: 'audio/webm' });
+                stream.getTracks().forEach(track => track.stop());
+
+                // Envoyer au backend pour transcription
+                await processTranscription(audioBlob);
+            };
+
+            mediaRecorder.start();
+            setIsRecording(true);
+        } catch (err) {
+            console.error('Erreur accès micro:', err);
+            if (err.name === 'NotAllowedError') {
+                setVoiceBanner('Accès au micro refusé. Veuillez autoriser le micro dans les paramètres de votre navigateur.');
+            } else {
+                setVoiceBanner(`Erreur micro : ${err.message || 'Impossible d\'accéder au micro.'}`);
             }
         }
-        speechRecognitionRef.current = null;
-        setIsRecording(false);
     };
 
-    const getSpeechRecognitionCtor = () =>
-        typeof window !== 'undefined' &&
-        (window.SpeechRecognition || window.webkitSpeechRecognition);
-
-    const handleToggleVoiceRecording = () => {
-        if (isRecording) {
-            stopVoiceRecognition();
-            return;
-        }
-
-        if (typeof window !== 'undefined' && window.isSecureContext === false) {
-            setVoiceBanner(
-                'Le micro est souvent bloqué sans HTTPS : ouvrez le site en https:// ou sur http://localhost (pas une IP type http://172…).'
-            );
-            return;
-        }
-
-        const SR = getSpeechRecognitionCtor();
-        if (!SR) {
-            setVoiceBanner(
-                'Ce navigateur ne supporte pas la reconnaissance vocale intégrée. Utilisez Chrome ou Edge, ou saisissez le texte au clavier.'
-            );
-            return;
-        }
-
+    const processTranscription = async (blob) => {
+        setIsTranscribing(true);
         setVoiceBanner('');
-        const rec = new SR();
-        rec.lang = 'fr-FR';
-        rec.continuous = true;
-        rec.interimResults = true;
-
-        const prefix = transcription.trim() ? `${transcription.trim()}\n` : '';
-        let sessionCommitted = '';
-
-        rec.onresult = (event) => {
-            let interim = '';
-            for (let i = event.resultIndex; i < event.results.length; i += 1) {
-                const piece = event.results[i][0]?.transcript ?? '';
-                if (event.results[i].isFinal) sessionCommitted += piece;
-                else interim += piece;
-            }
-            setTranscription(prefix + sessionCommitted + interim);
-        };
-
-        rec.onerror = (ev) => {
-            if (ev.error === 'not-allowed') {
-                setVoiceBanner(
-                    'Micro refusé : dans la barre d’adresse, autorisez le microphone pour ce site puis réessayez.'
-                );
-            } else if (ev.error !== 'aborted' && ev.error !== 'no-speech') {
-                setVoiceBanner(`Reconnaissance vocale : ${ev.error}`);
-            }
-            try {
-                rec.abort();
-            } catch {
-            }
-        };
-
-        rec.onend = () => {
-            speechRecognitionRef.current = null;
-            setIsRecording(false);
-        };
-
         try {
-            rec.start();
-            speechRecognitionRef.current = rec;
-            setIsRecording(true);
-        } catch {
-            setVoiceBanner('Impossible de démarrer l’écoute. Fermez les autres onglets utilisant le micro et réessayez.');
+            const formData = new FormData();
+            formData.append('audio', blob, 'recording.webm');
+
+            const { data } = await api.post('/professionals/assistant/transcribe', formData, {
+                headers: { 'Content-Type': 'multipart/form-data' }
+            });
+
+            if (data.text) {
+                setTranscription(prev => (prev.trim() ? `${prev.trim()}\n${data.text}` : data.text));
+            }
+        } catch (err) {
+            console.error('Transcription error:', err);
+            const backendError = err.response?.data?.error || err.message;
+            setVoiceBanner(`Erreur de transcription : ${backendError}`);
+        } finally {
+            setIsTranscribing(false);
         }
     };
 
@@ -442,6 +423,8 @@ export default function AIAssistantPage() {
                                 >
                                     {isRecording ? (
                                         <MicOff className="w-12 h-12 text-white" />
+                                    ) : isTranscribing ? (
+                                        <Sparkles className="w-12 h-12 text-white animate-spin-slow" />
                                     ) : (
                                         <Mic className="w-12 h-12 text-white" />
                                     )}
@@ -449,7 +432,9 @@ export default function AIAssistantPage() {
                                 <p className="mt-4 text-sm text-gray-600">
                                     {isRecording
                                         ? 'Enregistrement en cours... Cliquez pour arrêter'
-                                        : 'Cliquez sur le microphone pour commencer'}
+                                        : isTranscribing
+                                            ? 'Transcription par IA en cours...'
+                                            : 'Cliquez sur le microphone pour commencer'}
                                 </p>
                                 {isRecording && (
                                     <div className="mt-4 flex items-center gap-2">
@@ -602,6 +587,7 @@ export default function AIAssistantPage() {
                                     <div className="p-4 bg-gradient-to-b from-slate-50 to-white">
                                         <Textarea
                                             readOnly
+                                            dir="auto"
                                             value={summary}
                                             rows={10}
                                             className="resize-y border-slate-200 bg-white text-sm text-gray-800 leading-relaxed rounded-lg shadow-inner focus:ring-2 focus:ring-indigo-200"

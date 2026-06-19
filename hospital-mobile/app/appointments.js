@@ -88,7 +88,7 @@ const Appointments = () => {
             setPreVisitFeedback(null);
             const token = await AsyncStorage.getItem('token');
             if (!token) {
-                if (Platform.OS !== 'web') Alert.alert(t('error'), 'Session expirée');
+                if (Platform.OS !== 'web') Alert.alert(t('error'), t('sessionExpired'));
                 return;
             }
             const res = await fetch(`${API_URL}/api/appointments/${selectedAppointment.id}`, {
@@ -101,7 +101,7 @@ const Appointments = () => {
             });
             const data = await res.json().catch(() => ({}));
             if (!res.ok) {
-                const msg = data.error || 'Erreur';
+                const msg = data.error || t('error');
                 notifyUser(t('error'), msg, 'error');
                 return;
             }
@@ -157,7 +157,7 @@ const Appointments = () => {
             });
             const data = await res.json().catch(() => ({}));
             if (!res.ok) {
-                notifyUser(t('error'), data.error || 'Erreur', 'error');
+                notifyUser(t('error'), data.error || t('error'), 'error');
                 return;
             }
             await syncAllData(token);
@@ -202,7 +202,7 @@ const Appointments = () => {
             const responseData = await res.json().catch(() => ({}));
 
             if (!res.ok) {
-                const errorMsg = responseData.error || 'Erreur lors de la mise à jour';
+                const errorMsg = responseData.error || t('serverError');
                 if (Platform.OS === 'web') window.alert(errorMsg);
                 Alert.alert(t('error'), errorMsg);
                 return;
@@ -234,7 +234,7 @@ const Appointments = () => {
             setTimeout(() => setShowSuccessModal(true), 500);
         } catch (error) {
             console.error('Error updating appointment:', error);
-            Alert.alert(t('error'), 'Impossible de contacter le serveur');
+            Alert.alert(t('error'), t('noServerContact'));
         } finally {
             setIsSubmitting(false);
         }
@@ -253,7 +253,7 @@ const Appointments = () => {
             });
 
             if (!res.ok) {
-                Alert.alert(t('error'), 'Erreur lors de la suppression');
+                Alert.alert(t('error'), t('serverError'));
                 return;
             }
 
@@ -324,7 +324,7 @@ const Appointments = () => {
             });
         } catch (err) {
             console.error(err);
-            notifyUser(t('error'), 'Impossible de sélectionner le fichier.', 'error');
+            notifyUser(t('error'), t('fileSelectError'), 'error');
         }
     };
 
@@ -336,7 +336,7 @@ const Appointments = () => {
         try {
             const token = await AsyncStorage.getItem('token');
             if (!token) {
-                notifyUser(t('error'), 'Session expirée. Reconnectez-vous puis réessayez.', 'error');
+                notifyUser(t('error'), t('sessionExpired'), 'error');
                 return;
             }
 
@@ -360,7 +360,7 @@ const Appointments = () => {
                     body: fd
                 });
                 if (!up.ok) {
-                    let uploadErr = 'Impossible d’envoyer le fichier.';
+                    let uploadErr = t('fileUploadError');
                     try {
                         const errData = await up.json();
                         uploadErr = errData.error || uploadErr;
@@ -393,7 +393,7 @@ const Appointments = () => {
 
             console.log(`[DEBUG] POST response status: ${res.status}`);
             if (!res.ok) {
-                let errorMsg = 'Erreur lors de la réservation';
+                let errorMsg = t('serverError');
                 try {
                     const errorData = await res.json();
                     errorMsg = errorData.error || errorMsg;
@@ -403,7 +403,7 @@ const Appointments = () => {
                 return;
             }
 
-            notifyUser('Succès', 'Votre demande de rendez-vous a été envoyée.', 'success');
+            notifyUser(t('success'), t('bookingSuccess'), 'success');
             void syncAllData(token).catch((e) => console.warn('[appointments] sync après réservation', e));
 
             setView('list');
@@ -617,7 +617,7 @@ const Appointments = () => {
                 </TouchableOpacity>
             </View>
 
-            <View style={[styles.tabsWrapper, narrow && styles.tabsWrapperCompact, isRTL && { flexDirection: 'row-reverse' }]}>
+            <View style={[styles.tabsWrapper, narrow && styles.tabsWrapperCompact]}>
                 <View style={[styles.tabsBackground, narrow && styles.tabsBackgroundCompact, isRTL && { flexDirection: 'row-reverse' }]}>
                     <TouchableOpacity
                         style={[styles.tabPill, narrow && styles.tabPillCompact, activeTab === 'upcoming' && styles.tabPillActive]}
@@ -646,7 +646,7 @@ const Appointments = () => {
                             ]}
                             numberOfLines={2}
                         >
-                            {t('myRequests')} ({requests?.length || 0})
+                            {t('requests')} ({requests?.length || 0})
                         </Text>
                     </TouchableOpacity>
                     <TouchableOpacity
@@ -747,6 +747,32 @@ const Appointments = () => {
                                             <Text style={styles.specTextSmall}>{t(specialtyToI18nKey(apt.specialty))}</Text>
                                         </View>
                                         {(() => {
+                                            const statRaw = (apt.status || '').toLowerCase().replace('é', 'e').replace('confirmed', 'confirme');
+                                            let stat = statRaw;
+
+                                            // Si le RDV est "en_cours" ou "confirme" mais que la date est passée, le marquer comme terminé
+                                            if (apt.isPlanned && (stat === 'confirme' || stat === 'en_cours')) {
+                                                try {
+                                                    const aptDate = new Date(apt.year || 2026, (() => {
+                                                        const months = {
+                                                            'january': 0, 'february': 1, 'march': 2, 'april': 3, 'may': 4, 'june': 5,
+                                                            'july': 6, 'august': 7, 'september': 8, 'october': 9, 'november': 10, 'december': 11,
+                                                            'janvier': 0, 'fevrier': 1, 'mars': 2, 'avril': 3, 'mai': 4, 'juin': 5,
+                                                            'juillet': 6, 'aout': 7, 'septembre': 8, 'octobre': 9, 'novembre': 10, 'decembre': 11
+                                                        };
+                                                        return months[(apt.month || '').toLowerCase()] || 0;
+                                                    })(), parseInt(apt.date) || 1);
+
+                                                    const today = new Date();
+                                                    today.setHours(0, 0, 0, 0);
+                                                    if (aptDate < today) {
+                                                        stat = 'termine';
+                                                    }
+                                                } catch (e) {
+                                                    console.warn('Date parsing failed for status check', e);
+                                                }
+                                            }
+
                                             const config = {
                                                 en_attente: { bg: '#e0f2fe', color: '#0369a1', labelKey: 'aptStatusEnAttente' },
                                                 reporte: { bg: '#fef3c7', color: '#b45309', labelKey: 'aptStatusReporte' },
@@ -756,7 +782,6 @@ const Appointments = () => {
                                                 en_cours: { bg: '#ffedd5', color: '#c2410c', labelKey: 'aptStatusEnCours' },
                                                 confirme: { bg: '#dcfce7', color: '#15803d', labelKey: 'aptStatusConfirme' }
                                             };
-                                            const stat = (apt.status || '').toLowerCase().replace('é', 'e').replace('confirmed', 'confirme');
                                             const c = config[stat] || { bg: '#f1f5f9', color: '#64748b', labelKey: null };
                                             const statusLabel = c.labelKey ? t(c.labelKey) : t(apt.status);
                                             return (
@@ -976,7 +1001,7 @@ const Appointments = () => {
                                                         style={[styles.detailSmallBtn, styles.detailEditBtn]}
                                                         onPress={() => initiateRequest('reschedule')}
                                                     >
-                                                        <Text style={styles.detailSmallBtnText}>{t('modify')}</Text>
+                                                        <Text style={styles.detailSmallBtnText}>{t('modifyAppointment')}</Text>
                                                     </TouchableOpacity>
                                                     <TouchableOpacity
                                                         style={[styles.detailSmallBtn, styles.detailCancelBtn]}

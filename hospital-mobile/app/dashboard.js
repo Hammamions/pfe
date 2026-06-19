@@ -1,5 +1,4 @@
 import { Feather, Ionicons } from '@expo/vector-icons';
-import { BlurView } from 'expo-blur';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Stack, useFocusEffect, useRouter } from 'expo-router';
 import { useCallback, useRef } from 'react';
@@ -101,27 +100,17 @@ function HeroWave({ width, fill }) {
 function DashboardStatGlass({ title, value, iconEl, onPress, isRTL }) {
     return (
         <TouchableOpacity style={styles.statGlassOuter} onPress={onPress} activeOpacity={0.88}>
-            {Platform.OS === 'web' ? (
-                <View style={[styles.statBlurFallback, StyleSheet.absoluteFillObject]} />
-            ) : (
-                <BlurView intensity={72} tint="light" style={StyleSheet.absoluteFillObject} />
-            )}
-            <View pointerEvents="none" style={[styles.statGlassFront, isRTL && { alignItems: 'stretch' }]}>
-                <View style={[styles.statTitleSlot, isRTL && { alignItems: 'flex-end' }]}>
-                    <Text
-                        style={[styles.statGlassTitle, isRTL && { textAlign: 'right' }]}
-                        numberOfLines={2}
-                        ellipsizeMode="tail"
-                        adjustsFontSizeToFit
-                        minimumFontScale={0.82}
-                    >
-                        {title}
-                    </Text>
+            <View style={[styles.statGlassFront, isRTL && { alignItems: 'stretch' }, { backgroundColor: '#fff', alignItems: 'center', justifyContent: 'center' }]}>
+                <View style={styles.statIconCentered}>
+                    {iconEl}
                 </View>
-                <View style={[styles.statBottomBand, isRTL && styles.statBottomBandRtl]}>
-                    <Text style={[styles.statGlassValue, isRTL && { textAlign: 'right' }]}>{value}</Text>
-                    <View style={styles.statIconInline}>{iconEl}</View>
-                </View>
+                <Text
+                    style={[styles.statGlassTitle, { textAlign: 'center', marginTop: 8 }]}
+                    numberOfLines={1}
+                >
+                    {title}
+                </Text>
+                <Text style={[styles.statGlassValue, { textAlign: 'center', marginTop: 4 }]}>{value}</Text>
             </View>
         </TouchableOpacity>
     );
@@ -225,11 +214,11 @@ const Dashboard = () => {
             return;
         }
         Alert.alert(
-            'Déconnexion',
-            'Voulez-vous vous déconnecter ?',
+            t('logoutConfirmTitle'),
+            t('logoutConfirmMessage'),
             [
-                { text: 'Annuler', style: 'cancel' },
-                { text: 'Se déconnecter', style: 'destructive', onPress: () => void doLogout() }
+                { text: t('cancel'), style: 'cancel' },
+                { text: t('logoutConfirmAction'), style: 'destructive', onPress: () => void doLogout() }
             ]
         );
     }, [logout, router]);
@@ -261,10 +250,18 @@ const Dashboard = () => {
                         onHeroLogoutPress={handleHeroLogout}
                     />
                     <View style={[styles.heroGreeting, isRTL && { alignItems: 'flex-end' }]}>
-                        <Text style={[styles.heroHello, isRTL && { textAlign: 'right' }]}>
+                        <Text style={[
+                            styles.heroHello,
+                            { fontSize: screenW < 360 ? 22 : 28 },
+                            isRTL && { textAlign: 'right' }
+                        ]}>
                             {t('hello')}, {userName || '—'}
                         </Text>
-                        <Text style={[styles.heroWelcome, { maxWidth: Math.max(220, screenW - 48) }, isRTL && { textAlign: 'right' }]}>
+                        <Text style={[
+                            styles.heroWelcome,
+                            { fontSize: screenW < 360 ? 13 : 15, maxWidth: Math.max(220, screenW - 48) },
+                            isRTL && { textAlign: 'right' }
+                        ]}>
                             {t('welcomeSubtitle')}
                         </Text>
                     </View>
@@ -317,47 +314,47 @@ const Dashboard = () => {
                             {displayAppointments.map((apt, index) => {
                                 const pastel = index % 2 === 0;
                                 return (
-                                <View
-                                    key={index}
-                                    style={[
-                                        styles.aptCardBox,
-                                        pastel ? styles.aptCardBoxPastelA : styles.aptCardBoxPastelB,
-                                        isRTL && { flexDirection: 'row-reverse' },
-                                    ]}
-                                >
-                                    <View style={[styles.aptDateBox, pastel ? styles.aptDateBoxPastelA : styles.aptDateBoxPastelB]}>
-                                        <Text style={[styles.aptDateBoxNum, pastel ? styles.aptDateNumA : styles.aptDateNumB]}>{apt.date}</Text>
-                                        <Text style={[styles.aptDateBoxMonth, pastel ? styles.aptDateMonthA : styles.aptDateMonthB]}>{t(apt.month)}.</Text>
-                                    </View>
-                                    <View style={[styles.aptDetailsBox, isRTL ? { marginRight: 14, marginLeft: 0 } : { marginLeft: 14 }]}>
-                                        <View style={[styles.aptDoctorHeader, isRTL && { flexDirection: 'row-reverse' }]}>
-                                            <View style={{ flex: 1 }}>
-                                                <Text style={[styles.aptDoctorName, isRTL && { textAlign: 'right' }]} numberOfLines={1}>
-                                                    {t(apt.doctor)}
-                                                </Text>
-                                                <Text style={[styles.aptSpecialtyName, isRTL && { textAlign: 'right' }]}>
-                                                    {t(specialtyToI18nKey(apt.specialty))}
-                                                </Text>
+                                    <View
+                                        key={index}
+                                        style={[
+                                            styles.aptCardBox,
+                                            pastel ? styles.aptCardBoxPastelA : styles.aptCardBoxPastelB,
+                                            isRTL && { flexDirection: 'row-reverse' },
+                                        ]}
+                                    >
+                                        <View style={[styles.aptDateBox, pastel ? styles.aptDateBoxPastelA : styles.aptDateBoxPastelB]}>
+                                            <Text style={[styles.aptDateBoxNum, pastel ? styles.aptDateNumA : styles.aptDateNumB]}>{apt.date}</Text>
+                                            <Text style={[styles.aptDateBoxMonth, pastel ? styles.aptDateMonthA : styles.aptDateMonthB]}>{t(apt.month)}.</Text>
+                                        </View>
+                                        <View style={[styles.aptDetailsBox, isRTL ? { marginRight: 14, marginLeft: 0 } : { marginLeft: 14 }]}>
+                                            <View style={[styles.aptDoctorHeader, isRTL && { flexDirection: 'row-reverse' }]}>
+                                                <View style={{ flex: 1 }}>
+                                                    <Text style={[styles.aptDoctorName, isRTL && { textAlign: 'right' }]} numberOfLines={1}>
+                                                        {t(apt.doctor)}
+                                                    </Text>
+                                                    <Text style={[styles.aptSpecialtyName, isRTL && { textAlign: 'right' }]}>
+                                                        {t(specialtyToI18nKey(apt.specialty))}
+                                                    </Text>
+                                                </View>
+                                                <View style={[styles.confirmBadge, isRTL ? { marginLeft: 0, marginRight: 10 } : { marginLeft: 10 }]}>
+                                                    <Text style={styles.confirmBadgeText}>{t('confirmed')}</Text>
+                                                </View>
                                             </View>
-                                            <View style={[styles.confirmBadge, isRTL ? { marginLeft: 0, marginRight: 10 } : { marginLeft: 10 }]}>
-                                                <Text style={styles.confirmBadgeText}>{t('confirmed')}</Text>
+                                            <View style={[styles.aptMetaContainer, isRTL && { flexDirection: 'row-reverse' }]}>
+                                                <View style={[styles.metaRow, isRTL && { flexDirection: 'row-reverse' }]}>
+                                                    <Feather name="clock" size={14} color={P.metaIcon} style={isRTL ? { marginLeft: 6 } : { marginRight: 6 }} />
+                                                    <Text style={styles.metaLabel}>{apt.time}</Text>
+                                                </View>
+                                                <View style={[styles.metaRow, isRTL ? { marginRight: 14 } : { marginLeft: 14 }, isRTL && { flexDirection: 'row-reverse' }]}>
+                                                    <Ionicons name="location-outline" size={14} color={P.metaIcon} style={isRTL ? { marginLeft: 6 } : { marginRight: 6 }} />
+                                                    <Text style={[styles.metaLabel, { flexShrink: 1 }]} numberOfLines={2}>
+                                                        {t(apt.location)}
+                                                    </Text>
+                                                </View>
                                             </View>
                                         </View>
-                                        <View style={[styles.aptMetaContainer, isRTL && { flexDirection: 'row-reverse' }]}>
-                                            <View style={[styles.metaRow, isRTL && { flexDirection: 'row-reverse' }]}>
-                                                <Feather name="clock" size={14} color={P.metaIcon} style={isRTL ? { marginLeft: 6 } : { marginRight: 6 }} />
-                                                <Text style={styles.metaLabel}>{apt.time}</Text>
-                                            </View>
-                                            <View style={[styles.metaRow, isRTL ? { marginRight: 14 } : { marginLeft: 14 }, isRTL && { flexDirection: 'row-reverse' }]}>
-                                                <Ionicons name="location-outline" size={14} color={P.metaIcon} style={isRTL ? { marginLeft: 6 } : { marginRight: 6 }} />
-                                                <Text style={[styles.metaLabel, { flexShrink: 1 }]} numberOfLines={2}>
-                                                    {t(apt.location)}
-                                                </Text>
-                                            </View>
-                                        </View>
                                     </View>
-                                </View>
-                            );
+                                );
                             })}
 
                             <TouchableOpacity style={styles.newAptCta} onPress={() => router.push('/appointments')} activeOpacity={0.88}>

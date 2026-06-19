@@ -2,7 +2,7 @@ import { Feather } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
 import { useCallback } from 'react';
 import { useTranslation } from 'react-i18next';
-import { Alert, Platform, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import { Alert, Platform, SafeAreaView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { dashboardVibe, patientPastel, theme } from '../../theme';
 import { useApp } from '../AppContext';
 
@@ -38,13 +38,13 @@ export default function HeaderSidebar({
     const brandTitle = title || t('brand');
     const brandSubtitle = subtitle !== null ? (subtitle || t('platformSubtitle')) : null;
     const tabs = [
-        { key: 'dashboard', label: 'Accueil', icon: 'home', route: '/dashboard' },
-        { key: 'appointments', label: 'RDV', icon: 'calendar', route: '/appointments' },
-        { key: 'documents', label: 'Docs', icon: 'file-text', route: '/documents' },
-        { key: 'guidage', label: 'Guide', icon: 'map-pin', route: '/guidage' },
-        { key: 'urgence', label: 'Urgence', icon: 'alert-circle', route: '/urgence' },
-        { key: 'feedback', label: 'Feed', icon: 'message-square', route: '/feedback' },
-        { key: 'profile', label: 'Profil', icon: 'user', route: '/profile' },
+        { key: 'dashboard', label: t('navDashboardShort', 'Accueil'), icon: 'home', route: '/dashboard' },
+        { key: 'appointments', label: t('navAppointmentsShort', 'RDV'), icon: 'calendar', route: '/appointments' },
+        { key: 'documents', label: t('navDocumentsShort', 'Docs'), icon: 'file-text', route: '/documents' },
+        { key: 'guidage', label: t('navGuidageShort', 'Guide'), icon: 'map-pin', route: '/guidage' },
+        { key: 'urgence', label: t('navUrgenceShort', 'Urgence'), icon: 'alert-circle', route: '/urgence' },
+        { key: 'feedback', label: t('navSatisfactionShort', 'Feed'), icon: 'message-square', route: '/feedback' },
+        { key: 'profile', label: t('navProfileShort', 'Profil'), icon: 'user', route: '/profile' },
     ];
     const showHeader = renderMode === 'full' || renderMode === 'header';
     const showBottomTabs = renderMode === 'full' || renderMode === 'bottom';
@@ -52,51 +52,55 @@ export default function HeaderSidebar({
     return (
         <>
             {showHeader && (heroHeader ? (
-                <View style={[styles.headerHero, { flexDirection: isRTL ? 'row-reverse' : 'row', alignItems: 'center' }]}>
-                    {typeof onHeroLogoutPress === 'function' ? (
-                        <View style={{ width: 44 }} />
-                    ) : null}
-                    <View style={[styles.headerHeroBrand, { alignItems: 'center', paddingRight: 0 }]}>
-                        <View style={[styles.brandRow, isRTL && styles.brandRowRtl]}>
-                            <Text style={styles.headerHeroTitle}>{brandTitle}</Text>
-                        </View>
-                        {brandSubtitle != null ? (
-                            <Text style={styles.headerHeroSubtitle}>{brandSubtitle}</Text>
-                        ) : null}
-                    </View>
-                    <View style={[styles.headerHeroActions, isRTL && styles.headerHeroActionsRtl]}>
+                <SafeAreaView style={styles.safeArea}>
+                    <View style={[styles.headerHero, { flexDirection: isRTL ? 'row-reverse' : 'row', alignItems: 'center' }]}>
                         {typeof onHeroLogoutPress === 'function' ? (
-                            <TouchableOpacity
-                                onPress={onHeroLogoutPress}
-                                style={styles.menuButtonHero}
-                                accessibilityRole="button"
-                                accessibilityLabel={t('navLogout')}
-                            >
-                                <Feather name="log-out" size={18} color={dashboardVibe.heroText} />
-                            </TouchableOpacity>
+                            <View style={{ width: 44 }} />
                         ) : null}
-                    </View>
-                </View>
-            ) : (
-                <View style={[styles.header, { flexDirection: isRTL ? 'row' : 'row-reverse' }]}>
-                    <TouchableOpacity
-                        onPress={handleHeaderLogout}
-                        style={styles.headerLogoutBtn}
-                        accessibilityRole="button"
-                        accessibilityLabel={t('navLogout')}
-                    >
-                        <Feather name="log-out" size={20} color={patientPastel.textHeading} />
-                    </TouchableOpacity>
-                    <View style={styles.headerCenter}>
-                        <View style={[styles.brandRow, isRTL && styles.brandRowRtl]}>
-                            <Text style={styles.headerTitle}>{brandTitle}</Text>
+                        <View style={[styles.headerHeroBrand, { alignItems: 'center', paddingRight: 0 }]}>
+                            <View style={[styles.brandRow, isRTL && styles.brandRowRtl]}>
+                                <Text style={styles.headerHeroTitle}>{brandTitle}</Text>
+                            </View>
+                            {brandSubtitle != null ? (
+                                <Text style={styles.headerHeroSubtitle}>{brandSubtitle}</Text>
+                            ) : null}
                         </View>
-                        {subtitle !== null && (
-                            <Text style={styles.headerSubtitle}>{brandSubtitle}</Text>
-                        )}
+                        <View style={[styles.headerHeroActions, isRTL && styles.headerHeroActionsRtl]}>
+                            {typeof onHeroLogoutPress === 'function' ? (
+                                <TouchableOpacity
+                                    onPress={onHeroLogoutPress}
+                                    style={styles.menuButtonHero}
+                                    accessibilityRole="button"
+                                    accessibilityLabel={t('navLogout')}
+                                >
+                                    <Feather name="log-out" size={18} color={dashboardVibe.heroText} />
+                                </TouchableOpacity>
+                            ) : null}
+                        </View>
                     </View>
-                    {rightComponent ? rightComponent : <View style={{ width: 44 }} />}
-                </View>
+                </SafeAreaView>
+            ) : (
+                <SafeAreaView style={styles.safeArea}>
+                    <View style={[styles.header, { flexDirection: isRTL ? 'row' : 'row-reverse' }]}>
+                        <TouchableOpacity
+                            onPress={handleHeaderLogout}
+                            style={styles.headerLogoutBtn}
+                            accessibilityRole="button"
+                            accessibilityLabel={t('navLogout')}
+                        >
+                            <Feather name="log-out" size={20} color={patientPastel.textHeading} />
+                        </TouchableOpacity>
+                        <View style={styles.headerCenter}>
+                            <View style={[styles.brandRow, isRTL && styles.brandRowRtl]}>
+                                <Text style={styles.headerTitle}>{brandTitle}</Text>
+                            </View>
+                            {subtitle !== null && (
+                                <Text style={styles.headerSubtitle}>{brandSubtitle}</Text>
+                            )}
+                        </View>
+                        {rightComponent ? rightComponent : <View style={{ width: 44 }} />}
+                    </View>
+                </SafeAreaView>
             ))}
             {showBottomTabs && (
                 <View pointerEvents="box-none" style={styles.bottomTabsWrap}>
@@ -125,17 +129,21 @@ export default function HeaderSidebar({
                         })}
                     </View>
                 </View>
-            )}
+            )
+            }
         </>
     );
 }
 
 const styles = StyleSheet.create({
+    safeArea: {
+        backgroundColor: 'transparent',
+    },
     headerHero: {
         justifyContent: 'space-between',
         alignItems: 'flex-start',
         paddingHorizontal: 20,
-        paddingTop: 8,
+        paddingTop: Platform.OS === 'android' ? 35 : 8,
         paddingBottom: 4,
         backgroundColor: 'transparent',
     },
@@ -196,7 +204,7 @@ const styles = StyleSheet.create({
         justifyContent: 'space-between',
         alignItems: 'center',
         paddingHorizontal: 20,
-        paddingTop: 10,
+        paddingTop: Platform.OS === 'android' ? 35 : 10,
         paddingBottom: 10,
         backgroundColor: theme?.colors?.background || '#f8fafc',
     },
@@ -229,17 +237,17 @@ const styles = StyleSheet.create({
         position: 'absolute',
         left: 0,
         right: 0,
-        bottom: Platform.OS === 'ios' ? 12 : 10,
-        paddingHorizontal: 10,
+        bottom: Platform.OS === 'ios' ? 25 : 20,
+        paddingHorizontal: 15,
         zIndex: 2000,
     },
     bottomTabs: {
         width: '100%',
         backgroundColor: '#fff',
-        borderRadius: 18,
+        borderRadius: 22,
         borderWidth: 1,
         borderColor: '#e2e8f0',
-        padding: 8,
+        padding: 10,
         flexDirection: 'row',
         alignItems: 'center',
         justifyContent: 'space-between',

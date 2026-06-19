@@ -10,9 +10,9 @@ import {
     Server
 } from 'lucide-react';
 import { useEffect, useState } from 'react';
-import api from '../../lib/api';
 import { Button } from '../../components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '../../components/ui/card';
+import api from '../../lib/api';
 
 const defaultSurveillance = {
     cpu: 45,
@@ -36,7 +36,7 @@ export default function AdminSystemPage() {
         consultations: 0,
         ordonnances: 0,
         uploadedDocuments: 0,
-        satisfactionRate: 0
+        satisfactionRate: null
     });
     const [showLogs, setShowLogs] = useState(false);
     const [systemLogs, setSystemLogs] = useState([]);
@@ -68,7 +68,7 @@ export default function AdminSystemPage() {
             consultations: Number(payload.consultations ?? 0),
             ordonnances: Number(payload.ordonnances ?? 0),
             uploadedDocuments: Number(payload.uploadedDocuments ?? 0),
-            satisfactionRate: Number(payload.satisfactionRate ?? 0)
+            satisfactionRate: payload.satisfactionRate != null ? Number(payload.satisfactionRate) : null
         });
     };
 
@@ -177,9 +177,8 @@ export default function AdminSystemPage() {
                             </div>
                             <div className="w-full bg-gray-200 rounded-full h-2">
                                 <div
-                                    className={`h-2 rounded-full ${
-                                        surveillanceData.cpu > 80 ? 'bg-red-600' : surveillanceData.cpu > 60 ? 'bg-yellow-600' : 'bg-blue-600'
-                                    }`}
+                                    className={`h-2 rounded-full ${surveillanceData.cpu > 80 ? 'bg-red-600' : surveillanceData.cpu > 60 ? 'bg-yellow-600' : 'bg-blue-600'
+                                        }`}
                                     style={{ width: `${surveillanceData.cpu}%` }}
                                 />
                             </div>
@@ -194,13 +193,12 @@ export default function AdminSystemPage() {
                             </div>
                             <div className="w-full bg-gray-200 rounded-full h-2">
                                 <div
-                                    className={`h-2 rounded-full ${
-                                        (surveillanceData.memory.used / surveillanceData.memory.total) * 100 > 80
+                                    className={`h-2 rounded-full ${(surveillanceData.memory.used / surveillanceData.memory.total) * 100 > 80
                                             ? 'bg-red-600'
                                             : (surveillanceData.memory.used / surveillanceData.memory.total) * 100 > 60
-                                              ? 'bg-yellow-600'
-                                              : 'bg-green-600'
-                                    }`}
+                                                ? 'bg-yellow-600'
+                                                : 'bg-green-600'
+                                        }`}
                                     style={{ width: `${(surveillanceData.memory.used / surveillanceData.memory.total) * 100}%` }}
                                 />
                             </div>
@@ -215,13 +213,12 @@ export default function AdminSystemPage() {
                             </div>
                             <div className="w-full bg-gray-200 rounded-full h-2">
                                 <div
-                                    className={`h-2 rounded-full ${
-                                        (surveillanceData.disk.used / surveillanceData.disk.total) * 100 > 85
+                                    className={`h-2 rounded-full ${(surveillanceData.disk.used / surveillanceData.disk.total) * 100 > 85
                                             ? 'bg-red-600'
                                             : (surveillanceData.disk.used / surveillanceData.disk.total) * 100 > 70
-                                              ? 'bg-yellow-600'
-                                              : 'bg-purple-600'
-                                    }`}
+                                                ? 'bg-yellow-600'
+                                                : 'bg-purple-600'
+                                        }`}
                                     style={{ width: `${(surveillanceData.disk.used / surveillanceData.disk.total) * 100}%` }}
                                 />
                             </div>
@@ -303,13 +300,12 @@ export default function AdminSystemPage() {
                                                     {new Date(log.timestamp).toLocaleString('fr-FR')}
                                                 </span>
                                                 <span
-                                                    className={`px-1.5 py-0.5 rounded text-xs font-medium ${
-                                                        log.level === 'error'
+                                                    className={`px-1.5 py-0.5 rounded text-xs font-medium ${log.level === 'error'
                                                             ? 'bg-red-100 text-red-700'
                                                             : log.level === 'warning'
-                                                              ? 'bg-yellow-100 text-yellow-700'
-                                                              : 'bg-blue-100 text-blue-700'
-                                                    }`}
+                                                                ? 'bg-yellow-100 text-yellow-700'
+                                                                : 'bg-blue-100 text-blue-700'
+                                                        }`}
                                                 >
                                                     {log.level}
                                                 </span>
@@ -346,11 +342,10 @@ export default function AdminSystemPage() {
                                     Base de données
                                 </div>
                                 <span
-                                    className={`px-2 py-1 rounded text-xs font-medium ${
-                                        surveillanceData.services.database === 'operational'
+                                    className={`px-2 py-1 rounded text-xs font-medium ${surveillanceData.services.database === 'operational'
                                             ? 'text-green-600 bg-green-50'
                                             : 'text-yellow-700 bg-yellow-50'
-                                    }`}
+                                        }`}
                                 >
                                     {surveillanceData.services.database === 'operational' ? 'Opérationnel' : 'Charge élevée'}
                                 </span>
@@ -361,11 +356,10 @@ export default function AdminSystemPage() {
                                     API Backend
                                 </div>
                                 <span
-                                    className={`px-2 py-1 rounded text-xs font-medium ${
-                                        surveillanceData.services.api === 'operational'
+                                    className={`px-2 py-1 rounded text-xs font-medium ${surveillanceData.services.api === 'operational'
                                             ? 'text-green-600 bg-green-50'
                                             : 'text-yellow-700 bg-yellow-50'
-                                    }`}
+                                        }`}
                                 >
                                     {surveillanceData.services.api === 'operational' ? 'Opérationnel' : 'Charge élevée'}
                                 </span>
@@ -408,7 +402,9 @@ export default function AdminSystemPage() {
                             </div>
                             <div className="flex justify-between items-center text-sm">
                                 <span className="text-gray-600">Taux satisfaction</span>
-                                <span className="font-bold text-green-600">{monthlyStats.satisfactionRate}%</span>
+                                <span className={`font-bold ${monthlyStats.satisfactionRate != null ? 'text-green-600' : 'text-gray-400'}`}>
+                                    {monthlyStats.satisfactionRate != null ? `${monthlyStats.satisfactionRate}%` : 'Aucun avis'}
+                                </span>
                             </div>
                         </CardContent>
                     </Card>

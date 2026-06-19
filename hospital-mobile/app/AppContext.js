@@ -399,8 +399,16 @@ export const AppProvider = ({ children }) => {
 
                 if (aptRes?.ok) {
                     const data = await aptRes.json();
-                    setAppointments(data.filter(a => a.status === 'confirme' || a.status === 'en_cours'));
-                    setHistory(data.filter(a => a.status === 'termine' || a.status === 'annule'));
+                    const nowTS = Date.now();
+                    const isAptPast = (apt) => {
+                        const dateStr = apt.startsAtIso || apt.date;
+                        if (!dateStr) return false;
+                        const d = new Date(dateStr);
+                        return !isNaN(d.getTime()) && d.getTime() < nowTS;
+                    };
+
+                    setAppointments(data.filter(a => (a.status === 'confirme' || a.status === 'en_cours') && !isAptPast(a)));
+                    setHistory(data.filter(a => a.status === 'termine' || a.status === 'annule' || ((a.status === 'confirme' || a.status === 'en_cours') && isAptPast(a))));
                     setRequests(data.filter(a => a.status === 'en_attente' || a.status === 'reporte' || a.status === 'demande_annulation'));
                 }
 

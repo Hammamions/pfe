@@ -4,9 +4,11 @@
   "version": "1.0.0",
   "description": "Système hospitalier intelligent - Root project",
   "dependencies": {
-    "@prisma/client": "^7.7.0"
+    "@prisma/client": "^7.7.0",
+    "qrcode": "^1.5.4"
   },
   "devDependencies": {
+    "@types/qrcode": "^1.5.6",
     "prisma": "^7.7.0",
     "prisma-erd-generator": "^2.4.2"
   }

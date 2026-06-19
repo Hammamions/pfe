@@ -161,7 +161,7 @@ const LoginPro = () => {
           <div className="mb-4 flex items-center justify-center w-28 h-28">
             <img src={logo} alt="Logo" className="w-full h-full object-contain" />
           </div>
-          <h1 className="text-3xl font-bold text-indigo-950 tracking-tight">Hôpital Connect</h1>
+          <h1 className="text-3xl font-bold text-indigo-950 tracking-tight">TuniSanté</h1>
           <p className="mt-2 text-[15px] text-indigo-900/60">Accès Professionnel de Santé</p>
         </div>
 

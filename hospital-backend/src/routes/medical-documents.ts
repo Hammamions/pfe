@@ -11,7 +11,6 @@ const formatBytes = (bytes: number) => {
     return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
 };
 
-/** Texte des comptes rendus envoyés en sécurisé, pour rétrocompatibilité (avant `Document.securePreviewSummary`). */
 function listSecureConsultationSummariesFromHistorique(historiqueMedical: string[] | null | undefined) {
     const out: { at: number; summary: string }[] = [];
     for (const entry of Array.isArray(historiqueMedical) ? historiqueMedical : []) {
@@ -113,31 +112,31 @@ router.get('/', authenticatePatient, async (req: AuthRequest, res: Response) => 
                 patient.dossierMedical.documents
                     .filter((d) => (d.type || '').toLowerCase() !== 'ordonnance')
                     .map(async (doc) => {
-                    const remoteSize = await getRemoteFileSize(doc.urlFichier);
-                    const praticien = doc.praticien?.trim() || 'Service hospitalier';
-                    return {
-                        id: doc.id,
-                        titre: doc.titre,
-                        urlFichier: doc.urlFichier,
-                        type: doc.type,
-                        createdAt: doc.createdAt,
-                        dossierMedicalId: doc.dossierMedicalId,
-                        publicId: doc.publicId,
-                        contentSha256: doc.contentSha256 || null,
-                        anchorTxHash: doc.anchorTxHash,
-                        anchorChainId: doc.anchorChainId,
-                        anchoredAt: doc.anchoredAt,
-                        anchorBlockNumber:
-                            doc.anchorBlockNumber != null ? doc.anchorBlockNumber.toString() : null,
-                        praticien,
-                        emittedBy: praticien,
-                        size: remoteSize || 'Inconnue',
-                        category: doc.type || 'autre',
-                        isOrdonnance: false,
-                        isSecureDocument: Boolean(doc.publicId),
-                        securePreviewSummary: doc.securePreviewSummary ?? null
-                    };
-                })
+                        const remoteSize = await getRemoteFileSize(doc.urlFichier);
+                        const praticien = doc.praticien?.trim() || 'Service hospitalier';
+                        return {
+                            id: doc.id,
+                            titre: doc.titre,
+                            urlFichier: doc.urlFichier,
+                            type: doc.type,
+                            createdAt: doc.createdAt,
+                            dossierMedicalId: doc.dossierMedicalId,
+                            publicId: doc.publicId,
+                            contentSha256: doc.contentSha256 || null,
+                            anchorTxHash: doc.anchorTxHash,
+                            anchorChainId: doc.anchorChainId,
+                            anchoredAt: doc.anchoredAt,
+                            anchorBlockNumber:
+                                doc.anchorBlockNumber != null ? doc.anchorBlockNumber.toString() : null,
+                            praticien,
+                            emittedBy: praticien,
+                            size: remoteSize || 'Inconnue',
+                            category: doc.type || 'autre',
+                            isOrdonnance: false,
+                            isSecureDocument: Boolean(doc.publicId),
+                            securePreviewSummary: doc.securePreviewSummary ?? null
+                        };
+                    })
             )
             : [];
 
